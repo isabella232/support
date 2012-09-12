@@ -11,6 +11,7 @@ import gevent.socket
 import gevent.threadpool
 
 CPU_THREAD = None # Lazily initialize -- mhashemi 6/11/2012
+CPU_THREAD_ENABLED = True
 
 def cpu_bound(f):
     '''
@@ -19,6 +20,8 @@ def cpu_bound(f):
     '''
     @functools.wraps(f)
     def g(*a, **kw):
+        if not CPU_THREAD_ENABLED:
+            return f(*a, **kw)
         global CPU_THREAD
         if CPU_THREAD is None:
             CPU_THREAD = gevent.threadpool.ThreadPool(1)
