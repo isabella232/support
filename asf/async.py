@@ -2,10 +2,6 @@ import copy
 import functools
 from asf_context import ASFError
 
-try:
-    from ..lib import gevent
-except ImportError:
-    pass #other imports are gevent-relative, so if gevent on system will work ok
 import gevent.pool
 import gevent.socket
 import gevent.threadpool
