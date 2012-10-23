@@ -53,7 +53,6 @@ def join(asf_reqs, raise_exc=False, timeout=None):
             results.append(ASFTimeoutError(req, timeout))
     return results
 
-#TODO: use this again
 class ASFTimeoutError(ASFError):
     def __init__(self, request=None, timeout=None):
         try:
