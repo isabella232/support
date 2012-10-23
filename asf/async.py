@@ -33,13 +33,25 @@ def close_threadpool():
         CPU_THREAD = None
     return
 
-def join(asf_reqs, raise_exc=True, timeout=None):
-    greenlets = [gevent.Greenlet.spawn(req) for req in asf_reqs]
+def _safe_req(req):
+    'capture the stack trace of exceptions that happen inside a greenlet'
     try:
-        gevent.joinall(greenlets, raise_error=raise_exc, timeout=timeout)
-    except gevent.socket.error as e:
+        return req()
+    except Exception as e:
         raise ASFError(e)
-    return [gr.value if gr.successful() else gr.exception for gr in greenlets]
+
+def join(asf_reqs, raise_exc=False, timeout=None):
+    greenlets = [gevent.Greenlet.spawn(_safe_req, req) for req in asf_reqs]
+    gevent.joinall(greenlets, raise_error=raise_exc, timeout=timeout)
+    results = []
+    for gr, req in zip(greenlets, asf_reqs):
+        if gr.successful():
+            results.append(gr.value)
+        elif gr.ready(): #finished, but must have had error
+            results.append(gr.exception)
+        else: #didnt finish, must have timed out
+            results.append(ASFTimeoutError(req, timeout))
+    return results
 
 #TODO: use this again
 class ASFTimeoutError(ASFError):
@@ -81,14 +93,14 @@ class Node(object):
 
 # call it asf_map to avoid name collision with builtin map?
 # return callable to avoid collision with kwargs?
-def map_factory(op, node_list, raise_exc=True, timeout=None):
+def map_factory(op, node_list, raise_exc=False, timeout=None):
     """
     map_factory() enables easier concurrent calling across multiple servers,
     provided a node_list, which is an iterable of Node objects.
     """
     def asf_map(*a, **kw):
         return join([op_ip_port(op, node.ip, node.port).async(*a, **kw)
-                        for node in node_list], raise_exc=False, timeout=timeout)
+                        for node in node_list], raise_exc=raise_exc, timeout=timeout)
     return asf_map
 
 def op_ip_port(op, ip, port):
