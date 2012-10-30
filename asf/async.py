@@ -21,7 +21,7 @@ def cpu_bound(f):
         global CPU_THREAD
         if CPU_THREAD is None:
             CPU_THREAD = gevent.threadpool.ThreadPool(1)
-        return CPU_THREAD.apply(f, a, kw)
+        return CPU_THREAD.apply_e((Exception,), f, a, kw)
     g.no_defer = f
     return g
 
