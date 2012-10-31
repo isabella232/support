@@ -77,7 +77,6 @@ class ASFTimeoutError(ASFError):
             ret += " after "+str(self.timeout)+" seconds"
         except AttributeError:
             pass
-        ret += "\n\n"+super(ASFTimeoutError, self).__str__()
         return ret
 
 ### What follows is code related to map() contributed from MoneyAdmin's asf_util
