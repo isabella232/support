@@ -1,13 +1,45 @@
+import os
 import copy
 import functools
-from asf_context import ASFError
+import weakref
+import time
 
+from asf.asf_context import ASFError
+#TODO: migrate ASFError out of ASF to a more root location
 import gevent.pool
 import gevent.socket
 import gevent.threadpool
 
+import pp_crypt
+
 CPU_THREAD = None # Lazily initialize -- mhashemi 6/11/2012
 CPU_THREAD_ENABLED = True
+GREENLET_ANCESTORS = weakref.WeakKeyDictionary()
+GREENLET_CORRELATION_IDs = weakref.WeakKeyDictionary()
+
+@functools.wraps(gevent.spawn)
+def spawn(*a, **kw):
+    gr = gevent.spawn(*a, **kw)
+    GREENLET_ANCESTORS[gr] = gevent.getcurrent()
+    return gr
+
+def get_cur_correlation_id():
+    cur = gevent.getcurrent()
+    #walk ancestors looking for a correlation id
+    while cur not in GREENLET_CORRELATION_IDs and cur in GREENLET_ANCESTORS:
+        cur = GREENLET_ANCESTORS[cur]
+    #if no correlation id found, create a new one at highest level
+    if cur not in GREENLET_CORRELATION_IDs:
+        #this is reproducing CalUtility.cpp
+        t = time.time()
+        corr_val = "{0}{1}{2}{3}".format(gevent.socket.gethostname(), 
+            os.getpid(), int(t), int(t%1 *10**6))
+        corr_id = "{0:x}{1:x}".format(pp_crypt.fnv_hash(corr_val), int(t%1 * 10**6))
+        GREENLET_CORRELATION_IDs[cur] = corr_id
+    return GREENLET_CORRELATION_IDs[cur]
+
+def set_cur_correlation_id(corr_id):
+    GREENLET_CORRELATION_IDs[gevent.getcurrent()] = corr_id
 
 def cpu_bound(f):
     '''
@@ -41,7 +73,7 @@ def _safe_req(req):
         raise ASFError(e)
 
 def join(asf_reqs, raise_exc=False, timeout=None):
-    greenlets = [gevent.Greenlet.spawn(_safe_req, req) for req in asf_reqs]
+    greenlets = [spawn(_safe_req, req) for req in asf_reqs]
     gevent.joinall(greenlets, raise_error=raise_exc, timeout=timeout)
     results = []
     for gr, req in zip(greenlets, asf_reqs):
