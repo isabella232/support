@@ -31,6 +31,7 @@ def get_cur_correlation_id():
     #if no correlation id found, create a new one at highest level
     if cur not in GREENLET_CORRELATION_IDs:
         #this is reproducing CalUtility.cpp
+        #TODO: where do different length correlation ids come from in CAL logs?
         t = time.time()
         corr_val = "{0}{1}{2}{3}".format(gevent.socket.gethostname(), 
             os.getpid(), int(t), int(t%1 *10**6))
