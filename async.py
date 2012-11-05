@@ -142,3 +142,30 @@ def op_ip_port(op, ip, port):
     op = copy.copy(op)
     op.service = serv
     return op
+
+
+#these words fit the following criteria:
+#1- one or two syllables (fast to say), short (fast to write)
+#2- simple to pronounce and spell (no knee/knife)
+#3- do not have any homonyms (not aunt/ant, eye/I, break/brake, etc)
+# they are used to generate easy to communicate correlation IDs
+# should be edited if areas of confusion are discovered :-)
+SIMPLE_WORDS_LIST = ["air", "art", "arm", "bag", "ball", "bank", "bath", "back",
+    "base", "bed", "beer", "bell", "bird", "block", "blood", "boat", "bone", "bowl", 
+    "box", "boy", "branch", "bridge", "bus", "cake", "can", "cap", "car", 
+    "case", "cat", "chair", "cheese", "child", "city", "class", "clock", "cloth",
+    "cloud", "coat", "coin", "corn", "cup", "day", "desk", "dish", "dog", "door",
+    "dream", "dress", "drink", "duck", "dust", "ear", "earth", "egg", "face", "fact",
+    "farm", "fat", "film", "fire", "fish", "flag", "food", "foot", "fork", "game",
+    "gate", "gift", "glass", "goat", "gold", "grass", "group", "gun", "hair",
+    "hand", "hat", "head", "heart", "hill", "home", "horse", "house", "ice",
+    "iron", "job", "juice", "key", "king", "lamp", "land", "leaf", "leg", "life",
+    "lip", "list", "lock", "luck", "man", "map", "mark", "meal", "meat", "milk",
+    "mind", "mix", "month", "moon", "mouth", "name", "net", "noise", "nose",
+    "oil", "page", "paint", "pan", "park", "party", "pay", "path", "pen",
+    "pick", "pig", "pin", "plant", "plate", "point", "pool", "press", "prize",
+    "salt", "sand", "seat", "ship", "soup", "space", "spoon", "sport", 
+    "spring", "shop", "show", "sink", "skin", "sky", "smoke", "snow", "step", "stone",
+    "store", "star", "street", "sweet", "swim", "tea", "team", "test", "thing", 
+    "tool", "tooth", "top", "town", "train", "tram", "tree", "type",
+    "wash", "west", "wife", "wind", "wire", "word", "work", "world", "yard", "zoo"]
