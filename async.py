@@ -23,6 +23,9 @@ def spawn(*a, **kw):
     GREENLET_ANCESTORS[gr] = gevent.getcurrent()
     return gr
 
+def get_parent(greenlet=None):
+    return GREENLET_ANCESTORS.get(greenlet or gevent.getcurrent())
+
 def get_cur_correlation_id():
     cur = gevent.getcurrent()
     #walk ancestors looking for a correlation id
