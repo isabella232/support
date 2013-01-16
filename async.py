@@ -348,8 +348,7 @@ class SSLObject(socket):
 
 SysCallError_code_mapping = {-1: 8}
 
-
-def ssl(sock, context):
+def wrap_socket_context(sock, context):
     timeout = sock.gettimeout()
     try:
         sock = sock._sock
