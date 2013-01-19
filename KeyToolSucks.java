@@ -26,7 +26,7 @@ public class KeyToolSucks {
                 KeyStore.PrivateKeyEntry pkey = (KeyStore.PrivateKeyEntry)keystore.getEntry(
                     nxt, new KeyStore.PasswordProtection(password));
                 pub_cert_bytes = pkey.getCertificate().getEncoded();
-                pkey_bytes = pey.getPrivateKey().getEncoded();
+                pkey_bytes = pkey.getPrivateKey().getEncoded();
             }
         }
         //print out JSON formatted data
