@@ -23,9 +23,10 @@ public class KeyToolSucks {
                 trusted_cert_bytes.add(((KeyStore.TrustedCertificateEntry)keystore.getEntry(
                     nxt, null)).getTrustedCertificate().getEncoded());  //lol, Java
             } catch (Exception e) { //exception that gets raised varies between environments
-                cert_bytes = ((KeyStore.PrivateKeyEntry)keystore.getEntry(
-                    nxt, new KeyStore.PasswordProtection(password))
-                    ).getCertificate().getEncoded();
+                KeyStore.PrivateKeyEntry pkey = (KeyStore.PrivateKeyEntry)keystore.getEntry(
+                    nxt, new KeyStore.PasswordProtection(password));
+                pub_cert_bytes = pkey.getCertificate().getEncoded();
+                pkey_bytes = pey.getPrivateKey().getEncoded();
             }
         }
         //print out JSON formatted data
