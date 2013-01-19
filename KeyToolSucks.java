@@ -11,17 +11,26 @@ import java.security.UnrecoverableKeyException;
 public class KeyToolSucks {
     public static void main(String[] args) throws Exception {
         KeyStore keystore = KeyStore.getInstance("jks");
-        keystore.load(new FileInputStream(args[0]), args[1].toCharArray());
+        char[] password = args[1].toCharArray();
+        keystore.load(new FileInputStream(args[0]), password);
+        byte[] cert_bytes = null;
         for(Enumeration<String> aliases = keystore.aliases(); aliases.hasMoreElements();) {
+            String nxt = aliases.nextElement();
             try {
-                byte[] cert_bytes = ((KeyStore.TrustedCertificateEntry)keystore.getEntry(aliases.nextElement(), null)
-                    ).getTrustedCertificate().getEncoded();  //lol, Java
-                for(int j=0; j<cert_bytes.length; j++) {
-                    System.out.print(String.format("%02X", cert_bytes[j]));
-                }
-                System.out.print("\n");
-            } catch (UnrecoverableKeyException e) { }
+                cert_bytes = ((KeyStore.TrustedCertificateEntry)keystore.getEntry(
+                    nxt, null)).getTrustedCertificate().getEncoded();  //lol, Java
+            } catch (Exception e) { //exception that gets raised varies between environments
+                cert_bytes = ((KeyStore.PrivateKeyEntry)keystore.getEntry(
+                    nxt, new KeyStore.PasswordProtection(password))
+                    ).getCertificate().getEncoded();
+            }
+
+            for(int j=0; j<cert_bytes.length; j++) {
+                System.out.print(String.format("%02X", cert_bytes[j]));
+            }
+            System.out.print("\n");
         }
         System.out.flush();
     }
+
 }
