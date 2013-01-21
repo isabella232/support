@@ -5,6 +5,7 @@ That's right, I said it.  KeyTool sucks.
 
 import java.security.KeyStore;
 import java.io.FileInputStream;
+import java.io.ByteArrayOutputStream;
 import java.util.Enumeration;
 import java.util.ArrayList;
 import java.security.UnrecoverableKeyException;
@@ -15,18 +16,23 @@ public class KeyToolSucks {
         char[] password = args[1].toCharArray();
         keystore.load(new FileInputStream(args[0]), password);
         ArrayList<byte[]> trusted_cert_bytes = new ArrayList<byte[]>();
-        byte[] pkey_bytes = null;
+        byte[] pkcs12_data = null;
         byte[] pub_cert_bytes = null;
+        KeyStore.PasswordProtection pwd = new KeyStore.PasswordProtection(password);
         for(Enumeration<String> aliases = keystore.aliases(); aliases.hasMoreElements();) {
             String nxt = aliases.nextElement();
             try {
                 trusted_cert_bytes.add(((KeyStore.TrustedCertificateEntry)keystore.getEntry(
                     nxt, null)).getTrustedCertificate().getEncoded());  //lol, Java
             } catch (Exception e) { //exception that gets raised varies between environments
-                KeyStore.PrivateKeyEntry pkey = (KeyStore.PrivateKeyEntry)keystore.getEntry(
-                    nxt, new KeyStore.PasswordProtection(password));
+                KeyStore.PrivateKeyEntry pkey = (KeyStore.PrivateKeyEntry)keystore.getEntry(nxt, pwd);
                 pub_cert_bytes = pkey.getCertificate().getEncoded();
-                pkey_bytes = pkey.getPrivateKey().getEncoded();
+                KeyStore p12_keystore = KeyStore.getInstance("PKCS12");
+                p12_keystore.load(null, null);
+                p12_keystore.setEntry(nxt, keystore.getEntry(nxt, pwd), pwd);
+                ByteArrayOutputStream p12_stream = new ByteArrayOutputStream();
+                p12_keystore.store(p12_stream, password);
+                pkcs12_data = p12_stream.toByteArray();
             }
         }
         //print out JSON formatted data
@@ -34,8 +40,8 @@ public class KeyToolSucks {
         System.out.print("\"pub_cert_bytes\":");
         print_bytes(pub_cert_bytes);
         System.out.println(",");
-        System.out.print("\"pkey_bytes\":");
-        print_bytes(pkey_bytes);
+        System.out.print("\"pkcs12_data\":");
+        print_bytes(pkcs12_data);
         System.out.println(",");
         System.out.print("\"trusted_cert_bytes\":[");
         for(int i=0; i<trusted_cert_bytes.size(); i++) {
