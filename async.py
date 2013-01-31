@@ -348,14 +348,14 @@ class SSLObject(socket):
 
 SysCallError_code_mapping = {-1: 8}
 
-def wrap_socket_context(sock, context):
+def wrap_socket_context(sock, context, server_side=False):
     timeout = sock.gettimeout()
     try:
         sock = sock._sock
     except AttributeError:
         pass
     connection = SSL.Connection(context, sock)
-    ssl_sock = SSLObject(connection)
+    ssl_sock = SSLObject(connection, server_side)
     ssl_sock.settimeout(timeout)
 
     try:
