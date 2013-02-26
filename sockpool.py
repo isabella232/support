@@ -21,12 +21,15 @@ class SockPool(object):
     def release(self, sock):
         #this is also a way of "registering" a socket with the pool
         #basically, this says "I'm done with this socket, make it available for anyone else"
-        if select.select([self.sock], [], [], 0)[0]:
-            killsock(self.sock)
-            return #TODO: raise exception when handed messed up socket?
-            #socket is readable means one of two things:
-            #1- left in a bad state (e.g. more data waiting -- protocol state is messed up)
-            #2- socket closed by remote (in which case read will return empty string)
+        try:
+            if select.select([sock], [], [], 0)[0]:
+                killsock(sock)
+                return #TODO: raise exception when handed messed up socket?
+                #socket is readable means one of two things:
+                #1- left in a bad state (e.g. more data waiting -- protocol state is messed up)
+                #2- socket closed by remote (in which case read will return empty string)
+        except socket.error:
+            return #if socket was closed, select will raise socket.error('Bad file descriptor')
         addr = sock.getpeername()
         self.free_socks_by_addr.setdefault(addr, []).append(sock)
         self.sock_idle_times[sock] = time.time()
