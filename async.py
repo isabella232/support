@@ -337,6 +337,11 @@ class SSLObject(socket):
         self._makefile_refs += 1
         return _fileobject(self, mode, bufsize, close=True)
 
+    def shutdown(self, how):
+        self._sock.shutdown() 
+        #accept how parameter for compatibility with normal sockets,
+        #although OpenSSL.SSL.Connection objects do not accept how
+
     def close(self):
         if self._makefile_refs < 1:
             self._sock.shutdown()
