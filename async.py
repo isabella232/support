@@ -9,6 +9,7 @@ from asf.asf_context import ASFError
 import gevent.pool
 import gevent.socket
 import gevent.threadpool
+import gevent.greenlet
 
 import pp_crypt
 
@@ -76,20 +77,25 @@ def _safe_req(req):
     except Exception as e:
         raise ASFError(e)
 
-def join(asf_reqs, raise_exc=False, timeout=None):
-    greenlets = [spawn(_safe_req, req) for req in asf_reqs]
+def join(reqs, raise_exc=False, timeout=None):
+    greenlets = []
+    for req in reqs:
+        if isinstance(req, gevent.greenlet.Greenlet):
+            greenlets.append(req)
+        else:
+            greenlets.append(spawn(_safe_req, req))
     gevent.joinall(greenlets, raise_error=raise_exc, timeout=timeout)
     results = []
-    for gr, req in zip(greenlets, asf_reqs):
+    for gr, req in zip(greenlets, reqs):
         if gr.successful():
             results.append(gr.value)
         elif gr.ready(): #finished, but must have had error
             results.append(gr.exception)
         else: #didnt finish, must have timed out
-            results.append(ASFTimeoutError(req, timeout))
+            results.append(AsyncTimeoutError(req, timeout))
     return results
 
-class ASFTimeoutError(ASFError):
+class AsyncTimeoutError(ASFError):
     def __init__(self, request=None, timeout=None):
         try:
             self.ip = request.ip
@@ -102,7 +108,7 @@ class ASFTimeoutError(ASFError):
             self.timeout = timeout
 
     def __str__(self):
-        ret = "ASFTimeoutError"
+        ret = "AsyncTimeoutError"
         try:
             ret += " encountered while to trying execute "+self.op_name \
                    +" on "+self.service_name+" ("+str(self.ip)+':'      \
@@ -114,6 +120,10 @@ class ASFTimeoutError(ASFError):
         except AttributeError:
             pass
         return ret
+
+ASFTimeoutError = AsyncTimeoutError
+#NOTE: for backwards compatibility; name changed on March 2013
+#after a decent interval, this can be removed
 
 ### What follows is code related to map() contributed from MoneyAdmin's asf_util
 class Node(object):
