@@ -57,8 +57,12 @@ def cpu_bound(f):
     def g(*a, **kw):
         if not CPU_THREAD_ENABLED:
             return f(*a, **kw)
+        if getattr(THREAD_LOCALS, 'in_cpu_thread', False):
+            return f(*a, **kw)
         if not hasattr(THREAD_LOCALS, 'cpu_thread'):
             THREAD_LOCALS.cpu_thread = gevent.threadpool.ThreadPool(1)
+            def set_flag(): THREAD_LOCALS.in_cpu_thread = True
+            THREAD_LOCALS.cpu_thread.apply_e((Exception,), set_flag, (), {})
         return THREAD_LOCALS.cpu_thread.apply_e((Exception,), f, a, kw)
     g.no_defer = f
     return g
