@@ -4,6 +4,8 @@ import functools
 import weakref
 import time
 
+from threading import local
+
 from asf.asf_context import ASFError
 #TODO: migrate ASFError out of ASF to a more root location
 import gevent.pool
@@ -13,7 +15,7 @@ import gevent.greenlet
 
 import pp_crypt
 
-CPU_THREAD = None # Lazily initialize -- mhashemi 6/11/2012
+THREAD_LOCALS = local()
 CPU_THREAD_ENABLED = True
 GREENLET_ANCESTORS = weakref.WeakKeyDictionary()
 GREENLET_CORRELATION_IDs = weakref.WeakKeyDictionary()
@@ -55,19 +57,18 @@ def cpu_bound(f):
     def g(*a, **kw):
         if not CPU_THREAD_ENABLED:
             return f(*a, **kw)
-        global CPU_THREAD
-        if CPU_THREAD is None:
-            CPU_THREAD = gevent.threadpool.ThreadPool(1)
-        return CPU_THREAD.apply_e((Exception,), f, a, kw)
+        if not hasattr(THREAD_LOCALS, 'cpu_thread'):
+            THREAD_LOCALS.cpu_thread = gevent.threadpool.ThreadPool(1)
+        return THREAD_LOCALS.cpu_thread.apply_e((Exception,), f, a, kw)
     g.no_defer = f
     return g
 
 def close_threadpool():
-    global CPU_THREAD
-    if CPU_THREAD:
-        CPU_THREAD.join()
-        CPU_THREAD.kill()
-        CPU_THREAD = None
+    if hasattr(THREAD_LOCALS, 'cpu_thread'):
+        cpu_thread = THREAD_LOCALS.cpu_thread
+        cpu_thread.join()
+        cpu_thread.kill()
+        del THREAD_LOCALS.cpu_thread
     return
 
 def _safe_req(req):
