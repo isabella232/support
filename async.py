@@ -1,10 +1,7 @@
 import os
 import copy
 import functools
-import weakref
 import time
-
-from threading import local
 
 from asf.asf_context import ASFError
 #TODO: migrate ASFError out of ASF to a more root location
@@ -14,39 +11,37 @@ import gevent.threadpool
 import gevent.greenlet
 
 import pp_crypt
-
-THREAD_LOCALS = local()
-CPU_THREAD_ENABLED = True
-GREENLET_ANCESTORS = weakref.WeakKeyDictionary()
-GREENLET_CORRELATION_IDs = weakref.WeakKeyDictionary()
+import context
 
 @functools.wraps(gevent.spawn)
 def spawn(*a, **kw):
     gr = gevent.spawn(*a, **kw)
-    GREENLET_ANCESTORS[gr] = gevent.getcurrent()
+    context.CONTEXT.greenlet_ancestors[gr] = gevent.getcurrent()
     return gr
 
 def get_parent(greenlet=None):
-    return GREENLET_ANCESTORS.get(greenlet or gevent.getcurrent())
+    return context.CONTEXT.greenlet_ancestors.get(greenlet or gevent.getcurrent())
 
 def get_cur_correlation_id():
+    ancestors = context.CONTEXT.greenlet_ancestors
+    corr_ids = context.CONTEXT.greenlet_correlation_ids
     cur = gevent.getcurrent()
     #walk ancestors looking for a correlation id
-    while cur not in GREENLET_CORRELATION_IDs and cur in GREENLET_ANCESTORS:
-        cur = GREENLET_ANCESTORS[cur]
+    while cur not in corr_ids and cur in ancestors:
+        cur = ancestors[cur]
     #if no correlation id found, create a new one at highest level
-    if cur not in GREENLET_CORRELATION_IDs:
+    if cur not in corr_ids:
         #this is reproducing CalUtility.cpp
         #TODO: where do different length correlation ids come from in CAL logs?
         t = time.time()
         corr_val = "{0}{1}{2}{3}".format(gevent.socket.gethostname(), 
             os.getpid(), int(t), int(t%1 *10**6))
         corr_id = "{0:x}{1:x}".format(pp_crypt.fnv_hash(corr_val), int(t%1 * 10**6))
-        GREENLET_CORRELATION_IDs[cur] = corr_id
-    return GREENLET_CORRELATION_IDs[cur]
+        corr_ids[cur] = corr_id
+    return corr_ids[cur]
 
 def set_cur_correlation_id(corr_id):
-    GREENLET_CORRELATION_IDs[gevent.getcurrent()] = corr_id
+    context.CONTEXT.greenlet_correlation_ids[gevent.getcurrent()] = corr_id
 
 def cpu_bound(f):
     '''
@@ -55,24 +50,26 @@ def cpu_bound(f):
     '''
     @functools.wraps(f)
     def g(*a, **kw):
-        if not CPU_THREAD_ENABLED:
+        if not context.CONTEXT.cpu_thread_enabled:
             return f(*a, **kw)
-        if getattr(THREAD_LOCALS, 'in_cpu_thread', False):
+        tlocals = context.CONTEXT.thread_locals
+        if getattr(tlocals, 'in_cpu_thread', False):
             return f(*a, **kw)
-        if not hasattr(THREAD_LOCALS, 'cpu_thread'):
-            THREAD_LOCALS.cpu_thread = gevent.threadpool.ThreadPool(1)
-            def set_flag(): THREAD_LOCALS.in_cpu_thread = True
-            THREAD_LOCALS.cpu_thread.apply_e((Exception,), set_flag, (), {})
-        return THREAD_LOCALS.cpu_thread.apply_e((Exception,), f, a, kw)
+        if not hasattr(tlocals, 'cpu_thread'):
+            tlocals.cpu_thread = gevent.threadpool.ThreadPool(1)
+            def set_flag(): tlocals.in_cpu_thread = True
+            tlocals.cpu_thread.apply_e((Exception,), set_flag, (), {})
+        return tlocals.cpu_thread.apply_e((Exception,), f, a, kw)
     g.no_defer = f
     return g
 
 def close_threadpool():
-    if hasattr(THREAD_LOCALS, 'cpu_thread'):
-        cpu_thread = THREAD_LOCALS.cpu_thread
+    tlocals = context.CONTEXT.thread_locals
+    if hasattr(tlocals, 'cpu_thread'):
+        cpu_thread = tlocals.cpu_thread
         cpu_thread.join()
         cpu_thread.kill()
-        del THREAD_LOCALS.cpu_thread
+        del tlocals.cpu_thread
     return
 
 def _safe_req(req):
