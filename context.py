@@ -1,6 +1,7 @@
 '''
 This mnodule defines a context object which holds on to all global state.
 '''
+import getpass
 from weakref import WeakKeyDictionary
 from threading import local
 from collections import namedtuple
@@ -42,6 +43,11 @@ class Context(object):
         #MAYFLY RELATED STUFF
         self.mayflys = {}
 
+        import sockpool
+        self.sockpool = sockpool.SockPool()
+
+        self.user = getpass.getuser()
+
     def set_config(self, config):
         self.config = config
         for key, address in config.mayflys:
@@ -77,11 +83,41 @@ class Config(object):
         self.occs = occs
 
 # A set of *Conf classes representing the configuration of different things.
-MayflyConf    = namedtuple('MayflyConf'   , 'ip port')
-OccConf       = namedtuple('OccConf'      , 'ip port')
+Address = namedtuple('Address', 'ip port')
 
 
-STAGE_CONFIG = Config()
+class AddressBook(object):
+    'simple key-value store for addresses'
+    def __init__(self, **kw):
+        self.addresses = kw
+
+    def __getitem__(self, key):
+        return self.addresses[key]
+
+    def mayfly_addr(self, key=None):
+        if not key:
+            key = 'mayflydirectoryserv'
+        if not key.startswith('mayflydirectoryserv'):
+            key = 'mayflydirectoryserv-'+key
+        return self[key]
+
+    def occ_addr(self, key=None):
+        if not key:
+            key = 'occ'
+        if not key.startswith('occ'):
+            key = 'occ-'+key
+        return self[key]
+
+
+
+def make_stage_address_book(stage_ip, other_ports={}):
+    'convenience function; sets up known ports for a stage environment'
+    addr = {}
+    addr.update(CAL_DEV_ADDRESSES)
+    for ports in MAYFLY_STAGE_PORTS, other_ports:
+        addr.update(dict(
+            [(k, (stage_ip, v)) for k,v in ports.items()]))
+    return AddressBook(addr)
 
 CONTEXT = Context()  # initialize a default context
 
@@ -93,3 +129,25 @@ def get_context():
 def set_context(context):
     global CONTEXT
     CONTEXT = context
+
+
+#TODO: handle this in a more generic way by generating ports from
+# data files put into resource
+
+MAYFLY_STAGE_PORTS = {
+    "mayflydirectoryserv":10368, 
+    "mayflydirectoryserv-auth":10726,
+    "mayflydirectoryserv-bridge":11302,
+    "mayflydirectoryserv-gops":10957,
+    "mayflydirectoryserv-pmt":10915,
+    "mayflydirectoryserv-risk":10567,
+}
+
+
+# see: https://confluence.paypal.com/cnfl/display/CAL/CAL+Quick+Links
+CAL_DEV_ADDRESSES = {
+    'cal-stage' : ('10.57.2.159', 1118), #cal-stage.qa.paypal.com
+    'cal-qa' : ('10.57.2.152', 1118), #cal-qa.qa.paypal.com
+    'cal-dev': ('10.57.2.157', 1118), #cal-dev.qa.paypal.com
+}
+
