@@ -16,15 +16,16 @@ import context
 @functools.wraps(gevent.spawn)
 def spawn(*a, **kw):
     gr = gevent.spawn(*a, **kw)
-    context.CONTEXT.greenlet_ancestors[gr] = gevent.getcurrent()
+    context.get_context().greenlet_ancestors[gr] = gevent.getcurrent()
     return gr
 
 def get_parent(greenlet=None):
-    return context.CONTEXT.greenlet_ancestors.get(greenlet or gevent.getcurrent())
+    return context.get_context().greenlet_ancestors.get(greenlet or gevent.getcurrent())
 
 def get_cur_correlation_id():
-    ancestors = context.CONTEXT.greenlet_ancestors
-    corr_ids = context.CONTEXT.greenlet_correlation_ids
+    ctx = context.get_context()
+    ancestors = ctx.greenlet_ancestors
+    corr_ids = ctx.greenlet_correlation_ids
     cur = gevent.getcurrent()
     #walk ancestors looking for a correlation id
     while cur not in corr_ids and cur in ancestors:
@@ -41,7 +42,7 @@ def get_cur_correlation_id():
     return corr_ids[cur]
 
 def set_cur_correlation_id(corr_id):
-    context.CONTEXT.greenlet_correlation_ids[gevent.getcurrent()] = corr_id
+    context.get_context().greenlet_correlation_ids[gevent.getcurrent()] = corr_id
 
 def cpu_bound(f):
     '''
@@ -50,9 +51,9 @@ def cpu_bound(f):
     '''
     @functools.wraps(f)
     def g(*a, **kw):
-        if not context.CONTEXT.cpu_thread_enabled:
+        if not context.get_context().cpu_thread_enabled:
             return f(*a, **kw)
-        tlocals = context.CONTEXT.thread_locals
+        tlocals = context.get_context().thread_locals
         if getattr(tlocals, 'in_cpu_thread', False):
             return f(*a, **kw)
         if not hasattr(tlocals, 'cpu_thread'):
@@ -64,7 +65,7 @@ def cpu_bound(f):
     return g
 
 def close_threadpool():
-    tlocals = context.CONTEXT.thread_locals
+    tlocals = context.get_context().thread_locals
     if hasattr(tlocals, 'cpu_thread'):
         cpu_thread = tlocals.cpu_thread
         cpu_thread.join()

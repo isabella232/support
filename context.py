@@ -32,7 +32,8 @@ class Context(object):
         self.greenlet_trans_stack = WeakKeyDictionary()
 
         #ASF RELATED STUFF
-        self.asf_context = None
+        from asf import asf_context
+        self.asf_context = asf_context.ASFContext()
 
         #PROTECTED RELATED STUFF
         self.protected = None
@@ -47,6 +48,8 @@ class Context(object):
         self.sockpool = sockpool.SockPool()
 
         self.user = getpass.getuser()
+
+        self._dev = dev
 
     def set_config(self, config):
         self.config = config
@@ -70,6 +73,10 @@ class Context(object):
         import occ
         ip, port = self.occs[name]
         return occ.Connection(ip, port, self.protected)
+
+    @property
+    def dev(self):
+        return self._dev
 
 
 class Config(object):
@@ -119,10 +126,13 @@ def make_stage_address_book(stage_ip, other_ports={}):
             [(k, (stage_ip, v)) for k,v in ports.items()]))
     return AddressBook(addr)
 
-CONTEXT = Context()  # initialize a default context
+CONTEXT = None 
 
 
 def get_context():
+    global CONTEXT
+    if CONTEXT is None:
+        CONTEXT = Context()
     return CONTEXT
 
 
