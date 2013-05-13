@@ -1,4 +1,7 @@
 /*
+NOTE: for maximum cross-compatibility, this is 1.4 compatible.
+compile with -source 1.4 -target 1.4
+
 This class exists because KeyTool kind of sucks.
 That's right, I said it.  KeyTool sucks.
 */
@@ -15,12 +18,12 @@ public class KeyToolSucks {
         KeyStore keystore = KeyStore.getInstance("jks");
         char[] password = args[1].toCharArray();
         keystore.load(new FileInputStream(args[0]), password);
-        ArrayList<byte[]> trusted_cert_bytes = new ArrayList<byte[]>();
+        ArrayList/*<byte[]>*/ trusted_cert_bytes = new ArrayList/*<byte[]>*/();
         byte[] pkcs12_data = null;
         byte[] pub_cert_bytes = null;
         KeyStore.PasswordProtection pwd = new KeyStore.PasswordProtection(password);
-        for(Enumeration<String> aliases = keystore.aliases(); aliases.hasMoreElements();) {
-            String nxt = aliases.nextElement();
+        for(Enumeration/*<String>*/ aliases = keystore.aliases(); aliases.hasMoreElements();) {
+            String nxt = (String)aliases.nextElement();
             try {
                 trusted_cert_bytes.add(((KeyStore.TrustedCertificateEntry)keystore.getEntry(
                     nxt, null)).getTrustedCertificate().getEncoded());  //lol, Java
@@ -45,7 +48,7 @@ public class KeyToolSucks {
         System.out.println(",");
         System.out.print("\"trusted_cert_bytes\":[");
         for(int i=0; i<trusted_cert_bytes.size(); i++) {
-            print_bytes(trusted_cert_bytes.get(i));
+            print_bytes((byte[])trusted_cert_bytes.get(i));
             if(i !=  trusted_cert_bytes.size() -1) {
                 System.out.println(",");
             }
@@ -57,7 +60,12 @@ public class KeyToolSucks {
     private static void print_bytes(byte[] b) {
         System.out.print("\"");
         for(int j=0; j<b.length; j++) {
-            System.out.print(String.format("%02X", b[j]));
+            String hex = Integer.toHexString(b[j] & 0xFF);
+            if(hex.length() == 1) {
+                System.out.print("0");
+            }
+            System.out.print(hex);
+            //System.out.print(String.format("%02X", b[j]));
         }
         System.out.print("\"");
     }
