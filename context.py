@@ -6,6 +6,8 @@ from weakref import WeakKeyDictionary
 from threading import local
 from collections import namedtuple
 
+import topos
+from contrib import net
 
 class Context(object):
     '''
@@ -19,7 +21,9 @@ class Context(object):
     2- Global data which would otherwise need to be kept track of by user code.
     (This stuff can be identified by the presence of getters)
     '''
-    def __init__(self, dev=False):
+    def __init__(self, dev=False, stage_host=None):
+        self.config = None
+
         #ASYNC RELATED STUFF
         self.greenlet_ancestors = WeakKeyDictionary()
         self.greenlet_correlation_ids = WeakKeyDictionary()
@@ -38,12 +42,6 @@ class Context(object):
         #PROTECTED RELATED STUFF
         self.protected = None
 
-        #OCC RELATED STUFF
-        self.occs = {}  # TODO: figure out what gets stored here?
-
-        #MAYFLY RELATED STUFF
-        self.mayflys = {}
-
         import sockpool
         self.sockpool = sockpool.SockPool()
 
@@ -51,32 +49,51 @@ class Context(object):
 
         self._dev = dev
 
+        #TOPO RELATED STUFF
+        self.stage_address_map = topos.StageAddressMap()
+        self.stage_host = stage_host
+        if stage_host:
+            self.stage_ip = net.find_host(stage_host)[0]
+            addresses = self.stage_address_map.get_host_map(self.stage_ip)
+            addresses = dict([(k, (self.stage_ip, v)) for k,v in addresses.items()])
+            addresses.update(CAL_DEV_ADDRESSES)
+            self.address_book = AddressBook(addresses)
+
+
     def set_config(self, config):
         self.config = config
-        for key, address in config.mayflys:
-            pass
-        self.occs = config.occs
+
 
     def get_mayfly(self, name, namespace):
-        if name not in self.mayflys:
+        try:
+            ip, port = self.address_book.mayfly_addr(name)
+        except KeyError:
             raise ValueError('Unknown Mayfly: '+repr(name))
 
         import mayfly
-        ip, port = self.mayflys[name]
         return mayfly.Client(ip, port, self.appname, namespace)
+
 
     def make_occ(self, name):
         'make instead of get to indicate this is creating a stateful object'
-        if name not in self.occs:
+        try:
+            ip, port = self.address_book.occ_addr(name)
+        except KeyError:
             raise ValueError('Uknonwn OCC: '+repr(name))
 
         import occ
-        ip, port = self.occs[name]
         return occ.Connection(ip, port, self.protected)
+
 
     @property
     def dev(self):
         return self._dev
+
+    @property
+    def appname(self):
+        if self.config:
+            return self.config.appname
+        return "pyinfra"
 
 
 class Config(object):
@@ -84,10 +101,9 @@ class Config(object):
     Represents the configuration of a context.
     This is just a bag of constants which are used to initialize a context.
     '''
-    def __init__(self, appname, mayflys, occs):
+    def __init__(self, appname, service_addrs = {}):
         self.appname = appname
-        self.mayflys = mayflys
-        self.occs = occs
+        self.service_addrs = service_addrs
 
 # A set of *Conf classes representing the configuration of different things.
 Address = namedtuple('Address', 'ip port')
@@ -95,8 +111,8 @@ Address = namedtuple('Address', 'ip port')
 
 class AddressBook(object):
     'simple key-value store for addresses'
-    def __init__(self, **kw):
-        self.addresses = kw
+    def __init__(self, addresses):
+        self.addresses = addresses
 
     def __getitem__(self, key):
         return self.addresses[key]
@@ -116,16 +132,6 @@ class AddressBook(object):
         return self[key]
 
 
-
-def make_stage_address_book(stage_ip, other_ports={}):
-    'convenience function; sets up known ports for a stage environment'
-    addr = {}
-    addr.update(CAL_DEV_ADDRESSES)
-    for ports in MAYFLY_STAGE_PORTS, other_ports:
-        addr.update(dict(
-            [(k, (stage_ip, v)) for k,v in ports.items()]))
-    return AddressBook(addr)
-
 CONTEXT = None 
 
 
@@ -139,19 +145,6 @@ def get_context():
 def set_context(context):
     global CONTEXT
     CONTEXT = context
-
-
-#TODO: handle this in a more generic way by generating ports from
-# data files put into resource
-
-MAYFLY_STAGE_PORTS = {
-    "mayflydirectoryserv":10368, 
-    "mayflydirectoryserv-auth":10726,
-    "mayflydirectoryserv-bridge":11302,
-    "mayflydirectoryserv-gops":10957,
-    "mayflydirectoryserv-pmt":10915,
-    "mayflydirectoryserv-risk":10567,
-}
 
 
 # see: https://confluence.paypal.com/cnfl/display/CAL/CAL+Quick+Links
