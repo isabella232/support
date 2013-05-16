@@ -6,8 +6,9 @@ from weakref import WeakKeyDictionary
 from threading import local
 from collections import namedtuple
 
-import topos
-from contrib import net
+#NOTE: do not import anything else from infra at context import time
+#this is a bit heavy-handed, but guarantees no circular import errors
+#which are otherwise very easy to create
 
 class Context(object):
     '''
@@ -22,6 +23,8 @@ class Context(object):
     (This stuff can be identified by the presence of getters)
     '''
     def __init__(self, dev=False, stage_host=None):
+        import topos
+
         self.config = None
 
         #ASYNC RELATED STUFF
@@ -54,6 +57,8 @@ class Context(object):
         self.set_stage_host(stage_host)
 
     def set_stage_host(self, stage_host, stage_ip=None):
+        from contrib import net
+
         self.stage_host = stage_host
         if stage_ip:
             self.stage_ip = stage_ip
