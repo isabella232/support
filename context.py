@@ -51,8 +51,13 @@ class Context(object):
 
         #TOPO RELATED STUFF
         self.stage_address_map = topos.StageAddressMap()
+        self.set_stage_host(stage_host)
+
+    def set_stage_host(self, stage_host, stage_ip=None):
         self.stage_host = stage_host
-        if stage_host:
+        if stage_ip:
+            self.stage_ip = stage_ip
+        elif stage_host:
             self.stage_ip = net.find_host(stage_host)[0]
         else:
             self.stage_ip = None
