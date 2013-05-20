@@ -2,6 +2,7 @@ import os
 import copy
 import functools
 import time
+import imp
 
 from asf.asf_context import ASFError
 #TODO: migrate ASFError out of ASF to a more root location
@@ -51,7 +52,11 @@ def cpu_bound(f):
     '''
     @functools.wraps(f)
     def g(*a, **kw):
-        if not context.get_context().cpu_thread_enabled:
+        #some modules import things lazily; it is too dangerous to run a function
+        #in another thread if the import lock is held by the current thread
+        #(this happens rarely -- only if the cpu_bound function is being executed
+        #at the import time of a module)
+        if not context.get_context().cpu_thread_enabled or imp.lock_held():
             return f(*a, **kw)
         tlocals = context.get_context().thread_locals
         if getattr(tlocals, 'in_cpu_thread', False):
