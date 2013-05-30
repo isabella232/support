@@ -67,6 +67,18 @@ class Context(object):
         else:
             self.stage_ip = None
 
+        # TODO: DRY here and set_config on addresses
+        if self.stage_host:
+            addresses = self.stage_address_map.get_host_map(self.stage_ip)
+            addresses = dict([(k, (self.stage_ip, v)) for k,v in addresses.items()])
+            addresses.update(CAL_DEV_ADDRESSES)
+            if self.config:
+                self.address_book = AddressBook(
+                    [self.config.service_addrs, addresses], self.config.aliases)
+            else:
+                self.address_book = AddressBook([addresses])
+
+
 
     def set_config(self, config):
         self.config = config
