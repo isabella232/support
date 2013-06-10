@@ -3,6 +3,7 @@ import copy
 import functools
 import time
 import imp
+import traceback
 
 from asf.asf_context import ASFError
 #TODO: migrate ASFError out of ASF to a more root location
@@ -14,14 +15,35 @@ import gevent.greenlet
 import pp_crypt
 import context
 
+
 @functools.wraps(gevent.spawn)
 def spawn(*a, **kw):
-    gr = gevent.spawn(*a, **kw)
+    if a:
+        f = a[0]
+    else:
+        f = kw['run']
+    # NOTE: tested functools.wraps to take 3.827 microseconds, which is okay
+    gr = gevent.spawn(
+        functools.wraps(f)(_exception_catcher), *a, **kw)
     context.get_context().greenlet_ancestors[gr] = gevent.getcurrent()
     return gr
 
+
+def _exception_catcher(f, *a, **kw):
+    try:
+        return f(*a, **kw)
+    except Exception as e:  # NOTE: would rather do this with weakrefs,
+        if not hasattr(e, '__greenlet_traces'):  # but Exceptions are not weakref-able
+            e.__greenlet_traces = []
+        traces = e.__greenlet_traces
+        traces.append(traceback.format_exc())
+        traces.append(repr(gevent.getcurrent()))
+        raise
+
+
 def get_parent(greenlet=None):
     return context.get_context().greenlet_ancestors.get(greenlet or gevent.getcurrent())
+
 
 def get_cur_correlation_id():
     ctx = context.get_context()
