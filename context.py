@@ -1,6 +1,7 @@
 '''
 This mnodule defines a context object which holds on to all global state.
 '''
+import sys
 import getpass
 from weakref import WeakKeyDictionary
 from threading import local
@@ -9,6 +10,7 @@ from collections import namedtuple
 #NOTE: do not import anything else from infra at context import time
 #this is a bit heavy-handed, but guarantees no circular import errors
 #which are otherwise very easy to create
+
 
 class Context(object):
     '''
@@ -30,6 +32,7 @@ class Context(object):
         #ASYNC RELATED STUFF
         self.greenlet_ancestors = WeakKeyDictionary()
         self.greenlet_correlation_ids = WeakKeyDictionary()
+        self.exception_traces = WeakKeyDictionary()
         self.thread_locals = local()
         self.cpu_thread_enabled = True
 
@@ -70,7 +73,7 @@ class Context(object):
         # TODO: DRY here and set_config on addresses
         if self.stage_host:
             addresses = self.stage_address_map.get_host_map(self.stage_ip)
-            addresses = dict([(k, (self.stage_ip, v)) for k,v in addresses.items()])
+            addresses = dict([(k, (self.stage_ip, v)) for k, v in addresses.items()])
             addresses.update(CAL_DEV_ADDRESSES)
             if self.config:
                 self.address_book = AddressBook(
@@ -78,21 +81,18 @@ class Context(object):
             else:
                 self.address_book = AddressBook([addresses])
 
-
-
     def set_config(self, config):
         self.config = config
 
         if self.stage_host:
             addresses = self.stage_address_map.get_host_map(self.stage_ip)
-            addresses = dict([(k, (self.stage_ip, v)) for k,v in addresses.items()])
+            addresses = dict([(k, (self.stage_ip, v)) for k, v in addresses.items()])
             addresses.update(CAL_DEV_ADDRESSES)
             self.address_book = AddressBook(
                 [config.service_addrs, addresses], config.aliases)
         else:
             self.address_book = AddressBook(
                 [config.service_addrs], config.aliases)
-
 
     def get_mayfly(self, name, namespace):
         try:
@@ -102,7 +102,6 @@ class Context(object):
 
         import mayfly
         return mayfly.Client(ip, port, self.appname, namespace)
-
 
     def make_occ(self, name):
         'make instead of get to indicate this is creating a stateful object'
@@ -114,10 +113,8 @@ class Context(object):
         import occ
         return occ.Connection(ip, port, self.protected)
 
-
     def get_addr(self, name):
         return self.address_book[name]
-
 
     @property
     def dev(self):
@@ -135,7 +132,7 @@ class Config(object):
     Represents the configuration of a context.
     This is just a bag of constants which are used to initialize a context.
     '''
-    def __init__(self, appname, service_addrs = {}, aliases={}):
+    def __init__(self, appname, service_addrs={}, aliases={}):
         self.appname = appname
         self.service_addrs = service_addrs
         self.aliases = aliases
@@ -156,7 +153,6 @@ class AddressBook(object):
         self.address_chain = address_chain
         self.aliases = aliases
 
-
     def __getitem__(self, key):
         if key in self.aliases:
             realkey = self.aliases[key]
@@ -170,14 +166,12 @@ class AddressBook(object):
             msg += " (aliased to "+repr(realkey)+") "
         raise ValueError(msg)
 
-
     def mayfly_addr(self, key=None):
         if not key:
             key = 'mayflydirectoryserv'
         if not key.startswith('mayflydirectoryserv'):
             key = 'mayflydirectoryserv-'+key
         return self[key]
-
 
     def occ_addr(self, key=None):
         if not key:
