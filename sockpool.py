@@ -57,14 +57,20 @@ class SockPool(object):
 def killsock(sock):
     try:
         sock.shutdown(socket.SHUT_RDWR)
-    except (socket.error, OpenSSL.SSL.Error):
+    except (socket.error, OpenSSL.SSL.Error) as e:
+        print ("=============================")
+        print (e.__class__)
+        print ("=============================")
         pass #just being nice to the server, don't care if it fails
     except Exception as e:
         context.get_context().cal.event("INFO", "SOCKET", "0", 
             "unexpected error closing socket: "+repr(e))
     try:
         sock.close()
-    except (socket.error, OpenSSL.SSL.Error):
+    except (socket.error, OpenSSL.SSL.Error) as e:
+        print ("=============================")
+        print (e.__class__)
+        print ("=============================")
         pass #just being nice to the server, don't care if it fails
     except Exception as e:
         context.get_context().cal.event("INFO", "SOCKET", "0",
