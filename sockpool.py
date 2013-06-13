@@ -2,6 +2,9 @@ import socket
 import time
 import select
 
+import OpenSSL
+import context
+
 class SockPool(object):
     def __init__(self, timeout=0.25):
         self.timeout = timeout
@@ -54,10 +57,16 @@ class SockPool(object):
 def killsock(sock):
     try:
         sock.shutdown(socket.SHUT_RDWR)
-    except socket.error:
+    except (socket.error, OpenSSL.SSL.Error):
         pass #just being nice to the server, don't care if it fails
+    except Exception as e:
+        context.get_context().cal.event("INFO", "SOCKET", "0", 
+            "unexpected error closing socket: "+repr(e))
     try:
         sock.close()
-    except socket.error:
+    except (socket.error, OpenSSL.SSL.Error):
         pass #just being nice to the server, don't care if it fails
+    except Exception as e:
+        context.get_context().cal.event("INFO", "SOCKET", "0",
+            "unexpected error closing socket: "+repr(e))
 
