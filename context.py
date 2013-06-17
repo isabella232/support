@@ -127,16 +127,6 @@ class Context(object):
         return "pyinfra"
 
 
-class Config(object):
-    '''
-    Represents the configuration of a context.
-    This is just a bag of constants which are used to initialize a context.
-    '''
-    def __init__(self, appname, service_addrs={}, aliases={}):
-        self.appname = appname
-        self.service_addrs = service_addrs
-        self.aliases = aliases
-
 # A set of *Conf classes representing the configuration of different things.
 Address = namedtuple('Address', 'ip port')
 
