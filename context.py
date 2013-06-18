@@ -58,6 +58,7 @@ class Context(object):
         #TOPO RELATED STUFF
         self.stage_address_map = topos.StageAddressMap()
         self.set_stage_host(stage_host)
+        self.address_book = AddressBook([])
 
     def set_stage_host(self, stage_host, stage_ip=None):
         from contrib import net
