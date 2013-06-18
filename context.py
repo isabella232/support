@@ -60,6 +60,8 @@ class Context(object):
         self.set_stage_host(stage_host)
         self.address_book = AddressBook([])
 
+        self.port = None
+
     def set_stage_host(self, stage_host, stage_ip=None):
         from contrib import net
 
