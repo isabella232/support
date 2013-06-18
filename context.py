@@ -80,7 +80,7 @@ class Context(object):
             addresses.update(CAL_DEV_ADDRESSES)
             if self.config:
                 self.address_book = AddressBook(
-                    [self.config.service_addrs, addresses], self.config.aliases)
+                    [self.config.addresses, addresses], self.config.aliases)
             else:
                 self.address_book = AddressBook([addresses])
 
@@ -92,10 +92,10 @@ class Context(object):
             addresses = dict([(k, (self.stage_ip, v)) for k, v in addresses.items()])
             addresses.update(CAL_DEV_ADDRESSES)
             self.address_book = AddressBook(
-                [config.service_addrs, addresses], config.aliases)
+                [config.addresses, addresses], config.aliases)
         else:
             self.address_book = AddressBook(
-                [config.service_addrs], config.aliases)
+                [config.addresses], config.aliases)
 
     def get_mayfly(self, name, namespace):
         try:
