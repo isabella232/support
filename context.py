@@ -1,11 +1,11 @@
 '''
 This mnodule defines a context object which holds on to all global state.
 '''
-import sys
 import getpass
 from weakref import WeakKeyDictionary
 from threading import local
 from collections import namedtuple
+import socket
 
 #NOTE: do not import anything else from infra at context import time
 #this is a bit heavy-handed, but guarantees no circular import errors
@@ -60,7 +60,10 @@ class Context(object):
         self.set_stage_host(stage_host)
         self.address_book = AddressBook([])
 
+        #NETWORK RELATED STUFF
         self.port = None
+        self.ip = socket.gethostbyname(socket.gethostname())
+
 
     def set_stage_host(self, stage_host, stage_ip=None):
         from contrib import net
