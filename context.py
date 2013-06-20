@@ -63,6 +63,8 @@ class Context(object):
         #NETWORK RELATED STUFF
         self.port = None
         self.ip = socket.gethostbyname(socket.gethostname())
+        self._serve_ufork = None
+        self._serve_daemon = None
 
 
     def set_stage_host(self, stage_host, stage_ip=None):
@@ -131,6 +133,35 @@ class Context(object):
         if self.config:
             return self.config.appname
         return "pyinfra"
+
+    #TODO: serve_ufork and serve_daemon should really be Config, not Context
+    @property
+    def serve_ufork(self):
+        if self._serve_ufork is None:
+            return not self.dev
+        return self._serve_ufork
+
+    @serve_ufork.setter
+    def serve_ufork(self, val):
+        self._serve_ufork = val
+
+    @serve_ufork.deleter
+    def serve_ufork(self):
+        self._serve_ufork = None
+
+    @property
+    def serve_daemon(self):
+        if self._serve_daemon is None:
+            return not self.dev
+        return self._serve_daemon
+
+    @serve_daemon.setter
+    def serve_daemon(self, val):
+        self._serve_daemon = val
+
+    @serve_daemon.deleter
+    def serve_daemon(self):
+        self._serve_daemon = None
 
 
 # A set of *Conf classes representing the configuration of different things.
