@@ -66,7 +66,6 @@ class Context(object):
         self._serve_ufork = None
         self._serve_daemon = None
 
-
     def set_stage_host(self, stage_host, stage_ip=None):
         from contrib import net
 
@@ -81,7 +80,8 @@ class Context(object):
         # TODO: DRY here and set_config on addresses
         if self.stage_host:
             addresses = self.stage_address_map.get_host_map(self.stage_ip)
-            addresses = dict([(k, (self.stage_ip, v)) for k, v in addresses.items()])
+            addresses = dict([(k, (self.stage_ip, v))
+                              for k, v in addresses.items()])
             addresses.update(CAL_DEV_ADDRESSES)
             if self.config:
                 self.address_book = AddressBook(
@@ -94,7 +94,8 @@ class Context(object):
 
         if self.stage_host:
             addresses = self.stage_address_map.get_host_map(self.stage_ip)
-            addresses = dict([(k, (self.stage_ip, v)) for k, v in addresses.items()])
+            addresses = dict([(k, (self.stage_ip, v))
+                              for k, v in addresses.items()])
             addresses.update(CAL_DEV_ADDRESSES)
             self.address_book = AddressBook(
                 [config.addresses, addresses], config.aliases)
@@ -106,7 +107,7 @@ class Context(object):
         try:
             ip, port = self.address_book.mayfly_addr(name)
         except KeyError:
-            raise ValueError('Unknown Mayfly: '+repr(name))
+            raise ValueError('Unknown Mayfly: %r' % name)
 
         import mayfly
         return mayfly.Client(ip, port, self.appname, namespace)
@@ -116,7 +117,7 @@ class Context(object):
         try:
             ip, port = self.address_book.occ_addr(name)
         except KeyError:
-            raise ValueError('Uknonwn OCC: '+repr(name))
+            raise ValueError('Unknown OCC: %r' % name)
 
         import occ
         return occ.Connection(ip, port, self.protected)
@@ -175,7 +176,6 @@ class AddressBook(object):
     First, applies aliasing.
     Then, looks down address_chain for a match to a given key.
     '''
-    'simple key-value store for addresses'
     def __init__(self, address_chain, aliases={}):
         self.address_chain = address_chain
         self.aliases = aliases
@@ -188,27 +188,27 @@ class AddressBook(object):
         for addresses in self.address_chain:
             if realkey in addresses:
                 return addresses[realkey]
-        msg = "No address for "+repr(key)
+        msg = "No address for %r" % key
         if realkey != key:
-            msg += " (aliased to "+repr(realkey)+") "
+            msg += " (aliased to %r)" % realkey
         raise ValueError(msg)
 
     def mayfly_addr(self, key=None):
         if not key:
             key = 'mayflydirectoryserv'
         if not key.startswith('mayflydirectoryserv'):
-            key = 'mayflydirectoryserv-'+key
+            key = 'mayflydirectoryserv-' + key
         return self[key]
 
     def occ_addr(self, key=None):
         if not key:
             key = 'occ'
         if not key.startswith('occ'):
-            key = 'occ-'+key
+            key = 'occ-' + key
         return self[key]
 
 
-CONTEXT = None 
+CONTEXT = None
 
 
 def get_context():
@@ -225,8 +225,7 @@ def set_context(context):
 
 # see: https://confluence.paypal.com/cnfl/display/CAL/CAL+Quick+Links
 CAL_DEV_ADDRESSES = {
-    'cal-stage' : ('10.57.2.159', 1118), #cal-stage.qa.paypal.com
-    'cal-qa' : ('10.57.2.152', 1118), #cal-qa.qa.paypal.com
-    'cal-dev': ('10.57.2.157', 1118), #cal-dev.qa.paypal.com
+    'cal-stage': ('10.57.2.159', 1118),  # cal-stage.qa.paypal.com
+    'cal-qa': ('10.57.2.152', 1118),  # cal-qa.qa.paypal.com
+    'cal-dev': ('10.57.2.157', 1118)  # cal-dev.qa.paypal.com
 }
-
