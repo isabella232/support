@@ -416,15 +416,16 @@ def wrap_socket_context(sock, context, server_side=False):
 
 def killsock(sock):
     try:
-        sock.shutdown(socket.SHUT_RDWR)
-    except (socket.error, SSL.Error):
+        # TODO: better ideas for how to get SHUT_RDWR constant?
+        sock.shutdown(gevent.socket.SHUT_RDWR)
+    except (error, SSL.Error):
         pass #just being nice to the server, don't care if it fails
     except Exception as e:
         context.get_context().cal.event("INFO", "SOCKET", "0", 
             "unexpected error closing socket: "+repr(e))
     try:
         sock.close()
-    except (socket.error, SSL.Error):
+    except (error, SSL.Error):
         pass #just being nice to the server, don't care if it fails
     except Exception as e:
         context.get_context().cal.event("INFO", "SOCKET", "0",
