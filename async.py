@@ -412,3 +412,20 @@ def wrap_socket_context(sock, context, server_side=False):
         # yes, do the handshake
         ssl_sock.do_handshake()
     return ssl_sock
+
+
+def killsock(sock):
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except (socket.error, SSL.Error):
+        pass #just being nice to the server, don't care if it fails
+    except Exception as e:
+        context.get_context().cal.event("INFO", "SOCKET", "0", 
+            "unexpected error closing socket: "+repr(e))
+    try:
+        sock.close()
+    except (socket.error, SSL.Error):
+        pass #just being nice to the server, don't care if it fails
+    except Exception as e:
+        context.get_context().cal.event("INFO", "SOCKET", "0",
+            "unexpected error closing socket: "+repr(e))

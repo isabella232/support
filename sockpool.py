@@ -2,8 +2,7 @@ import socket
 import time
 import select
 
-import OpenSSL
-import context
+import async
 
 class SockPool(object):
     def __init__(self, timeout=0.25):
@@ -26,7 +25,7 @@ class SockPool(object):
         #basically, this says "I'm done with this socket, make it available for anyone else"
         try:
             if select.select([sock], [], [], 0)[0]:
-                killsock(sock)
+                async.killsock(sock)
                 return #TODO: raise exception when handed messed up socket?
                 #socket is readable means one of two things:
                 #1- left in a bad state (e.g. more data waiting -- protocol state is messed up)
@@ -52,27 +51,4 @@ class SockPool(object):
             self.free_socks_by_addr[addr] = live
         #shutdown all the culled sockets
         for sock in culled:
-            killsock(sock)
-
-def killsock(sock):
-    try:
-        sock.shutdown(socket.SHUT_RDWR)
-    except (socket.error, OpenSSL.SSL.Error) as e:
-        print ("=============================")
-        print (e.__class__)
-        print ("=============================")
-        pass #just being nice to the server, don't care if it fails
-    except Exception as e:
-        context.get_context().cal.event("INFO", "SOCKET", "0", 
-            "unexpected error closing socket: "+repr(e))
-    try:
-        sock.close()
-    except (socket.error, OpenSSL.SSL.Error) as e:
-        print ("=============================")
-        print (e.__class__)
-        print ("=============================")
-        pass #just being nice to the server, don't care if it fails
-    except Exception as e:
-        context.get_context().cal.event("INFO", "SOCKET", "0",
-            "unexpected error closing socket: "+repr(e))
-
+            async.killsock(sock)
