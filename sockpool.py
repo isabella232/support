@@ -2,13 +2,14 @@ import socket
 import time
 import select
 
-import async
-
 class SockPool(object):
     def __init__(self, timeout=0.25):
+        import async  # breaks circular dependency
+
         self.timeout = timeout
         self.free_socks_by_addr = {}
         self.sock_idle_times = {}
+        self.killsock = async.killsock
 
     def acquire(self, addr):
         #return a free socket, if one is availble; else None
@@ -25,7 +26,7 @@ class SockPool(object):
         #basically, this says "I'm done with this socket, make it available for anyone else"
         try:
             if select.select([sock], [], [], 0)[0]:
-                async.killsock(sock)
+                self.killsock(sock)
                 return #TODO: raise exception when handed messed up socket?
                 #socket is readable means one of two things:
                 #1- left in a bad state (e.g. more data waiting -- protocol state is messed up)
@@ -51,4 +52,4 @@ class SockPool(object):
             self.free_socks_by_addr[addr] = live
         #shutdown all the culled sockets
         for sock in culled:
-            async.killsock(sock)
+            self.killsock(sock)
