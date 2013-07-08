@@ -29,6 +29,9 @@ def spawn(*a, **kw):
     return gr
 
 
+sleep = gevent.sleep  # alias gevent.sleep here so user doesn't have to know/worry about gevent
+
+
 def _exception_catcher(f, *a, **kw):
     try:
         return f(*a, **kw)
