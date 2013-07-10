@@ -62,7 +62,19 @@ class Context(object):
 
         #NETWORK RELATED STUFF
         self.port = None
-        self.ip = socket.gethostbyname(socket.gethostname())
+        self.ip = "127.0.0.1"
+        try:
+            self.ip = socket.gethostbyname(socket.gethostname())
+        except socket.error:
+            for hostname, port in [("github.paypal.com", 80)]:
+                try:  # TODO: more hostname / ports to connect to
+                    addr = socket.gethostbyname(hostname), port
+                    conn = socket.create_connection(addr)
+                    self.ip = conn.getsockname()[0]
+                    conn.close()
+                    break
+                except socket.error:
+                    pass
         self._serve_ufork = None
         self._serve_daemon = None
 
