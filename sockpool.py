@@ -13,15 +13,13 @@ class SockPool(object):
 
     def acquire(self, addr):
         #return a free socket, if one is availble; else None
-        try:
-            socks = self.free_socks_by_addr.get(addr)
-            if socks:
-                sock = socks.pop()
-                del self.sock_idle_times[sock]
-                return sock
-            return None
-        finally:
-            self.cull()
+        self.cull()
+        socks = self.free_socks_by_addr.get(addr)
+        if socks:
+            sock = socks.pop()
+            del self.sock_idle_times[sock]
+            return sock
+        return None
     
     def release(self, sock):
         #this is also a way of "registering" a socket with the pool
