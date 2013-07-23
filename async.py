@@ -61,14 +61,16 @@ def get_cur_correlation_id():
         #this is reproducing CalUtility.cpp
         #TODO: where do different length correlation ids come from in CAL logs?
         t = time.time()
-        corr_val = "{0}{1}{2}{3}".format(gevent.socket.gethostname(), 
-            os.getpid(), int(t), int(t%1 *10**6))
-        corr_id = "{0:x}{1:x}".format(pp_crypt.fnv_hash(corr_val), int(t%1 * 10**6))
+        corr_val = "{0}{1}{2}{3}".format(gevent.socket.gethostname(),
+                                         os.getpid(), int(t), int(t % 1 * 10 ** 6))
+        corr_id = "{0:x}{1:x}".format(pp_crypt.fnv_hash(corr_val), int(t % 1 * 10 ** 6))
         corr_ids[cur] = corr_id
     return corr_ids[cur]
 
+
 def set_cur_correlation_id(corr_id):
     context.get_context().greenlet_correlation_ids[gevent.getcurrent()] = corr_id
+
 
 def cpu_bound(f):
     '''
@@ -88,11 +90,15 @@ def cpu_bound(f):
             return f(*a, **kw)
         if not hasattr(tlocals, 'cpu_thread'):
             tlocals.cpu_thread = gevent.threadpool.ThreadPool(1)
-            def set_flag(): tlocals.in_cpu_thread = True
+
+            def set_flag():
+                tlocals.in_cpu_thread = True
+                
             tlocals.cpu_thread.apply_e((Exception,), set_flag, (), {})
         return tlocals.cpu_thread.apply_e((Exception,), f, a, kw)
     g.no_defer = f
     return g
+
 
 def close_threadpool():
     tlocals = context.get_context().thread_locals
@@ -103,12 +109,14 @@ def close_threadpool():
         del tlocals.cpu_thread
     return
 
+
 def _safe_req(req):
     'capture the stack trace of exceptions that happen inside a greenlet'
     try:
         return req()
     except Exception as e:
         raise ASFError(e)
+
 
 def join(reqs, raise_exc=False, timeout=None):
     greenlets = []
@@ -122,11 +130,12 @@ def join(reqs, raise_exc=False, timeout=None):
     for gr, req in zip(greenlets, reqs):
         if gr.successful():
             results.append(gr.value)
-        elif gr.ready(): #finished, but must have had error
+        elif gr.ready():  # finished, but must have had error
             results.append(gr.exception)
-        else: #didnt finish, must have timed out
+        else:  # didnt finish, must have timed out
             results.append(AsyncTimeoutError(req, timeout))
     return results
+
 
 class AsyncTimeoutError(ASFError):
     def __init__(self, request=None, timeout=None):
@@ -143,13 +152,13 @@ class AsyncTimeoutError(ASFError):
     def __str__(self):
         ret = "AsyncTimeoutError"
         try:
-            ret += " encountered while to trying execute "+self.op_name \
-                   +" on "+self.service_name+" ("+str(self.ip)+':'      \
-                   +str(self.port)+")"
+            ret += " encountered while to trying execute " + self.op_name \
+                   + " on " + self.service_name + " (" + str(self.ip) + ':'      \
+                   + str(self.port) + ")"
         except AttributeError:
             pass
         try:
-            ret += " after "+str(self.timeout)+" seconds"
+            ret += " after " + str(self.timeout) + " seconds"
         except AttributeError:
             pass
         return ret
@@ -158,15 +167,17 @@ ASFTimeoutError = AsyncTimeoutError
 #NOTE: for backwards compatibility; name changed on March 2013
 #after a decent interval, this can be removed
 
+
 ### What follows is code related to map() contributed from MoneyAdmin's asf_util
 class Node(object):
     def __init__(self, ip, port, **kw):
         self.ip   = ip
         self.port = port
-        
+
         # in case you want to add name/location/id/other metadata
-        for k,v in kw.items():
+        for k, v in kw.items():
             setattr(self, k, v)
+
 
 # call it asf_map to avoid name collision with builtin map?
 # return callable to avoid collision with kwargs?
@@ -175,10 +186,12 @@ def map_factory(op, node_list, raise_exc=False, timeout=None):
     map_factory() enables easier concurrent calling across multiple servers,
     provided a node_list, which is an iterable of Node objects.
     """
+
     def asf_map(*a, **kw):
         return join([op_ip_port(op, node.ip, node.port).async(*a, **kw)
-                        for node in node_list], raise_exc=raise_exc, timeout=timeout)
+                     for node in node_list], raise_exc=raise_exc, timeout=timeout)
     return asf_map
+
 
 def op_ip_port(op, ip, port):
     serv = copy.copy(op.service)
@@ -197,24 +210,24 @@ def op_ip_port(op, ip, port):
 # they are used to generate easy to communicate correlation IDs
 # should be edited if areas of confusion are discovered :-)
 SIMPLE_WORDS_LIST = ["air", "art", "arm", "bag", "ball", "bank", "bath", "back",
-    "base", "bed", "beer", "bell", "bird", "block", "blood", "boat", "bone", "bowl", 
-    "box", "boy", "branch", "bridge", "bus", "cake", "can", "cap", "car", 
-    "case", "cat", "chair", "cheese", "child", "city", "class", "clock", "cloth",
-    "cloud", "coat", "coin", "corn", "cup", "day", "desk", "dish", "dog", "door",
-    "dream", "dress", "drink", "duck", "dust", "ear", "earth", "egg", "face", "fact",
-    "farm", "fat", "film", "fire", "fish", "flag", "food", "foot", "fork", "game",
-    "gate", "gift", "glass", "goat", "gold", "grass", "group", "gun", "hair",
-    "hand", "hat", "head", "heart", "hill", "home", "horse", "house", "ice",
-    "iron", "job", "juice", "key", "king", "lamp", "land", "leaf", "leg", "life",
-    "lip", "list", "lock", "luck", "man", "map", "mark", "meal", "meat", "milk",
-    "mind", "mix", "month", "moon", "mouth", "name", "net", "noise", "nose",
-    "oil", "page", "paint", "pan", "park", "party", "pay", "path", "pen",
-    "pick", "pig", "pin", "plant", "plate", "point", "pool", "press", "prize",
-    "salt", "sand", "seat", "ship", "soup", "space", "spoon", "sport", 
-    "spring", "shop", "show", "sink", "skin", "sky", "smoke", "snow", "step", "stone",
-    "store", "star", "street", "sweet", "swim", "tea", "team", "test", "thing", 
-    "tool", "tooth", "top", "town", "train", "tram", "tree", "type",
-    "wash", "west", "wife", "wind", "wire", "word", "work", "world", "yard", "zoo"]
+                     "base", "bed", "beer", "bell", "bird", "block", "blood", "boat", "bone", "bowl",
+                     "box", "boy", "branch", "bridge", "bus", "cake", "can", "cap", "car",
+                     "case", "cat", "chair", "cheese", "child", "city", "class", "clock", "cloth",
+                     "cloud", "coat", "coin", "corn", "cup", "day", "desk", "dish", "dog", "door",
+                     "dream", "dress", "drink", "duck", "dust", "ear", "earth", "egg", "face", "fact",
+                     "farm", "fat", "film", "fire", "fish", "flag", "food", "foot", "fork", "game",
+                     "gate", "gift", "glass", "goat", "gold", "grass", "group", "gun", "hair",
+                     "hand", "hat", "head", "heart", "hill", "home", "horse", "house", "ice",
+                     "iron", "job", "juice", "key", "king", "lamp", "land", "leaf", "leg", "life",
+                     "lip", "list", "lock", "luck", "man", "map", "mark", "meal", "meat", "milk",
+                     "mind", "mix", "month", "moon", "mouth", "name", "net", "noise", "nose",
+                     "oil", "page", "paint", "pan", "park", "party", "pay", "path", "pen",
+                     "pick", "pig", "pin", "plant", "plate", "point", "pool", "press", "prize",
+                     "salt", "sand", "seat", "ship", "soup", "space", "spoon", "sport",
+                     "spring", "shop", "show", "sink", "skin", "sky", "smoke", "snow", "step", "stone",
+                     "store", "star", "street", "sweet", "swim", "tea", "team", "test", "thing",
+                     "tool", "tooth", "top", "town", "train", "tram", "tree", "type",
+                     "wash", "west", "wife", "wind", "wire", "word", "work", "world", "yard", "zoo"]
 
 '''
 #TODO: translate SSLObject below into SSLProtectedSocket or equivalent
@@ -233,19 +246,19 @@ class SSLProtectedSocket(gevent.socket.socket):
 #objects
 
 '''
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software 
-and associated documentation files (the "Software"), to deal in the Software without restriction, 
-including without limitation the rights to use, copy, modify, merge, publish, distribute, 
-sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is 
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+and associated documentation files (the "Software"), to deal in the Software without restriction,
+including without limitation the rights to use, copy, modify, merge, publish, distribute,
+sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all copies or substantial 
+The above copyright notice and this permission notice shall be included in all copies or substantial
 portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING 
-BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND 
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, 
-DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 '''
 
@@ -381,7 +394,7 @@ class SSLObject(socket):
         return _fileobject(self, mode, bufsize, close=True)
 
     def shutdown(self, how):
-        self._sock.shutdown() 
+        self._sock.shutdown()
         #accept how parameter for compatibility with normal sockets,
         #although OpenSSL.SSL.Connection objects do not accept how
 
@@ -395,6 +408,7 @@ class SSLObject(socket):
 
 
 SysCallError_code_mapping = {-1: 8}
+
 
 def wrap_socket_context(sock, context, server_side=False):
     timeout = sock.gettimeout()
@@ -422,14 +436,14 @@ def killsock(sock):
         # TODO: better ideas for how to get SHUT_RDWR constant?
         sock.shutdown(gevent.socket.SHUT_RDWR)
     except (error, SSL.Error):
-        pass #just being nice to the server, don't care if it fails
+        pass  # just being nice to the server, don't care if it fails
     except Exception as e:
-        context.get_context().cal.event("INFO", "SOCKET", "0", 
-            "unexpected error closing socket: "+repr(e))
+        context.get_context().cal.event("INFO", "SOCKET", "0",
+                                        "unexpected error closing socket: " + repr(e))
     try:
         sock.close()
     except (error, SSL.Error):
-        pass #just being nice to the server, don't care if it fails
+        pass  # just being nice to the server, don't care if it fails
     except Exception as e:
         context.get_context().cal.event("INFO", "SOCKET", "0",
-            "unexpected error closing socket: "+repr(e))
+                                        "unexpected error closing socket: " + repr(e))
