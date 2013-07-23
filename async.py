@@ -15,6 +15,9 @@ import gevent.greenlet
 import pp_crypt
 import context
 
+import ll
+
+ml = ll.LLogger()
 
 @functools.wraps(gevent.spawn)
 def spawn(*a, **kw):
@@ -90,7 +93,8 @@ def cpu_bound(f):
             return f(*a, **kw)
         if not hasattr(tlocals, 'cpu_thread'):
             tlocals.cpu_thread = gevent.threadpool.ThreadPool(1)
-
+            ml.ld2("Getting new thread pool for CPU bound {0}", id(tlocals.cpu_thread))
+            
             def set_flag():
                 tlocals.in_cpu_thread = True
                 
@@ -103,6 +107,7 @@ def cpu_bound(f):
 def close_threadpool():
     tlocals = context.get_context().thread_locals
     if hasattr(tlocals, 'cpu_thread'):
+        ml.ld2("Closing thread pool {0}", id(tlocals.cpu_thread))
         cpu_thread = tlocals.cpu_thread
         cpu_thread.join()
         cpu_thread.kill()
@@ -325,6 +330,9 @@ class SSLObject(socket):
         self.do_handshake()
 
     def send(self, data, flags=0, timeout=timeout_default):
+        ml.ld2("SSL: {{{0}}}: OUTDATA: {{{1}}}",
+               id(self),
+               data)
         if timeout is timeout_default:
             timeout = self.timeout
         while True:
@@ -353,10 +361,14 @@ class SSLObject(socket):
     def recv(self, buflen):
         pending = self._sock.pending()
         if pending:
-            return self._sock.recv(min(pending, buflen))
+            retval = self._sock.recv(min(pending, buflen))
+            ml.ld2("SSL: {{{0}}}: INDATA: {{{1}}}", id(self), retval)
+            return retval
         while True:
             try:
-                return self._sock.recv(buflen)
+                retval = self._sock.recv(buflen)
+                ml.ld2("SSL: {{{0}}}: INDATA: {{{1}}}", id(self), retval)
+                return retval
             except SSL.WantReadError, ex:
                 if self.timeout == 0.0:
                     raise timeout(str(ex))
@@ -365,15 +377,19 @@ class SSLObject(socket):
                     wait_read(self.fileno(), timeout=self.timeout)
             except SSL.WantWriteError, ex:
                 if self.timeout == 0.0:
+                    ml.ld2("SSL: {{{0}}}: Timing out", id(self))
                     raise timeout(str(ex))
                 else:
                     sys.exc_clear()
                     wait_read(self.fileno(), timeout=self.timeout)
             except SSL.ZeroReturnError:
+                ml.ld2("SSL: {{{0}}} INDATA: {{}}", id(self))
                 return ''
             except SSL.SysCallError, ex:
+                ml.ld2("SSL: {{{0}}}: Exception", id(self))
                 raise sslerror(SysCallError_code_mapping.get(ex.args[0], ex.args[0]), ex.args[1])
             except SSL.Error, ex:
+                ml.ld2("SSL: {{{0}}}: Exception", id(self))
                 raise sslerror(str(ex))
 
     def read(self, buflen=1024):
