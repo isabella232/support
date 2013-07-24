@@ -4,7 +4,7 @@ This mnodule defines a context object which holds on to all global state.
 import getpass
 from weakref import WeakKeyDictionary
 from threading import local
-from collections import namedtuple
+from collections import namedtuple, defaultdict, deque
 import socket
 
 #NOTE: do not import anything else from infra at context import time
@@ -77,6 +77,10 @@ class Context(object):
                     pass
         self._serve_ufork = None
         self._serve_daemon = None
+        self.asf_server = None
+
+        self.network_exchanges_stored = 100
+        self.stored_network_data = defaultdict(deque)
 
     def set_stage_host(self, stage_host, stage_ip=None):
         from contrib import net
@@ -136,6 +140,14 @@ class Context(object):
 
     def get_addr(self, name):
         return self.address_book[name]
+
+    # TODO: go around and instrument code to call this function
+    # on network send/recv
+    def store_network_data(self, name, direction, data):
+        q = self.stored_network_data[name]
+        q.appendleft((direction, summarize(data, 4096)))
+        while len(q) > self.network_exchanges_stored:
+            q.pop()
 
     @property
     def dev(self):
@@ -241,3 +253,10 @@ CAL_DEV_ADDRESSES = {
     'cal-qa': ('10.57.2.152', 1118),  # cal-qa.qa.paypal.com
     'cal-dev': ('10.57.2.157', 1118)  # cal-dev.qa.paypal.com
 }
+
+
+def summarize(data, size=64):
+    data = repr(data)
+    if len(data) < size:
+        return data
+    return data[:size/2] + '"...({0} more bytes)..."'.format(len(data) - size) + data[-size/2:]
