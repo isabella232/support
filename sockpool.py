@@ -51,6 +51,8 @@ class SockPool(object):
             live = []
             for sock in self.free_socks_by_addr[addr]:
                 if time.time() - self.sock_idle_times[sock] > self.timeout:
+                    ml.ld("Going to Close sock {{{0}}}/FD {1}",
+                          id(sock), sock.fileno())
                     culled.append(sock)
                     del self.sock_idle_times[sock]
                 else:
