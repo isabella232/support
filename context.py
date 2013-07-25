@@ -188,6 +188,21 @@ class Context(object):
     def serve_daemon(self):
         self._serve_daemon = None
 
+    @property
+    def sockpool_enabled(self):
+        import sockpool
+
+        return isinstance(self.sockpool, sockpool.SockPool)
+
+    @sockpool_enabled.setter
+    def sockpool_enabled(self, val):
+        import sockpool
+
+        if val and not isinstance(self.sockpool, sockpool.SockPool):
+            self.sockpool = sockpool.SockPool()
+        elif not val and isinstance(self.sockpool, sockpool.SockPool):
+            self.sockpool = sockpool.NullSockPool()
+
 
 # A set of *Conf classes representing the configuration of different things.
 Address = namedtuple('Address', 'ip port')
