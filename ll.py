@@ -29,9 +29,16 @@ class LLogger(object):
     
     def __init__(self):
         self.caller_mod = inspect.getmodule(inspect.stack()[1][0]).__file__.split(".")[-2].upper()
+        self.la = self.log_always
         self.ld = self.log_debug
         self.ld2 = self.log_debug2
         self.ld3 = self.log_debug3
+
+    def log_always(self, *args, **kw):
+        log_msgs[args[0]] += 1
+        msg = apply(args[0].format, tuple(args[1:]))
+        print "%s %s A:" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                            self.caller_mod), msg
 
     def log_debug(self, *args, **kw):
         log_msgs[args[0]] += 1
