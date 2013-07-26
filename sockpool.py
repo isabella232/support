@@ -2,6 +2,10 @@ import socket
 import time
 import select
 
+import ll
+ml = ll.LLogger()
+
+
 class SockPool(object):
     def __init__(self, timeout=0.25):
         import async  # breaks circular dependency
@@ -18,12 +22,14 @@ class SockPool(object):
         if socks:
             sock = socks.pop()
             del self.sock_idle_times[sock]
+            ml.ld("Getting sock {0}", str(id(sock)))
             return sock
         return None
     
     def release(self, sock):
         #this is also a way of "registering" a socket with the pool
         #basically, this says "I'm done with this socket, make it available for anyone else"
+        ml.ld("Returning sock {0}", str(id(sock)))
         try:
             if select.select([sock], [], [], 0)[0]:
                 self.killsock(sock)
@@ -45,6 +51,8 @@ class SockPool(object):
             live = []
             for sock in self.free_socks_by_addr[addr]:
                 if time.time() - self.sock_idle_times[sock] > self.timeout:
+                    ml.ld("Going to Close sock {{{0}}}/FD {1}",
+                          id(sock), sock.fileno())
                     culled.append(sock)
                     del self.sock_idle_times[sock]
                 else:

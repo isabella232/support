@@ -7,6 +7,9 @@ from threading import local
 from collections import namedtuple, defaultdict, deque
 import socket
 
+import ll
+ml = ll.LLogger()
+
 #NOTE: do not import anything else from infra at context import time
 #this is a bit heavy-handed, but guarantees no circular import errors
 #which are otherwise very easy to create
@@ -26,6 +29,8 @@ class Context(object):
     '''
     def __init__(self, dev=False, stage_host=None):
         import topos
+
+        ml.ld("Allocating Context {0}",  id(self))
 
         self.config = None
 
