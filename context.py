@@ -279,4 +279,4 @@ def summarize(data, size=64):
     data = repr(data)
     if len(data) < size:
         return data
-    return data[:size/2] + '"...({0} more bytes)..."'.format(len(data) - size) + data[-size/2:]
+    return data[:size / 2] + '"...({0} more bytes)..."'.format(len(data) - size) + data[-size / 2:]
