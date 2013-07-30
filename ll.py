@@ -20,6 +20,9 @@ ml.ld("format string 3 {0}", var0)  # log most often
 ml.ld2("format string 4 {0}", var0)  # log less often
 ml.ld3("format string 5 {0}", var0)  # log only at highest verbosity
 
+For best efficiency, use !r in format string, rather than calling str() or repr() on
+arguments.
+
 caustinlane@paypal.com for details.
 
 """
@@ -40,6 +43,19 @@ LOG_LEVELS = {'NONE':   0,
 
 
 _log_level = LOG_LEVELS['NONE']
+
+
+def get_log_level():
+    """Set global low lovel log level"""
+    return _log_level
+
+
+def set_log_level(level):
+    """Set global low lovel log level"""
+    global _log_level
+    level = max(level, LOG_LEVELS['NONE'])
+    level = min(level, LOG_LEVELS['DEBUG3'])
+    _log_level = level
 
 
 class LLogger(object):
@@ -66,7 +82,7 @@ class LLogger(object):
             msg = apply(args[0].format, tuple(args[1:]))
             print "%s %s D:" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
                                 self.caller_mod), msg
-                              
+
     def log_debug2(self, *args, **kw):
         """Log only with -vv"""
         log_msgs[args[0]] += 1
@@ -82,8 +98,8 @@ class LLogger(object):
             msg = apply(args[0].format, tuple(args[1:]))
             print "%s %s D3:" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
                                  self.caller_mod), msg
-                              
+
+
 if __name__ == "__main__":
     ll = LLogger()
     ll.log_debug("{0}", "some stuff")
-     
