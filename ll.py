@@ -30,7 +30,6 @@ caustinlane@paypal.com for details.
 import inspect
 from collections import defaultdict
 from datetime import datetime
-import time
 
 log_msgs = defaultdict(int)
 
