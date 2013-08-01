@@ -62,7 +62,11 @@ class LLogger(object):
     """Instantiate this to get the logger object; it grabs module data"""
 
     def __init__(self):
-        self.caller_mod = inspect.getmodule(inspect.stack()[1][0]).__file__.split(".")[-2].upper()
+        mod = inspect.getmodule(inspect.stack()[1][0])
+        if mod:
+            self.caller_mod = mod.__file__.split(".")[-2].upper()
+        else:
+            self.caller_mod = "UNKNOWN"
         self.la = self.log_always
         self.ld = self.log_debug
         self.ld2 = self.log_debug2
