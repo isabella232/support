@@ -31,6 +31,7 @@ import inspect
 from collections import defaultdict
 from datetime import datetime
 
+
 log_msgs = defaultdict(int)
 
 
@@ -43,6 +44,10 @@ LOG_LEVELS = {'NONE':   0,
 
 _log_level = LOG_LEVELS['NONE']
 
+
+def print_log_summary():
+    """Prints out the hash map of format strings and counts of usage."""
+    return ["%s: %d\n".format(k, v) for k, v in log_msgs.items()]
 
 def get_log_level():
     """Set global low lovel log level"""
@@ -73,6 +78,7 @@ class LLogger(object):
 
     def log_always(self, *args, **kw):
         """Unconditionally log"""
+        global log_msgs
         log_msgs[args[0]] += 1
         msg = apply(args[0].format, tuple(args[1:]))
         print "%s %s A:" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
@@ -80,6 +86,7 @@ class LLogger(object):
 
     def log_debug(self, *args, **kw):
         """Log only with -v"""
+        global log_msgs
         log_msgs[args[0]] += 1
         if _log_level >= 1:
             msg = apply(args[0].format, tuple(args[1:]))
@@ -88,6 +95,7 @@ class LLogger(object):
 
     def log_debug2(self, *args, **kw):
         """Log only with -vv"""
+        global log_msgs
         log_msgs[args[0]] += 1
         if _log_level >= 2:
             msg = apply(args[0].format, tuple(args[1:]))
@@ -96,6 +104,7 @@ class LLogger(object):
 
     def log_debug3(self, *args, **kw):
         """Log only with -vvv"""
+        global log_msgs
         log_msgs[args[0]] += 1
         if _log_level >= 3:
             msg = apply(args[0].format, tuple(args[1:]))
