@@ -34,6 +34,9 @@ class Context(object):
 
         self.config = None
 
+        #UFORK STUFF
+        self.max_children = None
+
         #ASYNC RELATED STUFF
         self.greenlet_ancestors = WeakKeyDictionary()
         self.greenlet_correlation_ids = WeakKeyDictionary()
