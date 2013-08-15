@@ -94,10 +94,10 @@ def cpu_bound(f):
         if not hasattr(tlocals, 'cpu_thread'):
             tlocals.cpu_thread = gevent.threadpool.ThreadPool(1)
             ml.ld2("Getting new thread pool for CPU bound {0}", id(tlocals.cpu_thread))
-            
+
             def set_flag():
                 tlocals.in_cpu_thread = True
-                
+
             tlocals.cpu_thread.apply_e((Exception,), set_flag, (), {})
         return tlocals.cpu_thread.apply_e((Exception,), f, a, kw)
     g.no_defer = f
@@ -149,7 +149,7 @@ class AsyncTimeoutError(ASFError):
             self.port = request.port
             self.service_name = request.service
             self.op_name = request.operation
-        except AttributeError as ae:
+        except AttributeError:
             pass
         if timeout:
             self.timeout = timeout
