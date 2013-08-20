@@ -66,6 +66,7 @@ class Context(object):
         self.user = getpass.getuser()
 
         self._dev = dev
+        self._debug_errors = False
 
         #TOPO RELATED STUFF
         self.stage_address_map = topos.StageAddressMap()
@@ -166,6 +167,18 @@ class Context(object):
         return self._dev
 
     @property
+    def debug_errors(self):
+        return self._debug_errors
+
+    @debug_errors.setter
+    def debug_errors(self, val):
+        if val:
+            if not self.dev or self.serve_ufork:
+                raise ValueError("_debug_errors may only be True" 
+                    "if dev is True and serve_ufork is False")
+        self._debug_errors = val
+
+    @property
     def appname(self):
         if self.config:
             return self.config.appname
@@ -180,6 +193,8 @@ class Context(object):
 
     @serve_ufork.setter
     def serve_ufork(self, val):
+        if not val:
+            self.debug_errors = False
         self._serve_ufork = val
 
     @serve_ufork.deleter
