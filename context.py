@@ -57,6 +57,9 @@ class Context(object):
         #PROTECTED RELATED STUFF
         self.protected = None
 
+        #LOADING CONFIG FILES post init
+        self.runtime_files = []
+
         import sockpool
         self.sockpool = sockpool.SockPool()
 
