@@ -37,6 +37,7 @@ class Context(object):
         #UFORK STUFF
         self.num_workers = None  # used in python as num_children
                                  # read from opscfg as max_connections
+        self.pid = None
 
         #ASYNC RELATED STUFF
         self.greenlet_ancestors = WeakKeyDictionary()
