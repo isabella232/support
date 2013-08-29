@@ -65,7 +65,7 @@ def set_log_level(level):
 class LLogger(object):
     """Instantiate this to get the logger object; it grabs module data"""
 
-    def __init__(self):
+    def __init__(self, tag=""):
         mod = inspect.getmodule(inspect.stack()[1][0])
         if mod:
             self.caller_mod = mod.__file__.split(".")[-2].upper()
@@ -75,14 +75,15 @@ class LLogger(object):
         self.ld = self.log_debug
         self.ld2 = self.log_debug2
         self.ld3 = self.log_debug3
-
+        self.tag = tag
+        
     def log_always(self, *args, **kw):
         """Unconditionally log"""
         global log_msgs
         log_msgs[args[0]] += 1
         msg = apply(args[0].format, tuple(args[1:]))
-        print "%s %s A:" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                            self.caller_mod), msg
+        print "%s %s A: %s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                               self.caller_mod, self.tag), msg
 
     def log_debug(self, *args, **kw):
         """Log only with -v"""
@@ -90,8 +91,8 @@ class LLogger(object):
         log_msgs[args[0]] += 1
         if _log_level >= 1:
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D:" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                self.caller_mod), msg
+            print "%s %s D: %s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                   self.caller_mod, self.tag), msg
 
     def log_debug2(self, *args, **kw):
         """Log only with -vv"""
@@ -99,8 +100,8 @@ class LLogger(object):
         log_msgs[args[0]] += 1
         if _log_level >= 2:
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D2:" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                 self.caller_mod), msg
+            print "%s %s D2: %s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                    self.caller_mod, self.tag), msg
 
     def log_debug3(self, *args, **kw):
         """Log only with -vvv"""
@@ -108,8 +109,8 @@ class LLogger(object):
         log_msgs[args[0]] += 1
         if _log_level >= 3:
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D3:" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                 self.caller_mod), msg
+            print "%s %s D3: %s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                    self.caller_mod, self.tag), msg
 
 
 if __name__ == "__main__":
