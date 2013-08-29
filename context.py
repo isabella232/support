@@ -6,6 +6,7 @@ from weakref import WeakKeyDictionary
 from threading import local
 from collections import namedtuple, defaultdict, deque
 import socket
+import faststat
 
 import ll
 ml = ll.LLogger()
@@ -90,8 +91,11 @@ class Context(object):
         self._serve_daemon = None
         self.asf_server = None
 
+        #MONITORING DATA
         self.network_exchanges_stored = 100
         self.stored_network_data = defaultdict(deque)
+
+        self.stats = defaultdict(faststat.Stats)
 
     def set_stage_host(self, stage_host, stage_ip=None):
         from contrib import net

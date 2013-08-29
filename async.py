@@ -83,24 +83,29 @@ def cpu_bound(f):
     '''
     @functools.wraps(f)
     def g(*a, **kw):
-        #some modules import things lazily; it is too dangerous to run a function
-        #in another thread if the import lock is held by the current thread
-        #(this happens rarely -- only if the cpu_bound function is being executed
-        #at the import time of a module)
-        if not context.get_context().cpu_thread_enabled or imp.lock_held():
-            return f(*a, **kw)
-        tlocals = context.get_context().thread_locals
-        if getattr(tlocals, 'in_cpu_thread', False):
-            return f(*a, **kw)
-        if not hasattr(tlocals, 'cpu_thread'):
-            tlocals.cpu_thread = gevent.threadpool.ThreadPool(1)
-            ml.ld2("Getting new thread pool for CPU bound {0}", id(tlocals.cpu_thread))
+        start = time.time()
+        ctx = context.get_context()
+        try:
+            #some modules import things lazily; it is too dangerous to run a function
+            #in another thread if the import lock is held by the current thread
+            #(this happens rarely -- only if the cpu_bound function is being executed
+            #at the import time of a module)
+            if not ctx.cpu_thread_enabled or imp.lock_held():
+                return f(*a, **kw)
+            tlocals = ctx.thread_locals
+            if getattr(tlocals, 'in_cpu_thread', False):
+                return f(*a, **kw)
+            if not hasattr(tlocals, 'cpu_thread'):
+                tlocals.cpu_thread = gevent.threadpool.ThreadPool(1)
+                ml.ld2("Getting new thread pool for CPU bound {0}", id(tlocals.cpu_thread))
 
-            def set_flag():
-                tlocals.in_cpu_thread = True
+                def set_flag():
+                    tlocals.in_cpu_thread = True
 
-            tlocals.cpu_thread.apply_e((Exception,), set_flag, (), {})
-        return tlocals.cpu_thread.apply_e((Exception,), f, a, kw)
+                tlocals.cpu_thread.apply_e((Exception,), set_flag, (), {})
+            return tlocals.cpu_thread.apply_e((Exception,), f, a, kw)
+        finally:
+            ctx.stats['cpu_bound.' + f.__name__ + '.duration'].add(time.time() - start)
     g.no_defer = f
     return g
 
