@@ -82,35 +82,35 @@ class LLogger(object):
         global log_msgs
         log_msgs[args[0]] += 1
         msg = apply(args[0].format, tuple(args[1:]))
-        print "%s %s A: %s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                               self.caller_mod, self.tag), msg
+        print "%s %s A:%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                              self.caller_mod, self.tag), msg
 
     def log_debug(self, *args, **kw):
-        """Log only with -v"""
+        """Log only with -d"""
         global log_msgs
         log_msgs[args[0]] += 1
         if _log_level >= 1:
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D: %s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                   self.caller_mod, self.tag), msg
+            print "%s %s D:%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                  self.caller_mod, self.tag), msg
 
     def log_debug2(self, *args, **kw):
-        """Log only with -vv"""
+        """Log only with -dd"""
         global log_msgs
         log_msgs[args[0]] += 1
         if _log_level >= 2:
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D2: %s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                    self.caller_mod, self.tag), msg
+            print "%s %s D2:%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                   self.caller_mod, self.tag), msg
 
     def log_debug3(self, *args, **kw):
-        """Log only with -vvv"""
+        """Log only with -ddd"""
         global log_msgs
         log_msgs[args[0]] += 1
         if _log_level >= 3:
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D3: %s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                    self.caller_mod, self.tag), msg
+            print "%s %s D3:%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                   self.caller_mod, self.tag), msg
 
 
 if __name__ == "__main__":
