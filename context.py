@@ -96,6 +96,7 @@ class Context(object):
         self.stored_network_data = defaultdict(deque)
 
         self.stats = defaultdict(faststat.Stats)
+        self.profiler = None  # sampling profiler
 
     def set_stage_host(self, stage_host, stage_ip=None):
         from contrib import net
@@ -231,6 +232,26 @@ class Context(object):
             self.sockpool = sockpool.SockPool()
         elif not val and isinstance(self.sockpool, sockpool.SockPool):
             self.sockpool = sockpool.NullSockPool()
+
+    @property
+    def sampling(self):
+        return self.profiler is not None
+
+    @sampling.setter
+    def sampling(self, val):
+        from sampro import sampro
+        if val not in (True, False):
+            raise ValueError("sampling may only be set to True or False")
+        if val and not self.profiler:
+            self.profiler = sampro.Sampler()
+            self.profiler.start()
+        if not val and self.profiler:
+            self.profiler.stop()
+            self.profiler = None
+
+    def __del__(self):
+        if self.profiler:
+            self.profiler.stop()
 
 
 # A set of *Conf classes representing the configuration of different things.
