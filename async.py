@@ -4,6 +4,7 @@ import functools
 import time
 import imp
 import traceback
+import platform
 
 from asf.asf_context import ASFError
 #TODO: migrate ASFError out of ASF to a more root location
@@ -83,11 +84,11 @@ def cpu_bound(f):
     '''
     @functools.wraps(f)
     def g(*a, **kw):
-        enqueued = time.clock()  # better than microsecond precision
+        enqueued = curtime()  # better than microsecond precision
         ctx = context.get_context()
         started = []
         def in_thread(*a, **kw):
-            started.append(time.clock())
+            started.append(curtime())
             return f(*a, **kw)
         #some modules import things lazily; it is too dangerous to run a function
         #in another thread if the import lock is held by the current thread
@@ -110,7 +111,7 @@ def cpu_bound(f):
                     tlocals.cpu_thread.apply_e((Exception,), set_flag, (), {})
                 ret = tlocals.cpu_thread.apply_e((Exception,), in_thread, a, kw)
         start = started[0]
-        duration = time.clock() - start
+        duration = curtime() - start
         queued = start - enqueued
         ctx.stats['cpu_bound' + f.__name__ + '.queued'].add(queued)
         ctx.stats['cpu_bound.' + f.__name__ + '.duration'].add(duration)
@@ -123,6 +124,14 @@ def cpu_bound(f):
 
     g.no_defer = f
     return g
+
+
+if hasattr(time, "perf_counter"):
+    curtime = time.perf_counter  # 3.3
+elif platform.system() == "Windows":
+    curtime = time.clock
+else:
+    curtime = time.time
 
 
 def close_threadpool():
