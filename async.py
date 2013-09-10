@@ -113,7 +113,7 @@ def cpu_bound(f):
         start = started[0]
         duration = curtime() - start
         queued = start - enqueued
-        ctx.stats['cpu_bound' + f.__name__ + '.queued'].add(queued)
+        ctx.stats['cpu_bound.' + f.__name__ + '.queued'].add(queued)
         ctx.stats['cpu_bound.' + f.__name__ + '.duration'].add(duration)
         if hasattr(ret, '__len__') and callable(ret.__len__):
             length = ret.__len__()
