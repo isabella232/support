@@ -83,18 +83,22 @@ def cpu_bound(f):
     '''
     @functools.wraps(f)
     def g(*a, **kw):
-        start = time.time()
+        enqueued = time.clock()  # better than microsecond precision
         ctx = context.get_context()
+        started = []
+        def in_thread(*a, **kw):
+            started.append(time.clock())
+            return f(*a, **kw)
         #some modules import things lazily; it is too dangerous to run a function
         #in another thread if the import lock is held by the current thread
         #(this happens rarely -- only if the cpu_bound function is being executed
         #at the import time of a module)
         if not ctx.cpu_thread_enabled or imp.lock_held():
-            ret = f(*a, **kw)
+            ret = in_thread(*a, **kw)
         else:
             tlocals = ctx.thread_locals
             if getattr(tlocals, 'in_cpu_thread', False):
-                ret = f(*a, **kw)
+                ret = in_thread(*a, **kw)
             else:
                 if not hasattr(tlocals, 'cpu_thread'):
                     tlocals.cpu_thread = gevent.threadpool.ThreadPool(1)
@@ -104,8 +108,11 @@ def cpu_bound(f):
                         tlocals.in_cpu_thread = True
 
                     tlocals.cpu_thread.apply_e((Exception,), set_flag, (), {})
-                ret = tlocals.cpu_thread.apply_e((Exception,), f, a, kw)
-        duration = time.time() - start
+                ret = tlocals.cpu_thread.apply_e((Exception,), in_thread, a, kw)
+        start = started[0]
+        duration = time.clock() - start
+        queued = start - enqueued
+        ctx.stats['cpu_bound' + f.__name__ + '.queued'].add(queued)
         ctx.stats['cpu_bound.' + f.__name__ + '.duration'].add(duration)
         if hasattr(ret, '__len__') and callable(ret.__len__):
             length = ret.__len__()
