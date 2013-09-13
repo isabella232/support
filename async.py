@@ -113,13 +113,15 @@ def cpu_bound(f):
         start = started[0]
         duration = curtime() - start
         queued = start - enqueued
-        ctx.stats['cpu_bound.' + f.__name__ + '.queued'].add(queued)
-        ctx.stats['cpu_bound.' + f.__name__ + '.duration'].add(duration)
+        ctx.stats['cpu_bound.' + f.__name__ + '.queued(ms)'].add(queued * 1000)
+        ctx.stats['cpu_bound.' + f.__name__ + '.duration(ms)'].add(duration * 1000)
+        ctx.stats['cpu_bound.queued(ms)'].add(queued * 1000)
+        ctx.stats['cpu_bound.duration(ms)'].add(duration * 1000)
         if hasattr(ret, '__len__') and callable(ret.__len__):
             length = ret.__len__()
             ctx.stats['cpu_bound.' + f.__name__ + '.len'].add(length)
             if duration:  # may be 0
-                ctx.stats['cpu_bound.' + f.__name__ + '.rate'].add(length / duration)
+                ctx.stats['cpu_bound.' + f.__name__ + '.rate(B/ms)'].add(length / (duration * 1000.0))
         return ret
 
     g.no_defer = f
