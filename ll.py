@@ -49,6 +49,7 @@ def print_log_summary():
     """Prints out the hash map of format strings and counts of usage."""
     return ["%s: %d\n".format(k, v) for k, v in log_msgs.items()]
 
+
 def get_log_level():
     """Set global low lovel log level"""
     return _log_level
@@ -76,7 +77,7 @@ class LLogger(object):
         self.ld2 = self.log_debug2
         self.ld3 = self.log_debug3
         self.tag = tag
-        
+
     def log_always(self, *args, **kw):
         """Unconditionally log"""
         global log_msgs
