@@ -81,37 +81,45 @@ class LLogger(object):
     def log_always(self, *args, **kw):
         """Unconditionally log"""
         global log_msgs
+        import gevent  # for getcurrent
         log_msgs[args[0]] += 1
         msg = apply(args[0].format, tuple(args[1:]))
-        print "%s %s A:%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                              self.caller_mod, self.tag), msg
+        print "%s %s A (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                   self.caller_mod, id(gevent.getcurrent()),
+                                   self.tag), msg
 
     def log_debug(self, *args, **kw):
         """Log only with -d"""
         global log_msgs
         log_msgs[args[0]] += 1
         if _log_level >= 1:
+            import gevent  # for getcurrent
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D:%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                  self.caller_mod, self.tag), msg
+            print "%s %s D (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                       self.caller_mod, id(gevent.getcurrent()),
+                                       self.tag), msg
 
     def log_debug2(self, *args, **kw):
         """Log only with -dd"""
         global log_msgs
         log_msgs[args[0]] += 1
         if _log_level >= 2:
+            import gevent  # for getcurrent
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D2:%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                   self.caller_mod, self.tag), msg
+            print "%s %s D2 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                        self.caller_mod, id(gevent.getcurrent()),
+                                        self.tag), msg
 
     def log_debug3(self, *args, **kw):
         """Log only with -ddd"""
         global log_msgs
         log_msgs[args[0]] += 1
         if _log_level >= 3:
+            import gevent  # for getcurrent
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D3:%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                   self.caller_mod, self.tag), msg
+            print "%s %s D3 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                        self.caller_mod, id(gevent.getcurrent()),
+                                        self.tag), msg
 
 
 if __name__ == "__main__":
