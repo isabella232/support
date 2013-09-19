@@ -44,19 +44,31 @@ class SockPool(object):
         self.sock_idle_times[sock] = time.time()
         
     def cull(self):
-        #cull sockets which have been idle for too long
+        #cull sockets which are in a bad state
         culled = []
         #sort the living from the soon-to-be-dead
         for addr in self.free_socks_by_addr:
             live = []
+            # STEP 1 - CULL IDLE SOCKETS
             for sock in self.free_socks_by_addr[addr]:
                 if time.time() - self.sock_idle_times[sock] > self.timeout:
                     ml.ld("Going to Close sock {{{0}}}/FD {1}",
                           id(sock), sock.fileno())
                     culled.append(sock)
-                    del self.sock_idle_times[sock]
                 else:
                     live.append(sock)
+            # STEP 2 - CULL READABLE SOCKETS
+            if live:  # (if live is [], select.select() would error)
+                readable = set(select.select(live, [], [], 0)[0])
+                # if a socket is readable that means one of two bad things:
+                # 1- the socket has been closed (and sock.recv() would return '')
+                # 2- the server has sent some data which no client has claimed
+                #       (which will remain in the recv buffer and mess up the next client)
+                live = [s for s in live if s not in readable]
+                culled.extend(readable)
+            # FINAL STEP - HANDLE CULLED AND LIVE LISTS
+            for s in culled:
+                del self.sock_idle_times[s]
             self.free_socks_by_addr[addr] = live
         #shutdown all the culled sockets
         for sock in culled:
