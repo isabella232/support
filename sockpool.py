@@ -66,12 +66,10 @@ class SockPool(object):
                 #       (which will remain in the recv buffer and mess up the next client)
                 live = [s for s in live if s not in readable]
                 culled.extend(readable)
-            # FINAL STEP - HANDLE CULLED AND LIVE LISTS
-            for s in culled:
-                del self.sock_idle_times[s]
             self.free_socks_by_addr[addr] = live
-        #shutdown all the culled sockets
+        # shutdown all the culled sockets
         for sock in culled:
+            del self.sock_idle_times[sock]
             self.killsock(sock)
 
 
