@@ -1,3 +1,18 @@
+'''
+Protocol agnostic socket pooler.
+
+This code is both extremely tested and hard to test.
+Modify with caution :-)
+
+"There are two ways of constructing a software design: 
+One way is to make it so simple that there are obviously no deficiencies, 
+and the other way is to make it so complicated that there are no obvious deficiencies."
+-CAR Hoare, 1980 Turing Award lecture
+
+In particular: it is tempting to attempt to auto-reconnect and re-try at this layer.
+This is not possible to do correctly however, since only the protocol aware clients
+know what a retry entails.  (e.g. SSL handshake, reset protocol state)
+'''
 import socket
 import time
 import select
