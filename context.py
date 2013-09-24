@@ -69,6 +69,10 @@ class Context(object):
 
         #TOPO RELATED STUFF
         self.stage_address_map = topos.StageAddressMap()
+        try:
+            self.topos = topos.TopoFile()
+        except EnvironmentError:
+            self.topos = None
         self.set_stage_host(stage_host)
         self.address_book = AddressBook([])
 
@@ -137,6 +141,13 @@ class Context(object):
         else:
             self.address_book = AddressBook(
                 [config.addresses], config.aliases)
+
+    def _update_addresses(self):
+        if self.stage_host:
+            pass
+        elif self.topos:
+            topoapp = self.topos[self.appname]
+            self.address_book = AddressBook([config.addresses, topoapp])
 
     def get_mayfly(self, name, namespace):
         try:
