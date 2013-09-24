@@ -98,6 +98,9 @@ class Context(object):
         self.stats = defaultdict(faststat.Stats)
         self.profiler = None  # sampling profiler
 
+        # CLIENT BEHAVIORS
+        self.mayfly_client_retries = 3
+
     def set_stage_host(self, stage_host, stage_ip=None):
         from contrib import net
 
