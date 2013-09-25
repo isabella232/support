@@ -116,38 +116,28 @@ class Context(object):
         else:
             self.stage_ip = None
 
-        # TODO: DRY here and set_config on addresses
-        if self.stage_host:
-            addresses = self.stage_address_map.get_host_map(self.stage_ip)
-            addresses = dict([(k, (self.stage_ip, v))
-                              for k, v in addresses.items()])
-            addresses.update(CAL_DEV_ADDRESSES)
-            if self.config:
-                self.address_book = AddressBook(
-                    [self.config.addresses, addresses], self.config.aliases)
-            else:
-                self.address_book = AddressBook([addresses])
+        self._update_addresses()
 
     def set_config(self, config):
         self.config = config
+        self._update_addresses()
 
+    def _update_addresses(self):
         if self.stage_host:
             addresses = self.stage_address_map.get_host_map(self.stage_ip)
             addresses = dict([(k, (self.stage_ip, v))
                               for k, v in addresses.items()])
             addresses.update(CAL_DEV_ADDRESSES)
-            self.address_book = AddressBook(
-                [config.addresses, addresses], config.aliases)
-        else:
-            self.address_book = AddressBook(
-                [config.addresses], config.aliases)
-
-    def _update_addresses(self):
-        if self.stage_host:
-            pass
         elif self.topos:
-            topoapp = self.topos[self.appname]
-            self.address_book = AddressBook([config.addresses, topoapp])
+            addresses = self.topos[self.appname]
+        else:
+            addresses = {}
+
+        if self.config:
+            self.address_book = AddressBook([self.config.addresses, addresses], 
+                                            self.config.aliases)
+        else:
+            self.address_book = AddressBook([addresses])
 
     def get_mayfly(self, name, namespace):
         try:
@@ -297,11 +287,15 @@ class AddressBook(object):
         raise ValueError(msg)
 
     def mayfly_addr(self, key=None):
-        if not key:
-            key = 'mayflydirectoryserv'
-        if not key.startswith('mayflydirectoryserv'):
-            key = 'mayflydirectoryserv-' + key
-        return self[key]
+        for prefix in ("mayflydirectoryserv", "mayfly"):
+            key2 = key or prefix
+            if not key2.startswith(prefix):
+                key2 = prefix + '-' + key2
+            try:
+                return self[key2]
+            except ValueError:
+                pass
+        raise ValueError("no address for mayfly " + repr(key))
 
     def occ_addr(self, key=None):
         if not key:
