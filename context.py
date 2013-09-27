@@ -3,6 +3,7 @@ This mnodule defines a context object which holds on to all global state.
 '''
 import getpass
 from weakref import WeakKeyDictionary
+import weakref
 from threading import local
 from collections import namedtuple, defaultdict, deque
 import socket
@@ -30,6 +31,7 @@ class Context(object):
     '''
     def __init__(self, dev=False, stage_host=None):
         import topos
+        import gevent
 
         ml.ld("Allocating Context {0}",  id(self))
 
@@ -101,6 +103,10 @@ class Context(object):
 
         self.stats = defaultdict(faststat.Stats)
         self.profiler = None  # sampling profiler
+
+        self.stopping = False
+        self.sys_stats_greenlet = None
+        self.monitor_interval = 0.01  # ~100x per second
 
         # CLIENT BEHAVIORS
         self.mayfly_client_retries = 3
@@ -253,9 +259,77 @@ class Context(object):
             self.profiler.stop()
             self.profiler = None
 
-    def __del__(self):
+    @property
+    def monitoring_greenlet(self):
+        return self.sys_stats_greenlet is not None
+
+    @monitoring_greenlet.setter
+    def monitoring_greenlet(self, val):
+        import gevent
+        if val not in (True, False):
+            raise ValueError("sampling may only be set to True or False")
+        if val and not self.sys_stats_greenlet:
+            # do as I say, not as I do; using gevent.spawn instead of async.spawn
+            # here to prevent circular import
+            self.sys_stats_greenlet = gevent.spawn(_sys_stats_monitor)
+        if not val and self.sys_stats_greenlet:
+            self.sys_stats_greenlet.kill()
+            self.sys_stats_greenlet = None
+
+    def stop(self):
+        '''
+        Stop any concurrently running tasks (threads or greenlets)
+        associated with this Context object.
+
+        (e.g. sampling profiler thread, system monitor greenlet)
+        '''
         if self.profiler:
             self.profiler.stop()
+        self.stopping = True
+
+    def __del__(self):
+        self.stopping = True
+
+
+def _sys_stats_monitor(context):
+    import gc
+    import time
+    from gevent.hub import _get_hub
+    from gevent import sleep
+
+    context = weakref.ref(context)  # give gc a hand
+    end = 0
+    while 1:
+        start = time.time()
+        tmp = context()
+        if tmp is None or tmp.stopping:
+            return
+        tmp.stats['gc.garbage'].add(len(gc.garbage))
+        tmp.stats['greenlets.active'].add(_get_hub().loop.activecnt)
+        tmp.stats['greenlets.pending'].add(_get_hub().loop.pendingcnt)
+        try:
+            tmp.stats['queues.cal.depth'].add(tmp.cal.actor.queue.qsize())
+        except AttributeError:
+            pass
+        try:
+            tmp.stats['queues.cpu_bound.depth'].add(
+                tmp.thread_locals.cpu_thread.task_queue.qsize())
+        except AttributeError:
+            pass
+        ''' 
+        try:  # TODO: add me when io_bound queue is complete
+            tmp.stats['queues.io_bound.depth'].add()
+        except AttributeError:
+            pass
+        '''
+        interval = tmp.monitor_interval
+        end, prev = time.time(), end
+        # keep a rough measure of the fraction of time spent on monitoring
+        tmp.stats['monitoring.overhead'].add((end - start)/(prev - end))
+        tmp.stats['monitoring.duration'].add(end - start)
+        tmp = None
+        sleep(interval)
+
 
 
 # A set of *Conf classes representing the configuration of different things.
