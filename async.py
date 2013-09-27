@@ -82,21 +82,19 @@ def cpu_bound(f):
     decorator to mark a function as cpu-heavy; will be executed in a separate
     thread to avoid blocking any socket communication
     '''
-    q_depth = [0]   # just 1 depth for the 1 IO thread we think
 
     @functools.wraps(f)
     def g(*a, **kw):
-        q_depth[0] = q_depth[0] + 1
         enqueued = curtime()  # better than microsecond precision
         ctx = context.get_context()
-        ctx.stats['cpu_bound.depth'].add(q_depth[0])  # always count this
+        tlocals = ctx.thread_locals
         started = []
 
         def in_thread(*a, **kw):
             ml.ld3("In thread {0}", f.__name__)
             started.append(curtime())
-            q_depth[0] = q_depth[0] - 1
-            ctx.stats['cpu_bound.depth'].add(q_depth[0])
+            if hasattr(tlocals, 'cpu_thread') and tlocals.cpu_thread:
+                ctx.stats['cpu_bound.depth'].add(tlocals.cpu_thread.task_queue.qsize())
             return f(*a, **kw)
         #some modules import things lazily; it is too dangerous to run a function
         #in another thread if the import lock is held by the current thread
@@ -105,7 +103,6 @@ def cpu_bound(f):
         if not ctx.cpu_thread_enabled or imp.lock_held():
             ret = in_thread(*a, **kw)
         else:
-            tlocals = ctx.thread_locals
             if getattr(tlocals, 'in_cpu_thread', False):
                 ret = in_thread(*a, **kw)
             else:
@@ -116,8 +113,8 @@ def cpu_bound(f):
                     def set_flag():
                         tlocals.in_cpu_thread = True
                     tlocals.cpu_thread.apply_e((Exception,), set_flag, (), {})
-                    ml.ld3("Enqueued to thread {0}", f.__name__)
                 ret = tlocals.cpu_thread.apply_e((Exception,), in_thread, a, kw)
+                ml.ld3("Enqueued to thread {0}", f.__name__)
         start = started[0]
         duration = curtime() - start
         queued = start - enqueued
