@@ -111,7 +111,7 @@ def cpu_bound(f):
                     def set_flag():
                         tlocals.in_cpu_thread = True
                     tlocals.cpu_thread.apply_e((Exception,), set_flag, (), {})
-                ctx.stats['cpu_bound.depth'].add(len(tlocals.cpu_thread))
+                ctx.stats['cpu_bound.depth'].add(1 + len(tlocals.cpu_thread))
                 ret = tlocals.cpu_thread.apply_e((Exception,), in_thread, a, kw)
                 ml.ld3("Enqueued to thread {0}/depth {1}", f.__name__, len(tlocals.cpu_thread))
         start = started[0]
