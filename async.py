@@ -77,59 +77,64 @@ def set_cur_correlation_id(corr_id):
     context.get_context().greenlet_correlation_ids[gevent.getcurrent()] = corr_id
 
 
-def cpu_bound(f):
-    '''
-    decorator to mark a function as cpu-heavy; will be executed in a separate
-    thread to avoid blocking any socket communication
-    '''
+def _make_threadpool_dispatch_decorator(name, size):
+    def dispatch(f):
+        '''
+        decorator to mark a function as cpu-heavy; will be executed in a separate
+        thread to avoid blocking any socket communication
+        '''
 
-    @functools.wraps(f)
-    def g(*a, **kw):
-        enqueued = curtime()  # better than microsecond precision
-        ctx = context.get_context()
-        tlocals = ctx.thread_locals
-        started = []
+        @functools.wraps(f)
+        def g(*a, **kw):
+            enqueued = curtime()  # better than microsecond precision
+            ctx = context.get_context()
+            tlocals = ctx.thread_locals
+            started = []
 
-        def in_thread(*a, **kw):
-            ml.ld3("In thread {0}", f.__name__)
-            started.append(curtime())
-            return f(*a, **kw)
-        #some modules import things lazily; it is too dangerous to run a function
-        #in another thread if the import lock is held by the current thread
-        #(this happens rarely -- only if the cpu_bound function is being executed
-        #at the import time of a module)
-        if not ctx.cpu_thread_enabled or imp.lock_held():
-            ret = in_thread(*a, **kw)
-        else:
-            if getattr(tlocals, 'in_cpu_thread', False):
+            def in_thread(*a, **kw):
+                ml.ld3("In thread {0}", f.__name__)
+                started.append(curtime())
+                return f(*a, **kw)
+            #some modules import things lazily; it is too dangerous to run a function
+            #in another thread if the import lock is held by the current thread
+            #(this happens rarely -- only if the thread dispatched function is being executed
+            #at the import time of a module)
+            if not ctx.cpu_thread_enabled or imp.lock_held():
                 ret = in_thread(*a, **kw)
             else:
-                if not hasattr(tlocals, 'cpu_thread'):
-                    tlocals.cpu_thread = gevent.threadpool.ThreadPool(1)
-                    ml.ld2("Getting new thread pool for CPU bound {0}", id(tlocals.cpu_thread))
+                if getattr(tlocals, 'in_' + name + '_thread', False):
+                    ret = in_thread(*a, **kw)
+                else:
+                    attr = name + '_thread'
+                    if not hasattr(tlocals, attr):
+                        setattr(tlocals, attr, gevent.threadpool.ThreadPool(size))
+                        ml.ld2("Getting new thread pool for " + name)
 
-                    def set_flag():
-                        tlocals.in_cpu_thread = True
-                    tlocals.cpu_thread.apply_e((Exception,), set_flag, (), {})
-                ctx.stats['cpu_bound.depth'].add(1 + len(tlocals.cpu_thread))
-                ret = tlocals.cpu_thread.apply_e((Exception,), in_thread, a, kw)
-                ml.ld3("Enqueued to thread {0}/depth {1}", f.__name__, len(tlocals.cpu_thread))
-        start = started[0]
-        duration = curtime() - start
-        queued = start - enqueued
-        ctx.stats['cpu_bound.' + f.__name__ + '.queued(ms)'].add(queued * 1000)
-        ctx.stats['cpu_bound.' + f.__name__ + '.duration(ms)'].add(duration * 1000)
-        ctx.stats['cpu_bound.queued(ms)'].add(queued * 1000)
-        ctx.stats['cpu_bound.duration(ms)'].add(duration * 1000)
-        if hasattr(ret, '__len__') and callable(ret.__len__):
-            length = ret.__len__()
-            ctx.stats['cpu_bound.' + f.__name__ + '.len'].add(length)
-            if duration:  # may be 0
-                ctx.stats['cpu_bound.' + f.__name__ + '.rate(B/ms)'].add(length / (duration * 1000.0))
-        return ret
+                        def set_flag():
+                            setattr(tlocals, 'in_' + name + '_thread', True)
+                        getattr(tlocals, attr).apply_e((Exception,), set_flag, (), {})
+                    pool = getattr(tlocals, attr)
+                    ctx.stats[name + '.depth'].add(1 + len(pool))
+                    ret = pool.apply_e((Exception,), in_thread, a, kw)
+                    ml.ld3("Enqueued to thread {0}/depth {1}", f.__name__, len(pool))
+            start = started[0]
+            duration = curtime() - start
+            queued = start - enqueued
+            ctx.stats[name + '.' + f.__name__ + '.queued(ms)'].add(queued * 1000)
+            ctx.stats[name + '.' + f.__name__ + '.duration(ms)'].add(duration * 1000)
+            ctx.stats[name + '.queued(ms)'].add(queued * 1000)
+            ctx.stats[name + '.duration(ms)'].add(duration * 1000)
+            if hasattr(ret, '__len__') and callable(ret.__len__):
+                length = ret.__len__()
+                ctx.stats['cpu_bound.' + f.__name__ + '.len'].add(length)
+                if duration:  # may be 0
+                    ctx.stats['cpu_bound.' + f.__name__ + '.rate(B/ms)'].add(length / (duration * 1000.0))
+            return ret
 
-    g.no_defer = f
-    return g
+        g.no_defer = f
+        return g
+
+    return dispatch
 
 
 if hasattr(time, "perf_counter"):
@@ -140,9 +145,15 @@ else:
     curtime = time.time
 
 
+cpu_bound = _make_threadpool_dispatch_decorator('cpu_bound', 1)
+io_bound = _make_threadpool_dispatch_decorator('io_bound', 10)  # TODO: make size configurable
+# N.B.  In many cases fcntl could be used as an alternative method of achieving non-blocking file
+# io on unix systems
+
+
 def close_threadpool():
     tlocals = context.get_context().thread_locals
-    if hasattr(tlocals, 'cpu_thread'):
+    if hasattr(tlocals, 'cpu_bound_thread'):
         ml.ld2("Closing thread pool {0}", id(tlocals.cpu_thread))
         cpu_thread = tlocals.cpu_thread
         cpu_thread.join()

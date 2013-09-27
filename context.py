@@ -314,15 +314,14 @@ def _sys_stats_monitor(context):
             pass
         try:
             tmp.stats['queues.cpu_bound.depth'].add(
-                tmp.thread_locals.cpu_thread.task_queue.qsize())
+                tmp.thread_locals.cpu_bound_thread.task_queue.qsize())
         except AttributeError:
             pass
-        ''' 
-        try:  # TODO: add me when io_bound queue is complete
-            tmp.stats['queues.io_bound.depth'].add()
+        try:
+            tmp.stats['queues.io_bound.depth'].add(
+                tmp.thread_locals.io_bound_thread.task_queue.qsize())
         except AttributeError:
             pass
-        '''
         interval = tmp.monitor_interval
         end, prev = time.time(), end
         # keep a rough measure of the fraction of time spent on monitoring
