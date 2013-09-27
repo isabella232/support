@@ -93,8 +93,6 @@ def cpu_bound(f):
         def in_thread(*a, **kw):
             ml.ld3("In thread {0}", f.__name__)
             started.append(curtime())
-            if hasattr(tlocals, 'cpu_thread') and tlocals.cpu_thread:
-                ctx.stats['cpu_bound.depth'].add(tlocals.cpu_thread.task_queue.qsize())
             return f(*a, **kw)
         #some modules import things lazily; it is too dangerous to run a function
         #in another thread if the import lock is held by the current thread
@@ -114,6 +112,7 @@ def cpu_bound(f):
                         tlocals.in_cpu_thread = True
                     tlocals.cpu_thread.apply_e((Exception,), set_flag, (), {})
                 ret = tlocals.cpu_thread.apply_e((Exception,), in_thread, a, kw)
+                ctx.stats['cpu_bound.depth'].add(tlocals.cpu_thread.task_queue.qsize())
                 ml.ld3("Enqueued to thread {0}", f.__name__)
         start = started[0]
         duration = curtime() - start
