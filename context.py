@@ -107,6 +107,7 @@ class Context(object):
         self.stopping = False
         self.sys_stats_greenlet = None
         self.monitor_interval = 0.01  # ~100x per second
+        self.greenlet_settrace = True  # histogram of CPU runs
 
         # CLIENT BEHAVIORS
         self.mayfly_client_retries = 3
