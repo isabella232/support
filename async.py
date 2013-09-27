@@ -112,8 +112,8 @@ def cpu_bound(f):
                         tlocals.in_cpu_thread = True
                     tlocals.cpu_thread.apply_e((Exception,), set_flag, (), {})
                 ret = tlocals.cpu_thread.apply_e((Exception,), in_thread, a, kw)
-                ctx.stats['cpu_bound.depth'].add(tlocals.cpu_thread.task_queue.qsize())
-                ml.ld3("Enqueued to thread {0}", f.__name__)
+                ctx.stats['cpu_bound.depth'].add(len(tlocals.cpu_thread))
+                ml.ld3("Enqueued to thread {0}/depth {1}", f.__name__, len(tlocals.cpu_thread))
         start = started[0]
         duration = curtime() - start
         queued = start - enqueued
