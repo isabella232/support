@@ -102,6 +102,7 @@ class Context(object):
         self.stored_network_data = defaultdict(deque)
 
         self.stats = defaultdict(faststat.Stats)
+        self.counts = defaultdict(int)
         self.profiler = None  # sampling profiler
 
         self.stopping = False
@@ -392,6 +393,14 @@ def get_context():
 def set_context(context):
     global CONTEXT
     CONTEXT = context
+
+
+def counted(f):
+    @functools.wraps(f)
+    def g(*a, **kw):
+        get_context().counts[f.__name__] += 1
+        return f(*a, **kw)
+    return g
 
 
 # see: https://confluence.paypal.com/cnfl/display/CAL/CAL+Quick+Links
