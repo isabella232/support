@@ -1,5 +1,5 @@
 '''
-This mnodule defines a context object which holds on to all global state.
+This module defines a context object which holds on to all global state.
 '''
 import getpass
 from weakref import WeakKeyDictionary
@@ -137,7 +137,7 @@ class Context(object):
                               for k, v in addresses.items()])
             addresses.update(CAL_DEV_ADDRESSES)
         elif self.topos:
-            addresses = self.topos[self.appname]
+            addresses = self.topos.get(self.appname) or {}
         else:
             addresses = {}
 
