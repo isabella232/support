@@ -95,9 +95,12 @@ class LLogger(object):
         if _log_level >= 1:
             import gevent  # for getcurrent
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                       self.caller_mod, id(gevent.getcurrent()),
-                                       self.tag), msg
+            try:
+                print "%s %s D (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                           self.caller_mod, id(gevent.getcurrent()),
+                                           self.tag), msg
+            except:
+                pass
 
     def log_debug2(self, *args, **kw):
         """Log only with -dd"""
@@ -106,9 +109,13 @@ class LLogger(object):
         if _log_level >= 2:
             import gevent  # for getcurrent
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D2 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                        self.caller_mod, id(gevent.getcurrent()),
-                                        self.tag), msg
+            try:
+                print "%s %s D2 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                            self.caller_mod, id(gevent.getcurrent()),
+                                            self.tag), msg
+            except:
+                pass
+
 
     def log_debug3(self, *args, **kw):
         """Log only with -ddd"""
@@ -117,9 +124,12 @@ class LLogger(object):
         if _log_level >= 3:
             import gevent  # for getcurrent
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D3 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                        self.caller_mod, id(gevent.getcurrent()),
-                                        self.tag), msg
+            try:
+                print "%s %s D3 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                            self.caller_mod, id(gevent.getcurrent()),
+                                            self.tag), msg
+            except:
+                pass
 
 
 if __name__ == "__main__":
