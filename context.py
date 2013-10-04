@@ -80,6 +80,7 @@ class Context(object):
 
         #NETWORK RELATED STUFF
         self.port = None
+        self.admin_port = None
         self.ip = "127.0.0.1"
         try:
             self.ip = socket.gethostbyname(socket.gethostname())
