@@ -49,6 +49,7 @@ def print_log_summary():
     """Prints out the hash map of format strings and counts of usage."""
     return ["%s: %d\n".format(k, v) for k, v in log_msgs.items()]
 
+
 def get_log_level():
     """Set global low lovel log level"""
     return _log_level
@@ -65,7 +66,7 @@ def set_log_level(level):
 class LLogger(object):
     """Instantiate this to get the logger object; it grabs module data"""
 
-    def __init__(self):
+    def __init__(self, tag=""):
         mod = inspect.getmodule(inspect.stack()[1][0])
         if mod:
             self.caller_mod = mod.__file__.split(".")[-2].upper()
@@ -75,41 +76,60 @@ class LLogger(object):
         self.ld = self.log_debug
         self.ld2 = self.log_debug2
         self.ld3 = self.log_debug3
+        self.tag = tag
 
     def log_always(self, *args, **kw):
         """Unconditionally log"""
         global log_msgs
+        import gevent  # for getcurrent
         log_msgs[args[0]] += 1
         msg = apply(args[0].format, tuple(args[1:]))
-        print "%s %s A:" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                            self.caller_mod), msg
+        print "%s %s A (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                   self.caller_mod, id(gevent.getcurrent()),
+                                   self.tag), msg
 
     def log_debug(self, *args, **kw):
-        """Log only with -v"""
+        """Log only with -d"""
         global log_msgs
         log_msgs[args[0]] += 1
         if _log_level >= 1:
+            import gevent  # for getcurrent
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D:" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                self.caller_mod), msg
+            try:
+                print "%s %s D (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                           self.caller_mod, id(gevent.getcurrent()),
+                                           self.tag), msg
+            except:
+                pass
 
     def log_debug2(self, *args, **kw):
-        """Log only with -vv"""
+        """Log only with -dd"""
         global log_msgs
         log_msgs[args[0]] += 1
         if _log_level >= 2:
+            import gevent  # for getcurrent
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D2:" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                 self.caller_mod), msg
+            try:
+                print "%s %s D2 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                            self.caller_mod, id(gevent.getcurrent()),
+                                            self.tag), msg
+            except:
+                pass
+
 
     def log_debug3(self, *args, **kw):
-        """Log only with -vvv"""
+        """Log only with -ddd"""
         global log_msgs
         log_msgs[args[0]] += 1
         if _log_level >= 3:
+            import gevent  # for getcurrent
             msg = apply(args[0].format, tuple(args[1:]))
-            print "%s %s D3:" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                 self.caller_mod), msg
+            try:
+                print "%s %s D3 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                            self.caller_mod, id(gevent.getcurrent()),
+                                            self.tag), msg
+            except:
+                pass
 
 
 if __name__ == "__main__":

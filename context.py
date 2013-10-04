@@ -1,11 +1,13 @@
 '''
-This mnodule defines a context object which holds on to all global state.
+This module defines a context object which holds on to all global state.
 '''
 import getpass
 from weakref import WeakKeyDictionary
+import weakref
 from threading import local
 from collections import namedtuple, defaultdict, deque
 import socket
+import faststat
 
 import ll
 ml = ll.LLogger()
@@ -29,6 +31,7 @@ class Context(object):
     '''
     def __init__(self, dev=False, stage_host=None):
         import topos
+        import gevent
 
         ml.ld("Allocating Context {0}",  id(self))
 
@@ -58,9 +61,6 @@ class Context(object):
         #PROTECTED RELATED STUFF
         self.protected = None
 
-        #LOADING CONFIG FILES post init
-        self.runtime_files = []
-
         import sockpool
         self.sockpool = sockpool.SockPool()
 
@@ -71,11 +71,16 @@ class Context(object):
 
         #TOPO RELATED STUFF
         self.stage_address_map = topos.StageAddressMap()
+        try:
+            self.topos = topos.TopoFile()
+        except EnvironmentError:
+            self.topos = None
         self.set_stage_host(stage_host)
         self.address_book = AddressBook([])
 
         #NETWORK RELATED STUFF
         self.port = None
+        self.admin_port = None
         self.ip = "127.0.0.1"
         try:
             self.ip = socket.gethostbyname(socket.gethostname())
@@ -93,8 +98,21 @@ class Context(object):
         self._serve_daemon = None
         self.asf_server = None
 
+        #MONITORING DATA
         self.network_exchanges_stored = 100
         self.stored_network_data = defaultdict(deque)
+
+        self.stats = defaultdict(faststat.Stats)
+        self.counts = defaultdict(int)
+        self.profiler = None  # sampling profiler
+
+        self.stopping = False
+        self.sys_stats_greenlet = None
+        self.monitor_interval = 0.01  # ~100x per second
+        self.greenlet_settrace = True  # histogram of CPU runs
+
+        # CLIENT BEHAVIORS
+        self.mayfly_client_retries = 3
 
     def set_stage_host(self, stage_host, stage_ip=None):
         from contrib import net
@@ -107,31 +125,28 @@ class Context(object):
         else:
             self.stage_ip = None
 
-        # TODO: DRY here and set_config on addresses
-        if self.stage_host:
-            addresses = self.stage_address_map.get_host_map(self.stage_ip)
-            addresses = dict([(k, (self.stage_ip, v))
-                              for k, v in addresses.items()])
-            addresses.update(CAL_DEV_ADDRESSES)
-            if self.config:
-                self.address_book = AddressBook(
-                    [self.config.addresses, addresses], self.config.aliases)
-            else:
-                self.address_book = AddressBook([addresses])
+        self._update_addresses()
 
     def set_config(self, config):
         self.config = config
+        self._update_addresses()
 
+    def _update_addresses(self):
         if self.stage_host:
             addresses = self.stage_address_map.get_host_map(self.stage_ip)
             addresses = dict([(k, (self.stage_ip, v))
                               for k, v in addresses.items()])
             addresses.update(CAL_DEV_ADDRESSES)
-            self.address_book = AddressBook(
-                [config.addresses, addresses], config.aliases)
+        elif self.topos:
+            addresses = self.topos.get(self.appname) or {}
         else:
-            self.address_book = AddressBook(
-                [config.addresses], config.aliases)
+            addresses = {}
+
+        if self.config:
+            self.address_book = AddressBook([self.config.addresses, addresses], 
+                                            self.config.aliases)
+        else:
+            self.address_book = AddressBook([addresses])
 
     def get_mayfly(self, name, namespace):
         try:
@@ -231,6 +246,93 @@ class Context(object):
         elif not val and isinstance(self.sockpool, sockpool.SockPool):
             self.sockpool = sockpool.NullSockPool()
 
+    @property
+    def sampling(self):
+        return self.profiler is not None
+
+    @sampling.setter
+    def sampling(self, val):
+        from sampro import sampro
+        if val not in (True, False):
+            raise ValueError("sampling may only be set to True or False")
+        if val and not self.profiler:
+            self.profiler = sampro.Sampler()
+            self.profiler.start()
+        if not val and self.profiler:
+            self.profiler.stop()
+            self.profiler = None
+
+    @property
+    def monitoring_greenlet(self):
+        return self.sys_stats_greenlet is not None
+
+    @monitoring_greenlet.setter
+    def monitoring_greenlet(self, val):
+        import gevent
+        if val not in (True, False):
+            raise ValueError("sampling may only be set to True or False")
+        if val and not self.sys_stats_greenlet:
+            # do as I say, not as I do; using gevent.spawn instead of async.spawn
+            # here to prevent circular import
+            self.sys_stats_greenlet = gevent.spawn(_sys_stats_monitor)
+        if not val and self.sys_stats_greenlet:
+            self.sys_stats_greenlet.kill()
+            self.sys_stats_greenlet = None
+
+    def stop(self):
+        '''
+        Stop any concurrently running tasks (threads or greenlets)
+        associated with this Context object.
+
+        (e.g. sampling profiler thread, system monitor greenlet)
+        '''
+        if self.profiler:
+            self.profiler.stop()
+        self.stopping = True
+
+    def __del__(self):
+        self.stopping = True
+
+
+def _sys_stats_monitor(context):
+    import gc
+    import time
+    from gevent.hub import _get_hub
+    from gevent import sleep
+
+    context = weakref.ref(context)  # give gc a hand
+    end = 0
+    while 1:
+        start = time.time()
+        tmp = context()
+        if tmp is None or tmp.stopping:
+            return
+        tmp.stats['gc.garbage'].add(len(gc.garbage))
+        tmp.stats['greenlets.active'].add(_get_hub().loop.activecnt)
+        tmp.stats['greenlets.pending'].add(_get_hub().loop.pendingcnt)
+        try:
+            tmp.stats['queues.cal.depth'].add(tmp.cal.actor.queue.qsize())
+        except AttributeError:
+            pass
+        try:
+            tmp.stats['queues.cpu_bound.depth'].add(
+                tmp.thread_locals.cpu_bound_thread.task_queue.qsize())
+        except AttributeError:
+            pass
+        try:
+            tmp.stats['queues.io_bound.depth'].add(
+                tmp.thread_locals.io_bound_thread.task_queue.qsize())
+        except AttributeError:
+            pass
+        interval = tmp.monitor_interval
+        end, prev = time.time(), end
+        # keep a rough measure of the fraction of time spent on monitoring
+        tmp.stats['monitoring.overhead'].add((end - start)/(prev - end))
+        tmp.stats['monitoring.duration'].add(end - start)
+        tmp = None
+        sleep(interval)
+
+
 
 # A set of *Conf classes representing the configuration of different things.
 Address = namedtuple('Address', 'ip port')
@@ -261,11 +363,15 @@ class AddressBook(object):
         raise ValueError(msg)
 
     def mayfly_addr(self, key=None):
-        if not key:
-            key = 'mayflydirectoryserv'
-        if not key.startswith('mayflydirectoryserv'):
-            key = 'mayflydirectoryserv-' + key
-        return self[key]
+        for prefix in ("mayflydirectoryserv", "mayfly"):
+            key2 = key or prefix
+            if not key2.startswith(prefix):
+                key2 = prefix + '-' + key2
+            try:
+                return self[key2]
+            except ValueError:
+                pass
+        raise ValueError("no address for mayfly " + repr(key))
 
     def occ_addr(self, key=None):
         if not key:
@@ -288,6 +394,14 @@ def get_context():
 def set_context(context):
     global CONTEXT
     CONTEXT = context
+
+
+def counted(f):
+    @functools.wraps(f)
+    def g(*a, **kw):
+        get_context().counts[f.__name__] += 1
+        return f(*a, **kw)
+    return g
 
 
 # see: https://confluence.paypal.com/cnfl/display/CAL/CAL+Quick+Links
