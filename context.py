@@ -360,7 +360,7 @@ class AddressBook(object):
         msg = "No address for %r" % key
         if realkey != key:
             msg += " (aliased to %r)" % realkey
-        raise ValueError(msg)
+        raise KeyError(msg)
 
     def mayfly_addr(self, key=None):
         for prefix in ("mayflydirectoryserv", "mayfly"):
@@ -369,9 +369,9 @@ class AddressBook(object):
                 key2 = prefix + '-' + key2
             try:
                 return self[key2]
-            except ValueError:
+            except KeyError:
                 pass
-        raise ValueError("no address for mayfly " + repr(key))
+        raise KeyError("no address for mayfly " + repr(key))
 
     def occ_addr(self, key=None):
         if not key:
