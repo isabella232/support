@@ -137,6 +137,21 @@ def _make_threadpool_dispatch_decorator(name, size):
     return dispatch
 
 
+def timed_execution(timeout_secs = 120.0, in_timeout_value = None):
+    '''
+    decorator to mark a function as wanting an unconditional timeout
+    '''
+    def decorat(f):
+        @functools.wraps(f)
+        def g(*a, **kw):
+            the_timeout_value = object()
+            rr = gevent.with_timeout(timeout_secs, f, timeout_value=the_timeout_value, *a, **kw)
+            if rr == the_timeout_value:
+                return in_timeout_value
+            return rr
+        return g
+    return decorat
+
 if hasattr(time, "perf_counter"):
     curtime = time.perf_counter  # 3.3
 elif platform.system() == "Windows":
@@ -513,3 +528,4 @@ def killsock(sock):
     except Exception as e:
         context.get_context().cal.event("INFO", "SOCKET", "0",
                                         "unexpected error closing socket: " + repr(e))
+
