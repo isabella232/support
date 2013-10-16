@@ -85,8 +85,8 @@ class LLogger(object):
         log_msgs[args[0]] += 1
         msg = apply(args[0].format, tuple(args[1:]))
         print "%s %s (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                   self.caller_mod, id(gevent.getcurrent()),
-                                   self.tag), msg
+                                 self.caller_mod, id(gevent.getcurrent()),
+                                 self.tag), msg
 
     def log_debug(self, *args, **kw):
         """Log only with -d"""
