@@ -103,6 +103,8 @@ class Context(object):
         self.stored_network_data = defaultdict(deque)
 
         self.stats = defaultdict(faststat.Stats)
+        self.durations = defaultdict(faststat.Duration)
+        self.intervals = defaultdict(faststat.Interval)
         self.counts = defaultdict(int)
         self.profiler = None  # sampling profiler
 
@@ -110,6 +112,7 @@ class Context(object):
         self.sys_stats_greenlet = None
         self.monitor_interval = 0.01  # ~100x per second
         self.greenlet_settrace = True  # histogram of CPU runs
+        self.monitoring_greenlet = True  # monitor queue depths
 
         # CLIENT BEHAVIORS
         self.mayfly_client_retries = 3
@@ -274,7 +277,7 @@ class Context(object):
         if val and not self.sys_stats_greenlet:
             # do as I say, not as I do; using gevent.spawn instead of async.spawn
             # here to prevent circular import
-            self.sys_stats_greenlet = gevent.spawn(_sys_stats_monitor)
+            self.sys_stats_greenlet = gevent.spawn(_sys_stats_monitor, self)
         if not val and self.sys_stats_greenlet:
             self.sys_stats_greenlet.kill()
             self.sys_stats_greenlet = None
@@ -301,9 +304,9 @@ def _sys_stats_monitor(context):
     from gevent import sleep
 
     context = weakref.ref(context)  # give gc a hand
-    end = 0
+    end = faststat.nanotime()  # current time throws off duration stats less than 0
     while 1:
-        start = time.time()
+        start = faststat.nanotime()
         tmp = context()
         if tmp is None or tmp.stopping:
             return
@@ -325,10 +328,13 @@ def _sys_stats_monitor(context):
         except AttributeError:
             pass
         interval = tmp.monitor_interval
-        end, prev = time.time(), end
+        end, prev = faststat.nanotime(), end
         # keep a rough measure of the fraction of time spent on monitoring
-        tmp.stats['monitoring.overhead'].add((end - start)/(prev - end))
-        tmp.stats['monitoring.duration'].add(end - start)
+        if prev == end:
+            tmp.stats['monitoring.overhead'].add(0)
+        else:
+            tmp.stats['monitoring.overhead'].add((end - start)/(end - prev))
+        tmp.durations['monitoring.duration'].end(start)
         tmp = None
         sleep(interval)
 
