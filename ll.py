@@ -84,9 +84,9 @@ class LLogger(object):
         import gevent  # for getcurrent
         log_msgs[args[0]] += 1
         msg = apply(args[0].format, tuple(args[1:]))
-        print "%s %s A (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                   self.caller_mod, id(gevent.getcurrent()),
-                                   self.tag), msg
+        print "%s %s (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                 self.caller_mod, id(gevent.getcurrent()),
+                                 self.tag), msg
 
     def log_debug(self, *args, **kw):
         """Log only with -d"""
@@ -115,7 +115,6 @@ class LLogger(object):
                                             self.tag), msg
             except:
                 pass
-
 
     def log_debug3(self, *args, **kw):
         """Log only with -ddd"""
