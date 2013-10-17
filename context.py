@@ -78,6 +78,8 @@ class Context(object):
         self.set_stage_host(stage_host)
         self.address_book = AddressBook([])
 
+        self.ops_config = None
+
         #NETWORK RELATED STUFF
         self.port = None
         self.admin_port = None
