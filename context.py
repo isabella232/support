@@ -150,6 +150,8 @@ class Context(object):
         if self.config:
             self.address_book = AddressBook([self.config.addresses, addresses], 
                                             self.config.aliases)
+            import opscfg
+            self.ops_config = opscfg.OpsCfg(self.appname)
         else:
             self.address_book = AddressBook([addresses])
 
