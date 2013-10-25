@@ -31,8 +31,9 @@ import inspect
 from collections import defaultdict
 from datetime import datetime
 import os
+import sys
 
-the_file = open(os.getcwd() + "/./ll.txt", "a")
+the_file = sys.stdout
 
 log_msgs = defaultdict(int)
 
@@ -64,6 +65,12 @@ def set_log_level(level):
     level = min(level, LOG_LEVELS['DEBUG3'])
     _log_level = level
 
+
+def use_the_file(name = "lll.txt"):
+    """Use a file instead of stdout"""
+    global the_file
+    the_file = open(os.getcwd() + "/./" + name, "a")
+    
 
 class LLogger(object):
     """Instantiate this to get the logger object; it grabs module data"""
