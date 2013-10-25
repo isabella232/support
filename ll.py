@@ -70,7 +70,13 @@ def use_the_file(name = "lll.txt"):
     """Use a file instead of stdout"""
     global the_file
     the_file = open(os.getcwd() + "/./" + name, "a")
+
     
+def use_std_out():
+    """Use stdout instead of a file - just for tests"""
+    global the_file
+    the_file = sys.stdout
+
 
 class LLogger(object):
     """Instantiate this to get the logger object; it grabs module data"""
