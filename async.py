@@ -513,7 +513,10 @@ def wrap_socket_context(sock, context, server_side=False):
 
 
 def killsock(sock):
-    ml.ld("Killing socket")
+    if hasattr(sock, '_sock'):
+        ml.ld("Killing socket {0}/FD {1}", id(sock), sock._sock.fileno())
+    else:
+        ml.ld("Killing socket {0}", id(sock))
     try:
         # TODO: better ideas for how to get SHUT_RDWR constant?
         sock.shutdown(gevent.socket.SHUT_RDWR)
@@ -531,10 +534,11 @@ def killsock(sock):
                                         "unexpected error closing socket: " + repr(e))
 
 
-PID = None
+PID = os.getpid()
+
 
 def check_fork(fn):
-        """Hack for Django/infra interaction to reset after non-gevent fork"""#
+        """Hack for Django/infra interaction to reset after non-gevent fork"""
         @functools.wraps(fn)
         def wrapper(request):
                 global PID
