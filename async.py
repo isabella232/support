@@ -548,3 +548,27 @@ def check_fork(fn):
                 return fn(request)
         return wrapper
 
+
+### a little helper for running a greenlet-friendly console
+## implemented here since it directly references gevent
+
+import sys
+import code
+import gevent.fileobject
+
+
+def run_repl(local=None, banner="infra REPL"):
+    'Run a greenlet-friendly Read-Eval-Print Loop.'
+
+    _green_stdin = gevent.fileobject.FileObject(sys.stdin)
+    _green_stdout = gevent.fileobject.FileObject(sys.stdout)
+
+    def _green_raw_input(prompt):
+        _green_stdout.write(prompt)
+        return _green_stdin.readline()[:-1]
+
+    code.interact(banner, _green_raw_input, local=local or {})
+
+
+def start_repl(local=None, banner="infra REPL"):
+    gevent.spawn(run_repl, local, banner)
