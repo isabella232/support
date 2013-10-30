@@ -565,6 +565,7 @@ def run_repl(local=None, banner="infra REPL"):
 
     def _green_raw_input(prompt):
         _green_stdout.write(prompt)
+        _green_stdout.flush()
         return _green_stdin.readline()[:-1]
 
     code.interact(banner, _green_raw_input, local=local or {})
