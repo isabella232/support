@@ -96,6 +96,8 @@ class Context(object):
                     pass
         self._serve_ufork = None
         self._serve_daemon = None
+        self.ssl_client_cert_optional_in_dev = True
+        #whether or not dev mode servers should make client certs optional
         self.asf_server = None
 
         #MONITORING DATA
