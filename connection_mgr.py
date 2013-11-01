@@ -32,6 +32,10 @@ import async
 import context
 import protected
 import sockpool
+from protected import Protected
+import ll
+
+ml = ll.LLogger()
 
 class ConnectionManager(object):
 
@@ -42,10 +46,10 @@ class ConnectionManager(object):
         self.protected = protected
         self.server_models = ServerModelDirectory()
 
-    def get_connection(self, name, ssl=False):
+    def get_connection(self, name_or_addr, ssl=False):
         '''
-        name - the logical name to connect to, e.g. "paymentreadserv" or "occ-ctoc"
-        ssl - if set to True, wrap socket with context protected;
+        name_or_addr - the logical name to connect to, e.g. "paymentreadserv" or "occ-ctoc"
+        ssl - if set to True, wrap socket with context.protected;
               if set to a protected.Protected object, wrap socket with that object
         '''
         ctx = context.get_context()
@@ -53,11 +57,20 @@ class ConnectionManager(object):
         ops_config = self.ops_config or ctx.ops_config
         #### POTENTIAL ISSUE: OPS CONFIG IS MORE SPECIFIC THAN ADDRESS (owch)
 
-        sock_config = ops_config.get_endpoint_config(name)
-        try:
-            address_list = list(address_groups[name])
-        except KeyError:
-            raise NameNotFound("no address found for name {0}".format(name))
+        if isinstance(name_or_addr, basestring):  # string means a name
+            name = name_or_addr
+            try:
+                address_list = list(address_groups[name])
+            except KeyError:
+                raise NameNotFound("no address found for name {0}".format(name))
+        else:
+            address_list = [name_or_addr]
+            name = ctx.opscfg_revmap.get(name_or_addr)
+
+        if name:
+            sock_config = ops_config.get_endpoint_config(name)
+        else:
+            sock_config = ops_config.get_endpoint_config()
 
         errors = []
         num_in_use = sum([len(self.server_models[address].active_connections)
@@ -65,7 +78,7 @@ class ConnectionManager(object):
 
         if num_in_use >= MAX_CONNECTIONS:
             ctx.intervals['net.out_of_sockets'].tick()
-            ctx.intervals['net.out_of_sockets.' + name + '.' + str(num_in_use)].tick()
+            ctx.intervals['net.out_of_sockets.' + str(name) + '.' + str(num_in_use)].tick()
             raise OutOfSockets("maximum sockets for {0} already in use: {1}".format(name, num_in_use))
 
         for address in address_list:
@@ -85,7 +98,7 @@ class ConnectionManager(object):
         if ssl:
             if ssl is True:
                 protected = self.protected or ctx.protected
-            elif isinstance(ssl, protected.Protected):
+            elif isinstance(ssl, Protected):
                 protected = ssl
         else:
             protected = NULL_PROTECTED  # something falsey and weak-refable
@@ -103,7 +116,9 @@ class ConnectionManager(object):
             failed = 0
             while True:
                 try:
+                    ml.ld("CONNECTING...")
                     sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000)
+                    ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
                     break
                 except socket.error:
                     if False:  # TODO: how to tell if this is an unrecoverable error
@@ -112,15 +127,15 @@ class ConnectionManager(object):
                         server_model.last_error = time.time()
                         if sock_config.transient_markdown_enabled:
                             ctx = context.get_context()
-                            ctx.intervals['net.markdowns.' + name + '.' + 
+                            ctx.intervals['net.markdowns.' + str(name) + '.' + 
                                           str(address[0]) + ':' + str(address[1])].tick()
                             ctx.intervals['net.markdowns'].tick()
-                            ctx.cal.event('ERROR', 'TMARKDOWN', '2', {'name': name, 'addr': address})
+                            ctx.cal.event('ERROR', 'TMARKDOWN', '2', {'name': str(name), 'addr': address})
                         raise
                     failed += 1
 
             if ssl:
-                async.wrap_socket_context(sock, protected)
+                async.wrap_socket_context(sock, protected.ssl_client_context)
 
             sock = MonitoredSocket(sock, server_model.active_connections, protected)
             server_model.sock_in_use(sock)
