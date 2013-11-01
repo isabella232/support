@@ -20,6 +20,7 @@ class StatsMiddleware(Middleware):
 
     def request(self, next, request, _route):
         start_time = time.time()
+        resp_status = "Not set"
         try:
             resp = next()
             resp_status = repr(getattr(resp, 'status_code', type(resp)))

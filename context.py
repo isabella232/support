@@ -101,6 +101,8 @@ class Context(object):
                     pass
         self._serve_ufork = None
         self._serve_daemon = None
+        self.ssl_client_cert_optional_in_dev = True
+        #whether or not dev mode servers should make client certs optional
         self.asf_server = None
 
         #MONITORING DATA
@@ -209,8 +211,8 @@ class Context(object):
     def debug_errors(self, val):
         if val:
             if not self.dev or self.serve_ufork:
-                raise ValueError("_debug_errors may only be True" 
-                    "if dev is True and serve_ufork is False")
+                raise ValueError("_debug_errors may only be True"
+                                 "if dev is True and serve_ufork is False")
         self._debug_errors = val
 
     @property
@@ -315,7 +317,6 @@ class Context(object):
 
 def _sys_stats_monitor(context):
     import gc
-    import time
     from gevent.hub import _get_hub
     from gevent import sleep
 

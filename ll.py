@@ -30,7 +30,10 @@ caustinlane@paypal.com for details.
 import inspect
 from collections import defaultdict
 from datetime import datetime
+import os
+import sys
 
+the_file = sys.stdout
 
 log_msgs = defaultdict(int)
 
@@ -63,6 +66,18 @@ def set_log_level(level):
     _log_level = level
 
 
+def use_the_file(name="lll.txt"):
+    """Use a file instead of stdout"""
+    global the_file
+    the_file = open(os.getcwd() + "/./" + name, "a")
+
+
+def use_std_out():
+    """Use stdout instead of a file - just for tests"""
+    global the_file
+    the_file = sys.stdout
+
+
 class LLogger(object):
     """Instantiate this to get the logger object; it grabs module data"""
 
@@ -84,9 +99,9 @@ class LLogger(object):
         import gevent  # for getcurrent
         log_msgs[args[0]] += 1
         msg = apply(args[0].format, tuple(args[1:]))
-        print "%s %s (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                 self.caller_mod, id(gevent.getcurrent()),
-                                 self.tag), msg
+        print >> the_file,  "%s %s (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                               self.caller_mod, id(gevent.getcurrent()),
+                                               self.tag), msg
 
     def log_debug(self, *args, **kw):
         """Log only with -d"""
@@ -96,9 +111,9 @@ class LLogger(object):
             import gevent  # for getcurrent
             msg = apply(args[0].format, tuple(args[1:]))
             try:
-                print "%s %s D (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                           self.caller_mod, id(gevent.getcurrent()),
-                                           self.tag), msg
+                print >> the_file, "%s %s D (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                                        self.caller_mod, id(gevent.getcurrent()),
+                                                        self.tag), msg
             except:
                 pass
 
@@ -110,9 +125,9 @@ class LLogger(object):
             import gevent  # for getcurrent
             msg = apply(args[0].format, tuple(args[1:]))
             try:
-                print "%s %s D2 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                            self.caller_mod, id(gevent.getcurrent()),
-                                            self.tag), msg
+                print >> the_file, "%s %s D2 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                                         self.caller_mod, id(gevent.getcurrent()),
+                                                         self.tag), msg
             except:
                 pass
 
@@ -124,9 +139,9 @@ class LLogger(object):
             import gevent  # for getcurrent
             msg = apply(args[0].format, tuple(args[1:]))
             try:
-                print "%s %s D3 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                            self.caller_mod, id(gevent.getcurrent()),
-                                            self.tag), msg
+                print >> the_file, "%s %s D3 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                                         self.caller_mod, id(gevent.getcurrent()),
+                                                         self.tag), msg
             except:
                 pass
 

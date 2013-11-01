@@ -12,6 +12,7 @@ import gevent.pool
 import gevent.socket
 import gevent.threadpool
 import gevent.greenlet
+import gevent.hub  # for check_fork wrapper
 
 import pp_crypt
 import context
@@ -512,7 +513,10 @@ def wrap_socket_context(sock, context, server_side=False):
 
 
 def killsock(sock):
-    ml.ld("Killing socket")
+    if hasattr(sock, '_sock'):
+        ml.ld("Killing socket {0}/FD {1}", id(sock), sock._sock.fileno())
+    else:
+        ml.ld("Killing socket {0}", id(sock))
     try:
         # TODO: better ideas for how to get SHUT_RDWR constant?
         sock.shutdown(gevent.socket.SHUT_RDWR)
@@ -529,3 +533,43 @@ def killsock(sock):
         context.get_context().cal.event("INFO", "SOCKET", "0",
                                         "unexpected error closing socket: " + repr(e))
 
+
+PID = os.getpid()
+
+
+def check_fork(fn):
+        """Hack for Django/infra interaction to reset after non-gevent fork"""
+        @functools.wraps(fn)
+        def wrapper(request):
+                global PID
+                if PID != os.getpid():
+                        gevent.hub.get_hub().loop.reinit()
+                        PID = os.getpid()
+                return fn(request)
+        return wrapper
+
+
+### a little helper for running a greenlet-friendly console
+## implemented here since it directly references gevent
+
+import sys
+import code
+import gevent.fileobject
+
+
+def run_repl(local=None, banner="infra REPL"):
+    'Run a greenlet-friendly Read-Eval-Print Loop.'
+
+    _green_stdin = gevent.fileobject.FileObject(sys.stdin)
+    _green_stdout = gevent.fileobject.FileObject(sys.stdout)
+
+    def _green_raw_input(prompt):
+        _green_stdout.write(prompt)
+        _green_stdout.flush()
+        return _green_stdin.readline()[:-1]
+
+    code.interact(banner, _green_raw_input, local=local or {})
+
+
+def start_repl(local=None, banner="infra REPL"):
+    gevent.spawn(run_repl, local, banner)
