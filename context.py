@@ -167,7 +167,7 @@ class Context(object):
             pass
             #self.address_book = AddressBook([addresses])
 
-    '''
+    
     def get_mayfly(self, name, namespace):
         try:
             ip, port = self.address_book.mayfly_addr(name)
@@ -177,6 +177,7 @@ class Context(object):
         import mayfly
         return mayfly.Client(ip, port, self.appname, namespace)
 
+    '''
     def make_occ(self, name):
         'make instead of get to indicate this is creating a stateful object'
         try:
