@@ -18,7 +18,8 @@ ml.la("format string {0} {1}", var0, var1)  # always log
 ml.ld("format string 2 {0}", var0)  # log most often
 ml.ld("format string 3 {0}", var0)  # log most often
 ml.ld2("format string 4 {0}", var0)  # log less often
-ml.ld3("format string 5 {0}", var0)  # log only at highest verbosity
+ml.ld3("format string 5 {0}", var0)  # log only at very high verbosity
+ml.ld4("format string 5 {0}", var0)  # log only at highest verbosity (including greenlet switch)
 
 For best efficiency, use !r in format string, rather than calling str() or repr() on
 arguments.
@@ -41,7 +42,8 @@ log_msgs = defaultdict(int)
 LOG_LEVELS = {'NONE':   0,
               'DEBUG':  1,
               'DEBUG2': 2,
-              'DEBUG3': 3
+              'DEBUG3': 3,
+              'DEBUG4': 4
               }
 
 
@@ -62,7 +64,7 @@ def set_log_level(level):
     """Set global low lovel log level"""
     global _log_level
     level = max(level, LOG_LEVELS['NONE'])
-    level = min(level, LOG_LEVELS['DEBUG3'])
+    level = min(level, LOG_LEVELS['DEBUG4'])
     _log_level = level
 
 
@@ -91,6 +93,7 @@ class LLogger(object):
         self.ld = self.log_debug
         self.ld2 = self.log_debug2
         self.ld3 = self.log_debug3
+        self.ld4 = self.log_debug4
         self.tag = tag
 
     def log_always(self, *args, **kw):
@@ -140,6 +143,20 @@ class LLogger(object):
             msg = apply(args[0].format, tuple(args[1:]))
             try:
                 print >> the_file, "%s %s D3 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                                         self.caller_mod, id(gevent.getcurrent()),
+                                                         self.tag), msg
+            except:
+                pass
+
+    def log_debug4(self, *args, **kw):
+        """Log only with -dddd"""
+        global log_msgs
+        log_msgs[args[0]] += 1
+        if _log_level >= 4:
+            import gevent  # for getcurrent
+            msg = apply(args[0].format, tuple(args[1:]))
+            try:
+                print >> the_file, "%s %s D4 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
                                                          self.caller_mod, id(gevent.getcurrent()),
                                                          self.tag), msg
             except:
