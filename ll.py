@@ -101,10 +101,13 @@ class LLogger(object):
         global log_msgs
         import gevent  # for getcurrent
         log_msgs[args[0]] += 1
-        msg = apply(args[0].format, tuple(args[1:]))
-        print >> the_file,  "%s %s (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                               self.caller_mod, id(gevent.getcurrent()),
-                                               self.tag), msg
+        try:
+            msg = apply(args[0].format, tuple(args[1:]))
+            print >> the_file,  "%s %s (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                                   self.caller_mod, id(gevent.getcurrent()),
+                                                   self.tag), msg
+        except:
+            pass
 
     def log_debug(self, *args, **kw):
         """Log only with -d"""
@@ -126,8 +129,8 @@ class LLogger(object):
         log_msgs[args[0]] += 1
         if _log_level >= 2:
             import gevent  # for getcurrent
-            msg = apply(args[0].format, tuple(args[1:]))
             try:
+                msg = apply(args[0].format, tuple(args[1:]))
                 print >> the_file, "%s %s D2 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
                                                          self.caller_mod, id(gevent.getcurrent()),
                                                          self.tag), msg
@@ -140,8 +143,8 @@ class LLogger(object):
         log_msgs[args[0]] += 1
         if _log_level >= 3:
             import gevent  # for getcurrent
-            msg = apply(args[0].format, tuple(args[1:]))
             try:
+                msg = apply(args[0].format, tuple(args[1:]))
                 print >> the_file, "%s %s D3 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
                                                          self.caller_mod, id(gevent.getcurrent()),
                                                          self.tag), msg
@@ -154,8 +157,8 @@ class LLogger(object):
         log_msgs[args[0]] += 1
         if _log_level >= 4:
             import gevent  # for getcurrent
-            msg = apply(args[0].format, tuple(args[1:]))
             try:
+                msg = apply(args[0].format, tuple(args[1:]))
                 print >> the_file, "%s %s D4 (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
                                                          self.caller_mod, id(gevent.getcurrent()),
                                                          self.tag), msg
