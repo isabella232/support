@@ -8,6 +8,7 @@ or the whole server is logging super verbose.
 Use like:
 
 import ll
+import faststat
 
 ml = ll.LLogger()
 
@@ -80,6 +81,14 @@ def use_std_out():
     the_file = sys.stdout
 
 
+def log_failure(bad_str):
+    """Statsn on failed logs"""
+    import infra.context
+    infra.get_context().stats["log.failure"].add(1)
+    infra.get_context().stats["log.failure." + bad_str].add(1)
+    if infra.get_context().stats["log.failure"].n < 10:
+        print "log failure - " + bad_str
+
 class LLogger(object):
     """Instantiate this to get the logger object; it grabs module data"""
 
@@ -107,7 +116,7 @@ class LLogger(object):
                                                    self.caller_mod, id(gevent.getcurrent()),
                                                    self.tag), msg
         except:
-            pass
+            log_failure(args[0])
 
     def log_debug(self, *args, **kw):
         """Log only with -d"""
@@ -121,7 +130,7 @@ class LLogger(object):
                                                         self.caller_mod, id(gevent.getcurrent()),
                                                         self.tag), msg
             except:
-                pass
+                log_failure(args[0])
 
     def log_debug2(self, *args, **kw):
         """Log only with -dd"""
@@ -135,7 +144,8 @@ class LLogger(object):
                                                          self.caller_mod, id(gevent.getcurrent()),
                                                          self.tag), msg
             except:
-                pass
+                log_failure(args[0])
+
 
     def log_debug3(self, *args, **kw):
         """Log only with -ddd"""
@@ -149,7 +159,7 @@ class LLogger(object):
                                                          self.caller_mod, id(gevent.getcurrent()),
                                                          self.tag), msg
             except:
-                pass
+                log_failure(args[0])
 
     def log_debug4(self, *args, **kw):
         """Log only with -dddd"""
@@ -163,7 +173,8 @@ class LLogger(object):
                                                          self.caller_mod, id(gevent.getcurrent()),
                                                          self.tag), msg
             except:
-                pass
+                log_failure(args[0])
+
 
 
 if __name__ == "__main__":
