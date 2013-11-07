@@ -30,6 +30,8 @@ class ServerGroup(object):
         self.daemonize = daemonize
         self.post_fork = kw.get('post_fork')  # callback to be executed post fork
         self.server_log = kw.get('gevent_log')
+        self.wsgi_apps = wsgi_apps
+        self.stream_handlers = stream_handlers
         ctx = context.get_context()
         self.num_workers = ctx.num_workers
         self.servers = []
