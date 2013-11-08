@@ -566,7 +566,10 @@ def run_repl(local=None, banner="infra REPL"):
     def _green_raw_input(prompt):
         _green_stdout.write(prompt)
         _green_stdout.flush()
-        return _green_stdin.readline()[:-1]
+        inp = _green_stdin.readline()[:-1]
+        if inp == "":
+            raise OSError("standard in was closed while running REPL")
+        return inp
 
     code.interact(banner, _green_raw_input, local=local or {})
 
