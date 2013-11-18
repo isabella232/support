@@ -44,7 +44,7 @@ class SockPool(object):
             ml.ld("Getting sock {0}", str(id(sock)))
             return sock
         return None
-    
+
     def release(self, sock):
         #this is also a way of "registering" a socket with the pool
         #basically, this says "I'm done with this socket, make it available for anyone else"

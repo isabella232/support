@@ -101,8 +101,11 @@ class Context(object):
                     pass
         self._serve_ufork = None
         self._serve_daemon = None
+        self._wsgi_middleware = None
         self.ssl_client_cert_optional_in_dev = True
-        #whether or not dev mode servers should make client certs optional
+        # whether or not dev mode servers should make client certs optional
+        self.dev_service_repl_enabled = True
+        # whether a greenlet REPL should be started when a server is run in dev mode
         self.asf_server = None
 
         #MONITORING DATA
