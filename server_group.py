@@ -121,7 +121,7 @@ def _make_server_sock(address):
 
 
 def my_close(self):
-    pass
+    context.get_context().stats['fake_close'].add(1.0)
 
 class SslContextWSGIServer(WSGIServer):
     def wrap_socket_and_handle(self, client_socket, address):
