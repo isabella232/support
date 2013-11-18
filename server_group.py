@@ -120,6 +120,9 @@ def _make_server_sock(address):
     return sock
 
 
+def my_close(self):
+    pass
+
 class SslContextWSGIServer(WSGIServer):
     def wrap_socket_and_handle(self, client_socket, address):
         if not self.ssl_args:
@@ -127,6 +130,7 @@ class SslContextWSGIServer(WSGIServer):
                              ' SSL certificate (protected)')
         protocol = _socket_protocol(client_socket)
         if protocol == "ssl":
+            self.sock._sock.close = my_close
             ssl_socket = async.wrap_socket_context(client_socket, **self.ssl_args)
             return self.handle(ssl_socket, address)
         elif protocol == "http":
@@ -142,6 +146,7 @@ class MultiProtocolWSGIServer(SslContextWSGIServer):
         if protocol == "http":
             return self.handle(client_socket, address)
         elif protocol == "ssl":
+            self.sock._sock.close = my_close
             ssl_socket = async.wrap_socket_context(client_socket, **self.ssl_args)
             return self.handle(ssl_socket, address)
         else:
