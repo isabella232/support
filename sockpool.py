@@ -41,14 +41,17 @@ class SockPool(object):
         if socks:
             sock = socks.pop()
             del self.sock_idle_times[sock]
-            ml.ld("Getting sock {0}", str(id(sock)))
+            ml.ld("Acquiring sock {0}/FD {1}", str(id(sock)), str(sock.fileno()))
             return sock
         return None
 
     def release(self, sock):
         #this is also a way of "registering" a socket with the pool
         #basically, this says "I'm done with this socket, make it available for anyone else"
-        ml.ld("Returning sock {0}", str(id(sock)))
+        try:
+            ml.ld("Releasing sock {0} /FD {1}", str(id(sock)), str(sock.fileno()))
+        except:
+            pass  # gevent sometimes throws on fileno
         try:
             if select.select([sock], [], [], 0)[0]:
                 self.killsock(sock)

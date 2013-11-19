@@ -102,6 +102,7 @@ class Context(object):
         self.dev_service_repl_enabled = True
         # whether a greenlet REPL should be started when a server is run in dev mode
         self.asf_server = None
+        self.cryptoclient_ping_time_secs = 180 
 
         #MONITORING DATA
         self.network_exchanges_stored = 100
