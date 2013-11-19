@@ -41,7 +41,10 @@ class SockPool(object):
         if socks:
             sock = socks.pop()
             del self.sock_idle_times[sock]
-            ml.ld("Acquiring sock {0}/FD {1}", str(id(sock)), str(sock.fileno()))
+            try:
+                ml.ld("Acquiring sock {0}/FD {1}", str(id(sock)), str(sock.fileno()))
+            except:
+                pass
             return sock
         return None
 
@@ -90,8 +93,11 @@ class SockPool(object):
             # STEP 1 - CULL IDLE SOCKETS
             for sock in self.free_socks_by_addr[addr]:
                 if time.time() - self.sock_idle_times[sock] > self.timeout:
-                    ml.ld("Going to Close sock {{{0}}}/FD {1}",
-                          id(sock), sock.fileno())
+                    try:
+                        ml.ld("Going to Close sock {{{0}}}/FD {1}",
+                              id(sock), sock.fileno())
+                    except:
+                        pass
                     culled.append(sock)
                 else:
                     live.append(sock)
