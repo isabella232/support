@@ -41,14 +41,20 @@ class SockPool(object):
         if socks:
             sock = socks.pop()
             del self.sock_idle_times[sock]
-            ml.ld("Getting sock {0}", str(id(sock)))
+            try:
+                ml.ld("Acquiring sock {0}/FD {1}", str(id(sock)), str(sock.fileno()))
+            except:
+                pass
             return sock
         return None
 
     def release(self, sock):
         #this is also a way of "registering" a socket with the pool
         #basically, this says "I'm done with this socket, make it available for anyone else"
-        ml.ld("Returning sock {0}", str(id(sock)))
+        try:
+            ml.ld("Releasing sock {0} /FD {1}", str(id(sock)), str(sock.fileno()))
+        except:
+            pass  # gevent sometimes throws on fileno
         try:
             if select.select([sock], [], [], 0)[0]:
                 self.killsock(sock)
@@ -87,8 +93,11 @@ class SockPool(object):
             # STEP 1 - CULL IDLE SOCKETS
             for sock in self.free_socks_by_addr[addr]:
                 if time.time() - self.sock_idle_times[sock] > self.timeout:
-                    ml.ld("Going to Close sock {{{0}}}/FD {1}",
-                          id(sock), sock.fileno())
+                    try:
+                        ml.ld("Going to Close sock {{{0}}}/FD {1}",
+                              id(sock), sock.fileno())
+                    except:
+                        pass
                     culled.append(sock)
                 else:
                     live.append(sock)

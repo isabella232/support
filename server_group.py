@@ -123,6 +123,7 @@ def _make_server_sock(address):
 def my_close(self):
     context.get_context().stats['fake_close'].add(1.0)
 
+
 class SslContextWSGIServer(WSGIServer):
     def wrap_socket_and_handle(self, client_socket, address):
         if not self.ssl_args:
@@ -130,8 +131,6 @@ class SslContextWSGIServer(WSGIServer):
                              ' SSL certificate (protected)')
         protocol = _socket_protocol(client_socket)
         if protocol == "ssl":
-            #if hasattr(client_socket, "_sock"):
-            #    client_socket._sock.close = my_close
             ssl_socket = async.wrap_socket_context(client_socket, **self.ssl_args)
             return self.handle(ssl_socket, address)
         elif protocol == "http":
@@ -147,7 +146,6 @@ class MultiProtocolWSGIServer(SslContextWSGIServer):
         if protocol == "http":
             return self.handle(client_socket, address)
         elif protocol == "ssl":
-            #client_socket.close = my_close
             ssl_socket = async.wrap_socket_context(client_socket, **self.ssl_args)
             return self.handle(ssl_socket, address)
         else:
@@ -168,7 +166,7 @@ _SSL_VERSIONS = {
 }
 
 
-_NO_SSL_HTTP_RESPONSE = "\n\r".join([
+_NO_SSL_HTTP_RESPONSE = "\r\n".join([
     'HTTP/1.1 401 UNAUTHORIZED',
     'Content-Type: text/plain',
     'Content-Length: ' + str(len('SSL REQUIRED')),
