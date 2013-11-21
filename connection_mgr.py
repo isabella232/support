@@ -39,9 +39,10 @@ ml = ll.LLogger()
 
 class ConnectionManager(object):
 
-    def __init__(self, address_groups=None, ops_config=None, protected=None):
+    def __init__(self, address_groups=None, address_aliases=None, ops_config=None, protected=None):
         self.sockpools = weakref.WeakKeyDictionary()  # one sockpool per protected
         self.address_groups = address_groups
+        self.address_aliases = address_aliases
         self.ops_config = ops_config  # NOTE: how to update this?
         self.protected = protected
         self.server_models = ServerModelDirectory()
@@ -54,8 +55,12 @@ class ConnectionManager(object):
         '''
         ctx = context.get_context()
         address_groups = self.address_groups or ctx.address_groups
+        address_aliases = self.address_aliases or ctx.address_aliases
         ops_config = self.ops_config or ctx.ops_config
         #### POTENTIAL ISSUE: OPS CONFIG IS MORE SPECIFIC THAN ADDRESS (owch)
+
+        if name_or_addr in address_aliases:
+            name_or_addr = address_aliases[name_or_addr]
 
         if isinstance(name_or_addr, basestring):  # string means a name
             name = name_or_addr

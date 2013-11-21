@@ -78,6 +78,7 @@ class Context(object):
         self.set_stage_host(stage_host)
         #self.address_book = AddressBook([])
         self.address_groups = {}
+        self.address_aliases = {}
 
         import opscfg
         self.ops_config = opscfg.DefaultConfig()
