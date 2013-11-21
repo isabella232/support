@@ -91,6 +91,8 @@ class ConnectionManager(object):
         raise MultiConnectFailure(errors)
 
     def _connect_to_address(self, name, ssl, sock_config, address):
+        ctx = context.get_context()
+
         if address not in self.server_models:
             self.server_models[address] = ServerModel(address)
         server_model = self.server_models[address]
@@ -145,7 +147,8 @@ class ConnectionManager(object):
 
     def release_connection(self, sock):
         # check the connection for updating of SSL cert (?)
-        self.sockpools[sock._protected].release(sock)
+        #self.sockpools[sock._protected].release(sock)
+        pass
 
 
 # something falsey, and weak-ref-able
@@ -195,8 +198,16 @@ class MonitoredSocket(object):
     '''
     A socket proxy which allows socket lifetime to be monitored.
     '''
+    def __new__(self, sock, registry, protected):
+        if protected:
+            return async.wrap_socket_context(sock, protected.ssl_client_context)
+        return sock
+
     def __init__(self, sock, registry, protected):
-        self._sock = sock
+        if protected:
+            self._msock = async.wrap_socket_context(sock, protected.ssl_client_context)
+        else:
+            self._msock = sock
         self._registry = registry  # TODO: better name for this
         self._spawned = time.time()
         self._protected = protected
@@ -209,20 +220,23 @@ class MonitoredSocket(object):
     def close(self):
         if self in self._registry:
             del self._registry[self]
-        return self._sock.close()
+        return self._msock.close()
 
     def shutdown(self, how):  # not going to bother tracking half-open sockets
         if self in self._registry:  # (unlikely they will ever be used)
             del self._registry[self]
-        return self._sock.shutdown(how)
+        return self._msock.shutdown(how)
 
     def __repr__(self):
-        return "<MonitoredSocket " + repr(self._sock) + ">"
+        return "<MonitoredSocket " + repr(self._msock) + ">"
 
     def __getattr__(self, attr):
-        return getattr(self._sock, attr)
+        return getattr(self._msock, attr)
 
     def __del__(self):
+        #note: this way there is no garbage printed about "KeyError in __del__"
+        #empirically, even with a try/except a warning is printed out
+        #if an exception happens here
         registry = getattr(self, "_registry", None)
         if registry and self in registry:
             del registry[self]

@@ -171,15 +171,22 @@ class Context(object):
             pass
             #self.address_book = AddressBook([addresses])
 
-    
-    def get_mayfly(self, name, namespace):
-        try:
-            ip, port = self.address_book.mayfly_addr(name)
-        except KeyError:
-            raise ValueError('Unknown Mayfly: %r' % name)
 
-        import mayfly
-        return mayfly.Client(ip, port, self.appname, namespace)
+    def get_mayfly(self, name, namespace):
+        name2 = None
+        if name in self.address_groups:
+            name2 = name
+        else:
+            for prefix in ("mayflydirectoryserv", "mayfly"):
+                if not name.startswith(prefix):
+                    name2 = prefix + "-" + name
+                    if name2 in self.address_groups:
+                        break
+        if name2:
+            import mayfly
+            return mayfly.Client(name2, self.appname, namespace)
+        else:
+            raise ValueError('Unknown Mayfly: %r' % name)
 
     '''
     def make_occ(self, name):
