@@ -156,7 +156,11 @@ NULL_PROTECTED = type("NullProtected", (object,), {'__nonzero__': lambda self: F
 
 # TODO: better sources for this?
 TRANSIENT_MARKDOWN_DURATION = 10.0  # seconds
-MAX_CONNECTIONS = 850
+try:
+    import resource
+    MAX_CONNECTIONS = int(0.8 * resource.getrlimit(resource.RLIMIT_NOFILE))
+except:
+    MAX_CONNECTIONS = 800
 # At least, move these to context object for now
 
 
