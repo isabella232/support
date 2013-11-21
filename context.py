@@ -61,8 +61,8 @@ class Context(object):
         #PROTECTED RELATED STUFF
         self.protected = None
 
-        import sockpool
-        self.sockpool = sockpool.SockPool()
+        import connection_mgr
+        self.connection_mgr = connection_mgr.ConnectionManager()
 
         self.user = getpass.getuser()
 
@@ -76,7 +76,12 @@ class Context(object):
         except EnvironmentError:
             self.topos = None
         self.set_stage_host(stage_host)
-        self.address_book = AddressBook([])
+        #self.address_book = AddressBook([])
+        self.address_groups = {}
+
+        import opscfg
+        self.ops_config = opscfg.DefaultConfig()
+        self.opscfg_revmap = opscfg.ReverseMap()
 
         #NETWORK RELATED STUFF
         self.port = None
@@ -151,21 +156,39 @@ class Context(object):
         else:
             addresses = {}
 
+        import connection_mgr
+
+        self.address_groups = dict(
+            [(name, connection_mgr.AddressGroup((((1, address),),)))
+             for name, address in addresses.items()])
+
         if self.config:
-            self.address_book = AddressBook([self.config.addresses, addresses], 
-                                            self.config.aliases)
+            #self.address_book = AddressBook([self.config.addresses, addresses], 
+            #                                self.config.aliases)
+            import opscfg
+            self.ops_config = opscfg.OpsCfg(self.appname)
         else:
-            self.address_book = AddressBook([addresses])
+            pass
+            #self.address_book = AddressBook([addresses])
+
 
     def get_mayfly(self, name, namespace):
-        try:
-            ip, port = self.address_book.mayfly_addr(name)
-        except KeyError:
+        name2 = None
+        if name in self.address_groups:
+            name2 = name
+        else:
+            for prefix in ("mayflydirectoryserv", "mayfly"):
+                if not name.startswith(prefix):
+                    name2 = prefix + "-" + name
+                    if name2 in self.address_groups:
+                        break
+        if name2:
+            import mayfly
+            return mayfly.Client(name2, self.appname, namespace)
+        else:
             raise ValueError('Unknown Mayfly: %r' % name)
 
-        import mayfly
-        return mayfly.Client(ip, port, self.appname, namespace)
-
+    '''
     def make_occ(self, name):
         'make instead of get to indicate this is creating a stateful object'
         try:
@@ -178,6 +201,7 @@ class Context(object):
 
     def get_addr(self, name):
         return self.address_book[name]
+    '''
 
     # TODO: go around and instrument code to call this function
     # on network send/recv
@@ -342,54 +366,6 @@ def _sys_stats_monitor(context):
         tmp.durations['monitoring.duration'].end(start)
         tmp = None
         sleep(interval)
-
-
-
-# A set of *Conf classes representing the configuration of different things.
-Address = namedtuple('Address', 'ip port')
-
-
-class AddressBook(object):
-    '''
-    Responsible for everything to do with finding the ip and port for something
-    at runtime.
-    First, applies aliasing.
-    Then, looks down address_chain for a match to a given key.
-    '''
-    def __init__(self, address_chain, aliases={}):
-        self.address_chain = address_chain
-        self.aliases = aliases
-
-    def __getitem__(self, key):
-        if key in self.aliases:
-            realkey = self.aliases[key]
-        else:
-            realkey = key
-        for addresses in self.address_chain:
-            if realkey in addresses:
-                return addresses[realkey]
-        msg = "No address for %r" % key
-        if realkey != key:
-            msg += " (aliased to %r)" % realkey
-        raise KeyError(msg)
-
-    def mayfly_addr(self, key=None):
-        for prefix in ("mayflydirectoryserv", "mayfly"):
-            key2 = key or prefix
-            if not key2.startswith(prefix):
-                key2 = prefix + '-' + key2
-            try:
-                return self[key2]
-            except KeyError:
-                pass
-        raise KeyError("no address for mayfly " + repr(key))
-
-    def occ_addr(self, key=None):
-        if not key:
-            key = 'occ'
-        if not key.startswith('occ'):
-            key = 'occ-' + key
-        return self[key]
 
 
 CONTEXT = None
