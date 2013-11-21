@@ -80,7 +80,7 @@ class ServerGroup(object):
             post_fork=self._post_fork, child_pre_exit=self.stop, parent_pre_stop=self.stop,
             size=self.num_workers, sleep=async.sleep, fork=gevent.fork)
         if self.daemonize:
-            self.arbiter.spaen_daemon(context.get_context().pid)
+            self.arbiter.spawn_daemon(context.get_context().pid)
         else:
             self.arbiter.run()
 
