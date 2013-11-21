@@ -137,7 +137,7 @@ class ConnectionManager(object):
                     failed += 1
 
             if ssl:
-                async.wrap_socket_context(sock, protected.ssl_client_context)
+                sock = async.wrap_socket_context(sock, protected.ssl_client_context)
 
             sock = MonitoredSocket(sock, server_model.active_connections, protected)
             server_model.sock_in_use(sock)
@@ -147,8 +147,7 @@ class ConnectionManager(object):
 
     def release_connection(self, sock):
         # check the connection for updating of SSL cert (?)
-        #self.sockpools[sock._protected].release(sock)
-        pass
+        self.sockpools[sock._protected].release(sock)
 
 
 # something falsey, and weak-ref-able
@@ -198,16 +197,8 @@ class MonitoredSocket(object):
     '''
     A socket proxy which allows socket lifetime to be monitored.
     '''
-    def __new__(self, sock, registry, protected):
-        if protected:
-            return async.wrap_socket_context(sock, protected.ssl_client_context)
-        return sock
-
     def __init__(self, sock, registry, protected):
-        if protected:
-            self._msock = async.wrap_socket_context(sock, protected.ssl_client_context)
-        else:
-            self._msock = sock
+        self._msock = sock
         self._registry = registry  # TODO: better name for this
         self._spawned = time.time()
         self._protected = protected
