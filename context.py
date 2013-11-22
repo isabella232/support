@@ -53,6 +53,8 @@ class Context(object):
         import cal
         self.cal = cal.DefaultClient()
         self.greenlet_trans_stack = WeakKeyDictionary()
+        self.recent_cal = deque()
+        self.max_recent_cal = 1024
 
         #ASF RELATED STUFF
         from asf import asf_context
