@@ -78,7 +78,9 @@ class Context(object):
         self.set_stage_host(stage_host)
         #self.address_book = AddressBook([])
         self.address_groups = {}
-        self.address_aliases = {}
+        self.service_server_map = topos.ServiceServerMap()
+        self.address_aliases = dict(
+            [(k, v[0]) for k,v in self.service_server_map.items() if len(v) == 1])
 
         import opscfg
         self.ops_config = opscfg.DefaultConfig()

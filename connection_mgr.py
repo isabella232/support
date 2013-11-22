@@ -280,6 +280,9 @@ class AddressGroup(object):
     def __iter__(self):
         return iter(self.connect_ordering())
 
+    def __repr__(self):
+        return "<AddressGroup " + repr(self.tiers) + ">"
+
 
 class MarkedDownError(socket.error): pass
 
