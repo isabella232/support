@@ -284,13 +284,20 @@ class AddressGroup(object):
         return "<AddressGroup " + repr(self.tiers) + ">"
 
 
-class MarkedDownError(socket.error): pass
+class MarkedDownError(socket.error):
+    pass
 
-class OutOfSockets(socket.error): pass
 
-class NameNotFound(socket.error): pass
+class OutOfSockets(socket.error):
+    pass
 
-class MultiConnectFailure(socket.error): pass
+
+class NameNotFound(socket.error):
+    pass
+
+
+class MultiConnectFailure(socket.error):
+    pass
 
 
 def get_topos(name):
