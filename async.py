@@ -346,9 +346,43 @@ except AttributeError:
         pass
 
 
+def _wrap(v):
+    wrapper = lambda self, *a, **kw: v(
+        SSL.Connection if type(self) is type else self._proxy, *a, **kw )
+    functools.update_wrapper(wrapper, v, 
+        set(functools.WRAPPER_ASSIGNMENTS) & set(dir(v)))
+    return wrapper
+
+
+def make_sock_close_wrapper():
+    items = dict(SSL.Connection.__dict__)
+    wrap_items = {}
+    for k, v in items.items():
+        if k in ('__init__', '__module__', '__slots__', '__new__', '__getattribute__'):
+            continue
+        wrap_items[k] = _wrap(v) if callable(v) else v
+    def __init__(self, sock):
+        self._proxy = sock
+    wrap_items['__init__'] = __init__
+    wrap_items['close'] = lambda self, *a, **kw: None
+    #OpenSSL.SSL.Connection itself uses __getattr__ for some things,
+    #so in addition to copying over the dict we also need to pass through
+    wrap_items['__getattr__'] = lambda self, k: getattr(self._proxy, k)
+    return type('SockCloseWrapper', (object,), wrap_items)
+
+#this class is a proxy for an underlying socket (OpenSSL.SSL.Connection in this case)
+#with the exception of close, which it ignores for the purposes of not closing the
+#socket before OpenSSL buffers have been cleared to the underlying socket when
+#gevent.pywsgi calls close()
+SockCloseWrapper = make_sock_close_wrapper()
+
+
 class SSLObject(socket):
 
     def __init__(self, sock, server_side=False):
+        'sock is an instance of OpenSSL.SSL.Connection'
+        if server_side:  # work-around gevent.pywsgi hard-closing the underlying socket
+            sock = SockCloseWrapper(sock)
         socket.__init__(self, _sock=sock)
         self._makefile_refs = 0
         if server_side:
