@@ -124,8 +124,10 @@ class ConnectionManager(object):
             while True:
                 try:
                     ml.ld("CONNECTING...")
-                    sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000)
-                    ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
+                    with context.get_context().cal.trans('CONNECT',
+                                                         str(address[0]) + ":" + str(address[1])):
+                        sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000)
+                        ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
                     break
                 except socket.error:
                     if False:  # TODO: how to tell if this is an unrecoverable error
@@ -134,7 +136,7 @@ class ConnectionManager(object):
                         server_model.last_error = time.time()
                         if sock_config.transient_markdown_enabled:
                             ctx = context.get_context()
-                            ctx.intervals['net.markdowns.' + str(name) + '.' + 
+                            ctx.intervals['net.markdowns.' + str(name) + '.' +
                                           str(address[0]) + ':' + str(address[1])].tick()
                             ctx.intervals['net.markdowns'].tick()
                             ctx.cal.event('ERROR', 'TMARKDOWN', '2', {'name': str(name), 'addr': address})
