@@ -77,13 +77,16 @@ class ConnectionManager(object):
         else:
             sock_config = ops_config.get_endpoint_config()
 
+        if name is None:  # default to a string-ification of ip for the name
+            name = address_list[0][0].replace('.', '-')
+
         errors = []
         num_in_use = sum([len(self.server_models[address].active_connections)
                           for address in address_list])
 
         if num_in_use >= MAX_CONNECTIONS:
             ctx.intervals['net.out_of_sockets'].tick()
-            ctx.intervals['net.out_of_sockets.' + str(name) + '.' + str(num_in_use)].tick()
+            ctx.intervals['net.out_of_sockets.' + str(name)].tick()
             raise OutOfSockets("maximum sockets for {0} already in use: {1}".format(name, num_in_use))
 
         for address in address_list:
