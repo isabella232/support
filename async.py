@@ -350,7 +350,7 @@ def _wrap(v):
     def wrapper(self, *a, **kw):
         try:
             return v(SSL.Connection if type(self) is type else self._proxy,
-                *a, **kw)
+                     *a, **kw)
         except SSL.ZeroReturnError:
             return ''
         except SSL.Error as e:
@@ -358,8 +358,8 @@ def _wrap(v):
             if t not in SSL_EX_MAP:
                 SSL_EX_MAP[t] = type(t.__name__, (__socket__.error, t), {})
             raise SSL_EX_MAP[t](*e.args)
-    functools.update_wrapper(wrapper, v, 
-        set(functools.WRAPPER_ASSIGNMENTS) & set(dir(v)))
+    functools.update_wrapper(wrapper, v,
+                             set(functools.WRAPPER_ASSIGNMENTS) & set(dir(v)))
     return wrapper
 
 
@@ -377,6 +377,16 @@ def make_sock_close_wrapper():
         self._proxy = sock
     wrap_items['__init__'] = __init__
     wrap_items['close'] = lambda self, *a, **kw: None
+<<<<<<< HEAD
+=======
+
+    def recv(self, buflen):
+        try:
+            return self._proxy.recv(buflen)
+        except SSL.ZeroReturnError:
+            return ''
+    wrap_items['recv'] = recv
+>>>>>>> pep8
     #OpenSSL.SSL.Connection itself uses __getattr__ for some things,
     #so in addition to copying over the dict we also need to pass through
     wrap_items['__getattr__'] = lambda self, k: getattr(self._proxy, k)
