@@ -347,11 +347,23 @@ except AttributeError:
 
 
 def _wrap(v):
-    wrapper = lambda self, *a, **kw: v(
-        SSL.Connection if type(self) is type else self._proxy, *a, **kw)
+    def wrapper(self, *a, **kw):
+        try:
+            return v(SSL.Connection if type(self) is type else self._proxy,
+                *a, **kw)
+        except SSL.ZeroReturnError:
+            return ''
+        except SSL.Error as e:
+            t = type(e)  # convert OpenSSL errors to sub-classes of SSL.error
+            if t not in SSL_EX_MAP:
+                SSL_EX_MAP[t] = type(t.__name__, (__socket__.error, t), {})
+            raise SSL_EX_MAP[t](*e.args)
     functools.update_wrapper(wrapper, v, 
         set(functools.WRAPPER_ASSIGNMENTS) & set(dir(v)))
     return wrapper
+
+
+SSL_EX_MAP = {}
 
 
 def make_sock_close_wrapper():
@@ -361,17 +373,10 @@ def make_sock_close_wrapper():
         if k in ('__init__', '__module__', '__slots__', '__new__', '__getattribute__'):
             continue
         wrap_items[k] = _wrap(v) if callable(v) else v
-
     def __init__(self, sock):
         self._proxy = sock
     wrap_items['__init__'] = __init__
     wrap_items['close'] = lambda self, *a, **kw: None
-    def recv(self, buflen):
-        try:
-            return self._proxy.recv(buflen)
-        except SSL.ZeroReturnError:
-            return ''
-    wrap_items['recv'] = recv
     #OpenSSL.SSL.Connection itself uses __getattr__ for some things,
     #so in addition to copying over the dict we also need to pass through
     wrap_items['__getattr__'] = lambda self, k: getattr(self._proxy, k)
