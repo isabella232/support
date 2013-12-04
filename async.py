@@ -365,6 +365,12 @@ def make_sock_close_wrapper():
         self._proxy = sock
     wrap_items['__init__'] = __init__
     wrap_items['close'] = lambda self, *a, **kw: None
+    def recv(self, buflen):
+        try:
+            return self._proxy.recv(buflen)
+        except SSL.ZeroReturnError:
+            return ''
+    wrap_items['recv'] = recv
     #OpenSSL.SSL.Connection itself uses __getattr__ for some things,
     #so in addition to copying over the dict we also need to pass through
     wrap_items['__getattr__'] = lambda self, k: getattr(self._proxy, k)
