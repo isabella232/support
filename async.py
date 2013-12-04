@@ -348,7 +348,7 @@ except AttributeError:
 
 def _wrap(v):
     wrapper = lambda self, *a, **kw: v(
-        SSL.Connection if type(self) is type else self._proxy, *a, **kw )
+        SSL.Connection if type(self) is type else self._proxy, *a, **kw)
     functools.update_wrapper(wrapper, v, 
         set(functools.WRAPPER_ASSIGNMENTS) & set(dir(v)))
     return wrapper
@@ -361,6 +361,7 @@ def make_sock_close_wrapper():
         if k in ('__init__', '__module__', '__slots__', '__new__', '__getattribute__'):
             continue
         wrap_items[k] = _wrap(v) if callable(v) else v
+
     def __init__(self, sock):
         self._proxy = sock
     wrap_items['__init__'] = __init__
