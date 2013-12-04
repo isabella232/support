@@ -135,13 +135,15 @@ class Server(object):
 
 
 class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
-    def __new__(self, command, headers, body=""):
-        return super(self, Frame).__new__(command, headers, body)
+    def __new__(cls, command, headers, body=""):
+        return super(cls, Frame).__new__(cls, command, headers, body)
 
     def serialize(self):
         if self.body and 'content-length' not in self.headers:
             self.headers['content-length'] = len(self.body)
-        return self.command + '\n' + '\n'.join([self.headers]) + '\n\n' + self.body + '\0'
+        return (self.command + '\n' + '\n'.join(
+            ['{0}:{1}'.format(k, v) for k,v in self.headers.items()])
+            + '\n\n' + self.body + '\0')
 
     @classmethod
     def _parse_iter(cls):
@@ -151,14 +153,20 @@ class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
         code from protocol code
         '''
         data = yield
-        if data == '\x0a':
-            return cls('HEARTBEAT', None)
+        # TODO: are hearbeats null delimeted as well?
+        # should this be '\x0a\0' ?
+        if data[0] == '\x0a':
+            yield cls('HEARTBEAT', None), 1
 
+        consumed = 0
         sofar = []
         while '\n' not in data:
+            consumed += len(data)
             sofar.append(data)
-            data = yield None, len(data)
+            data = yield None, consumed
+            consumed = 0
         end, _, data = data.partition('\n')
+        consumed += len(end) + len(_)
         sofar.append(end)
         command = ''.join(sofar)
 
@@ -166,33 +174,42 @@ class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
         sofar = []
         while '\n\n' not in data:
             sofar.append(data)
-            data = yield None, len(data)
+            consumed += len(data)
+            data = yield None, consumed
+            consumed = 0
         sofar.append(data)
         data = ''.join(sofar)
-        nxt_header, _, data = data.partition('\n\n')
-        while nxt_header != '':
-            key, _, value = nxt_header.partition(':')
+        header_str, _, data = data.partition('\n\n')
+        consumed += len(header_str) + len(_)
+        for cur_header in header_str.split('\n'):
+            key, _, value = cur_header.partition(':')
             headers[key] = value
 
         sofar = []
         if 'content-length' in headers:
             bytes_to_go = headers['content-length'] + 1
-            while len(data) < bytes_to_go:
+            while len(data) - consumed < bytes_to_go:
                 sofar.append(data)
+                consumed += len(data)
                 bytes_to_go -= len(data)
-                data = yield None, len(data)
+                data = yield None, consumed
+                consumed = 0
             end_of_body, leftover = data[:bytes_to_go], data[bytes_to_go:]
             if end_of_body[-1] != '\0':
                 raise ValueError('Frame not terminated with null byte.')
+            consumed += len(end_of_body)
             end_of_body = end_of_body[:-1]
         else:
             while '\0' not in data:
                 sofar.append(data)
-                data = yield None, len(data)
+                consumed += len(data)
+                data = yield None, consumed
+                consumed = 0
             end_of_body, _, leftover = data.partition('\0')
+            consumed += len(end_of_body) + len(_)
         sofar.append(end_of_body)
         body = ''.join(sofar)
-        yield Frame(command, headers, body), len(end_of_body) + 1
+        yield Frame(command, headers, body), consumed
         raise StopIteration()
 
     @classmethod
@@ -201,9 +218,11 @@ class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
         parser.next()
         frame, bytes_consumed = parser.send(data)
         if bytes_consumed != len(data):
-            raise ValueError("Excess data passed to stomp.Frame.parse().")
+            raise ValueError("Excess data passed to stomp.Frame.parse(): "
+                             + repr(data[bytes_consumed:])[:100])
         if frame is None:
-            raise ValueError("Incomplete frame passed to stomp.Frame.parse().")
+            raise ValueError("Incomplete frame passed to stomp.Frame.parse():. "
+                             "Consumed {0} bytes.".format(bytes_consumed))
         return frame
 
     @classmethod
