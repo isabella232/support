@@ -76,13 +76,13 @@ class SockPool(object):
             culled = max([(self.sock_idle_times[a], a) for a in addr_socks])[1]
         # handle case of too many sockets total
         elif self.total_sockets >= self.max_sockets:
-            culled = max([(v, k) for k,v in self.sock_idle_times.iteritems()])[1]
+            culled = max([(v, k) for k, v in self.sock_idle_times.iteritems()])[1]
         if culled:
             self.total_sockets -= 1
             self.free_socks_by_addr[culled.getpeername()].remove(culled)
             del self.sock_idle_times[culled]
 
-        
+
     def cull(self):
         #cull sockets which are in a bad state
         culled = []
