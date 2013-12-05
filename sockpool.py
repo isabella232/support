@@ -103,7 +103,10 @@ class SockPool(object):
                     live.append(sock)
             # STEP 2 - CULL READABLE SOCKETS
             if live:  # (if live is [], select.select() would error)
-                readable = set(select.select(live, [], [], 0)[0])
+                try:
+                    readable = set(select.select(live, [], [], 0)[0])
+                except:
+                    readable = []
                 # if a socket is readable that means one of two bad things:
                 # 1- the socket has been closed (and sock.recv() would return '')
                 # 2- the server has sent some data which no client has claimed
