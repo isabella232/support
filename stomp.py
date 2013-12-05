@@ -43,6 +43,8 @@ class Connection(object):
     
     def send(self, destination, body="", extra_headers=None):
         headers = { "destination": destination }
+        if body:
+            headers['content-type'] = 'text/plain'
         if extra_headers:
             headers.update(extra_headers)
         self.send_q.put(Frame("SEND", headers, body))
@@ -129,6 +131,7 @@ class Connection(object):
                 if cur.command == 'HEARTBEAT':
                     # discard
                     pass
+                print "GOT", cur.command, "\n", cur.headers, "\n", cur.body
                 if cur.command == "MESSAGE":
                     if 'ack' in cur.headers:
                         ack = Frame()
