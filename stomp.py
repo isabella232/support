@@ -8,21 +8,27 @@ import collections
 from gevent import socket
 import gevent.queue
 
+import context
+import async
 
-class ClientConn(object):
+class Connection(object):
     '''
-    Represents a client connection.
-    The client must be tied to a connection because it may recieve messages
-    from the server at any time.
+    Represents a STOMP connection.  Note that the distinction between client and server 
+    in STOMP is fuzzy.
+
+    This connection is a "client" in that it may SEND data synchronously to the broker.
+
+    This connection is also a "server" in that it may get MESSAGE, RECEIPT, or ERROR
+    frames from the broker at any time.
     '''
-    def __init__(self, address, on_message=None, on_reciept=None, on_error=None):
+    def __init__(self, address, login="", passcode="",
+            on_message=None, on_reciept=None, on_error=None):
         self.address = address
-        if on_message:
-            self.on_message = on_message
-        if on_reciept:
-            self.on_reciept = on_reciept
-        if on_error:
-            self.on_error = on_error
+        self.login = login
+        self.passcode = passcode
+        self.on_message = on_message
+        self.on_reciept = on_reciept
+        self.on_error = on_error
         self.send_q = gevent.queue.Queue()
         self.sock = None
         self.sock_ready = gevent.event.Event()
@@ -32,15 +38,20 @@ class ClientConn(object):
         self.send_glet = None
         self.recv_glet = None
         self.sock_glet = None
+        self.session = None
+        self.server_info = None
     
-    def send(self):
-        pass
+    def send(self, destination, body="", extra_headers=None):
+        headers = { "destination": destination }
+        if extra_headers:
+            headers.update(extra_headers)
+        self.send_q.put(Frame("SEND", headers, body))
 
     def subscribe(self):
-        pass
+        raise NotImplementedError("IOU subscriptions")
 
     def unsubscribe(self):
-        pass
+        raise NotImplementedError("IOU subscriptions")
 
     def begin(self):
         raise NotImplementedError("STOMP transactions not supported")
@@ -52,24 +63,23 @@ class ClientConn(object):
         raise NotImplementedError("STOMP transactions not supported")
 
     def ack(self):
-        pass
+        raise NotImplementedError("handled implicitly")
 
     def nack(self):
-        pass
+        raise NotImplementedError("handled implicitly")
 
     def disconnect(self, timeout=10):
-        disconnect = Frame()
-        self.send_q.put(disconnect)
-        self.wait("RECIEPT")  # wait for a reciept from server acknowledging disconnect
+        self.send_q.put(Frame("DISCONNECT", {}))
+        self.wait("RECEIPT")  # wait for a reciept from server acknowledging disconnect
 
     def start(self):
-        self.send_glet = gevent.spawn(self._run_send)
-        self.recv_glet = gevent.spaen(self._run_recv)
-        self.sock_glet = gevent.spawn(self._run_socket_fixer)
+        if self.started:
+            raise ValueError("called stomp.Connection.start() twice")
+        self.started = True
         self._reconnect()
-        connect = Frame()  # initial connect frame
-        self.sock.sendall(connect.serialize())
-
+        self.send_glet = gevent.spawn(self._run_send)
+        self.recv_glet = gevent.spawn(self._run_recv)
+        self.sock_glet = gevent.spawn(self._run_socket_fixer)
 
     def stop(self):
         self.stopping = True
@@ -85,8 +95,20 @@ class ClientConn(object):
         pass
 
     def _reconnect(self):
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.connect(self.address)
+        if self.sock:
+            async.killsock(self.sock)
+        self.sock = context.get_context().get_connection(self.address, True)
+        headers = { "login": self.login, "passcode": self.passcode }
+        self.sock.sendall(Frame("CONNECT", headers).serialize())
+        resp = Frame.parse_from_socket(self.sock)
+        if resp.command != "CONNECTED":
+            raise ValueError("Expected CONNECTED frame from server, got: " + repr(resp))
+        self.session = resp.headers['session']
+        self.server_info = resp.headers.get('server')
+        self.sock_broken.clear()
+        # once sock_ready.set() happens, others will resume execution
+        self.sock_ready.set()
+
 
     def _run_send(self):
         while not self.stopping:
@@ -96,6 +118,7 @@ class ClientConn(object):
                 self.send_q.get()
             except socket.error:
                 # wait for socket ready again
+                self.sock_ready.clear()
                 self.sock_broken.set()
                 self.sock_ready.wait()
 
@@ -106,16 +129,18 @@ class ClientConn(object):
                 if cur.command == 'HEARTBEAT':
                     # discard
                     pass
-                if cur.command == 'SEND':
-                    pass
-
                 if cur.command == "MESSAGE":
                     if 'ack' in cur.headers:
                         ack = Frame()
                         self.send_q.put(ack)
+                if cur.command == 'RECEIPT':
+                    pass
+                if cur.command == 'ERROR':
+                    pass
 
             except socket.error:
                 # wait for socket to be ready again
+                self.sock_ready.clear()
                 self.sock_broken.set()
                 self.sock_ready.wait()
 
@@ -124,18 +149,23 @@ class ClientConn(object):
             self.sock_broken.wait()
             try:
                 self._reconnect()
-                self.sock_ready.set()
             except:
                 pass
 
 
-class Server(object):
-    def __init__(self):
-        pass
+CLIENT_CMDS = set(["SEND", "SUBSCRIBE", "UNSUBSCRIBE", "BEGIN", "COMMIT",
+    "ABORT", "ACK", "NACK", "DISCONNECT", "CONNECT", "STOMP"])
+
+SERVER_CMDS = set(["CONNECTED", "MESSAGE", "RECEIPT", "ERROR"])
+
+ALL_CMDS = CLIENT_CMDS | SERVER_CMDS
 
 
 class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
     def __new__(cls, command, headers, body=""):
+        if command not in ALL_CMDS:
+            raise ValueError("invalid STOMP command: " + repr(command) +
+                " (valid commands are " + ", ".join([repr(c) for c in ALL_CMDS]) + ")")
         return super(cls, Frame).__new__(cls, command, headers, body)
 
     def serialize(self):
@@ -152,13 +182,17 @@ class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
         this is intended to allow clean separation of socket
         code from protocol code
         '''
-        data = yield
-        # TODO: are hearbeats null delimeted as well?
-        # should this be '\x0a\0' ?
-        if data[0] == '\x0a':
-            yield cls('HEARTBEAT', None), 1
-
+        data = ""
         consumed = 0
+        # clear between-message newlines
+        while not data:
+            data = yield None, consumed
+            consumed = len(data) - len(data.lstrip('\n'))
+            data = data[consumed:]
+        # check for heartbeat
+        if data[0] == '\x0a':
+            yield cls('HEARTBEAT', None), consumed + 1
+        # parse command
         sofar = []
         while '\n' not in data:
             consumed += len(data)
@@ -169,7 +203,7 @@ class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
         consumed += len(end) + len(_)
         sofar.append(end)
         command = ''.join(sofar)
-
+        # parse headers
         headers = {}
         sofar = []
         while '\n\n' not in data:
@@ -184,7 +218,7 @@ class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
         for cur_header in header_str.split('\n'):
             key, _, value = cur_header.partition(':')
             headers[key] = value
-
+        # parse body
         sofar = []
         if 'content-length' in headers:
             bytes_to_go = headers['content-length'] + 1
