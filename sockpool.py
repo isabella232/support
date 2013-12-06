@@ -106,7 +106,7 @@ class SockPool(object):
                 try:
                     readable = set(select.select(live, [], [], 0)[0])
                 except:
-                    readable = []
+                    readable = live  # this is pessimistic
                 # if a socket is readable that means one of two bad things:
                 # 1- the socket has been closed (and sock.recv() would return '')
                 # 2- the server has sent some data which no client has claimed
