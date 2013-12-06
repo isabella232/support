@@ -39,12 +39,15 @@ class SockPool(object):
 
     def acquire(self, addr):
         #return a free socket, if one is availble; else None
-        self.cull()
+        try:
+            self.cull()
+        except Exception as e:  # never bother caller with cull problems
+            ml.ld("Exception from cull: {0!r}", e)
         socks = self.free_socks_by_addr.get(addr)
         if socks:
             sock = socks.pop()
             del self.sock_idle_times[sock]
-            try:
+            try:  # sock.fileno() will throw if EBADF
                 ml.ld("Acquiring sock {0}/FD {1}", str(id(sock)), str(sock.fileno()))
             except:
                 pass
@@ -54,10 +57,10 @@ class SockPool(object):
     def release(self, sock):
         #this is also a way of "registering" a socket with the pool
         #basically, this says "I'm done with this socket, make it available for anyone else"
-        try:
+        try:  # sock.fileno() will throw if EBADF
             ml.ld("Releasing sock {0} /FD {1}", str(id(sock)), str(sock.fileno()))
         except:
-            pass  # gevent sometimes throws on fileno
+            pass  
         try:
             if select.select([sock], [], [], 0)[0]:
                 self.killsock(sock)
