@@ -88,7 +88,14 @@ class ConnectionManager(object):
         for pool in self.sockpools.values():
             pool.cull()
 
-        errors = []
+        total_num_in_use = sum([len(model.active_connections) 
+                                for model in self.server_models.values()])
+
+        if total_num_in_use >= GLOBAL_MAX_CONNECTIONS:
+            ctx.intervals['net.out_of_sockets'].tick()
+            raise OutOfSockets("maximum global socket limit {0} hit: {1}".format(
+                GLOBAL_MAX_CONNECTIONS, total_num_in_use))
+
         num_in_use = sum([len(self.server_models[address].active_connections)
                           for address in address_list])
 
@@ -97,6 +104,7 @@ class ConnectionManager(object):
             ctx.intervals['net.out_of_sockets.' + str(name)].tick()
             raise OutOfSockets("maximum sockets for {0} already in use: {1}".format(name, num_in_use))
 
+        errors = []
         for address in address_list:
             try:
                 return self._connect_to_address(name, ssl, sock_config, address)
@@ -189,8 +197,10 @@ TRANSIENT_MARKDOWN_DURATION = 10.0  # seconds
 try:
     import resource
     MAX_CONNECTIONS = int(0.8 * resource.getrlimit(resource.RLIMIT_NOFILE))
+    GLOBAL_MAX_CONNECTIONS = MAX_CONNECTIONS
 except:
     MAX_CONNECTIONS = 800
+    GLOBAL_MAX_CONNECTIONS = 800
 # At least, move these to context object for now
 
 
