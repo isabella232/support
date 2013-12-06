@@ -11,6 +11,25 @@ import gevent.queue
 import context
 import async
 
+
+class LARClient(object):
+    def __init__(self):
+        self.conn = Connection("larbroker")
+
+    def send(self, vo, event_name, consumer_name=None):
+        '''
+        Generate a STOMP frame to send to the LAR broker
+        from the given VO and event name.
+
+        (Equivalent to LARProxy in functionality)
+        '''
+        headers = {
+            "event_name": event_name,
+            "correlation_id": async.get_cur_correlation_id()
+        }
+        self.conn.send("/queue/relaydasf_msgs", headers, asf.serdes.vo2compressedbinary(vo))
+
+
 class Connection(object):
     '''
     Represents a STOMP connection.  Note that the distinction between client and server 
@@ -43,8 +62,9 @@ class Connection(object):
     
     def send(self, destination, body="", extra_headers=None):
         headers = { "destination": destination }
-        if body:
-            headers['content-type'] = 'text/plain'
+        # NOTE: STOMP 1.0, no content-type
+        #if body:
+        #    headers['content-type'] = 'text/plain'
         if extra_headers:
             headers.update(extra_headers)
         self.send_q.put(Frame("SEND", headers, body))
@@ -73,6 +93,13 @@ class Connection(object):
     def disconnect(self, timeout=10):
         self.send_q.put(Frame("DISCONNECT", {}))
         self.wait("RECEIPT")  # wait for a reciept from server acknowledging disconnect
+
+    def send_frame(self, frame):
+        '''
+        Send a raw Frame.  Warning -- this may break the STOMP state.
+        As a simple example, a DISCONNECT frame could be sent this way.
+        '''
+        self.send_q.put(frame)
 
     def start(self):
         if self.started:
