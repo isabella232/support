@@ -16,11 +16,14 @@ know what a retry entails.  (e.g. SSL handshake, reset protocol state)
 import socket
 import time
 import select
+import collections
 
 import ll
 ml = ll.LLogger()
 
 
+# TODO: free_socks_by_addr using sets instead of lists could probably improve
+# performance of cull
 class SockPool(object):
     def __init__(self, timeout=0.25, max_sockets=800):
         import async  # breaks circular dependency
@@ -100,13 +103,14 @@ class SockPool(object):
                         pass
                     culled.append(sock)
                 else:
-                    live.append(sock)
+                    try:  # check that the underlying fileno still exists
+                        sock.fileno()
+                        live.append(sock)
+                    except socket.error:
+                        pass  # if no fileno, the socket is dead and no need to close it
             # STEP 2 - CULL READABLE SOCKETS
             if live:  # (if live is [], select.select() would error)
-                try:
-                    readable = set(select.select(live, [], [], 0)[0])
-                except:
-                    readable = live  # this is pessimistic
+                readable = set(select.select(live, [], [], 0)[0])
                 # if a socket is readable that means one of two bad things:
                 # 1- the socket has been closed (and sock.recv() would return '')
                 # 2- the server has sent some data which no client has claimed

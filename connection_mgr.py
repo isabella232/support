@@ -80,6 +80,9 @@ class ConnectionManager(object):
         if name is None:  # default to a string-ification of ip for the name
             name = address_list[0][0].replace('.', '-')
 
+        for pool in self.sockpools.values():
+            pool.cull()
+
         errors = []
         num_in_use = sum([len(self.server_models[address].active_connections)
                           for address in address_list])
