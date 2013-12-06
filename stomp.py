@@ -10,6 +10,7 @@ import gevent.queue
 
 import context
 import async
+import asf.serdes
 
 
 class LARClient(object):
@@ -25,9 +26,9 @@ class LARClient(object):
         '''
         headers = {
             "event_name": event_name,
-            "correlation_id": async.get_cur_correlation_id()
+            "correlation_id": async.get_cur_correlation_id(),
         }
-        self.conn.send("/queue/relaydasf_msgs", headers, asf.serdes.vo2compressedbinary(vo))
+        self.conn.send("/queue/relaydasf_msgs", headers, asf.serdes.vo2compbin(vo))
 
 
 class Connection(object):
@@ -59,9 +60,16 @@ class Connection(object):
         self.sock_glet = None
         self.session = None
         self.server_info = None
+        self.msg_id = 0
+        self.no_receipt = set()  # send ids for which there was no receipt
     
     def send(self, destination, body="", extra_headers=None):
-        headers = { "destination": destination }
+        headers = { 
+            "destination": destination,
+            "receipt": self.msg_id
+        }
+        self.no_receipt.add(self.msg_id)
+        self.msg_id += 1
         # NOTE: STOMP 1.0, no content-type
         #if body:
         #    headers['content-type'] = 'text/plain'
@@ -161,10 +169,11 @@ class Connection(object):
                 print "GOT", cur.command, "\n", cur.headers, "\n", cur.body
                 if cur.command == "MESSAGE":
                     if 'ack' in cur.headers:
-                        ack = Frame()
+                        ack = Frame("ACK", {})
                         self.send_q.put(ack)
                 if cur.command == 'RECEIPT':
-                    pass
+                    if cur.headers.get('receipt-id') in self.no_receipt:
+                        self.no_receipt.remove(cur.headers.get('receipt-id'))
                 if cur.command == 'ERROR':
                     pass
 
