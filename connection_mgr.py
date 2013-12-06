@@ -27,6 +27,7 @@ import weakref
 import random
 
 import gevent.socket
+import gevent
 
 import async
 import context
@@ -46,6 +47,10 @@ class ConnectionManager(object):
         self.ops_config = ops_config  # NOTE: how to update this?
         self.protected = protected
         self.server_models = ServerModelDirectory()
+        # do as I say, not as I do!  we need to use gevent.spawn instead of async.spawn
+        # because at the time the connection manager is constructed, the infra context
+        # is not yet fully initialized
+        self.culler = gevent.spawn(self.cull_loop)
 
     def get_connection(self, name_or_addr, ssl=False):
         '''
@@ -160,8 +165,20 @@ class ConnectionManager(object):
 
     def release_connection(self, sock):
         # check the connection for updating of SSL cert (?)
-        self.sockpools[sock._protected].release(sock)
+        if context.get_context().sockpool_enabled:
+            self.sockpools[sock._protected].release(sock)
+        else:
+            async.killsock(sock)
 
+    def cull_loop(self):
+        while 1:
+            for pool in self.sockpools.values():
+                async.sleep(CULL_INTERVAL)
+                pool.cull()
+            async.sleep(CULL_INTERVAL)
+
+
+CULL_INTERVAL = 1.0
 
 # something falsey, and weak-ref-able
 NULL_PROTECTED = type("NullProtected", (object,), {'__nonzero__': lambda self: False})()
