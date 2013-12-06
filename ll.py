@@ -109,7 +109,7 @@ class LLogger(object):
         """Unconditionally log"""
         global log_msgs
         import gevent  # for getcurrent
-        log_msgs[args[0]] += 1
+        log_msgs[self.caller_mod + "--" + args[0]] += 1
         try:
             msg = apply(args[0].format, tuple(args[1:]))
             print >> the_file,  "%s %s (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
@@ -121,7 +121,7 @@ class LLogger(object):
     def log_debug(self, *args, **kw):
         """Log only with -d"""
         global log_msgs
-        log_msgs[args[0]] += 1
+        log_msgs[self.caller_mod + "--" + args[0]] += 1
         if _log_level >= 1:
             import gevent  # for getcurrent
             try:
@@ -135,7 +135,7 @@ class LLogger(object):
     def log_debug2(self, *args, **kw):
         """Log only with -dd"""
         global log_msgs
-        log_msgs[args[0]] += 1
+        log_msgs[self.caller_mod + "--" + args[0]] += 1
         if _log_level >= 2:
             import gevent  # for getcurrent
             try:
@@ -150,7 +150,7 @@ class LLogger(object):
     def log_debug3(self, *args, **kw):
         """Log only with -ddd"""
         global log_msgs
-        log_msgs[args[0]] += 1
+        log_msgs[self.caller_mod + "--" + args[0]] += 1
         if _log_level >= 3:
             import gevent  # for getcurrent
             try:
@@ -164,7 +164,7 @@ class LLogger(object):
     def log_debug4(self, *args, **kw):
         """Log only with -dddd"""
         global log_msgs
-        log_msgs[args[0]] += 1
+        log_msgs[self.caller_mod + "--" + args[0]] += 1
         if _log_level >= 4:
             import gevent  # for getcurrent
             try:
