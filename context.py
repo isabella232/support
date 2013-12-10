@@ -314,6 +314,9 @@ class Context(object):
             self.profiler.stop()
         self.stopping = True
 
+    def get_connection(self, *a, **kw):
+        return self.connection_mgr.get_connection(*a, **kw)
+
     def __del__(self):
         self.stopping = True
 
