@@ -16,11 +16,14 @@ know what a retry entails.  (e.g. SSL handshake, reset protocol state)
 import socket
 import time
 import select
+import collections
 
 import ll
 ml = ll.LLogger()
 
 
+# TODO: free_socks_by_addr using sets instead of lists could probably improve
+# performance of cull
 class SockPool(object):
     def __init__(self, timeout=0.25, max_sockets=800):
         import async  # breaks circular dependency
@@ -36,12 +39,15 @@ class SockPool(object):
 
     def acquire(self, addr):
         #return a free socket, if one is availble; else None
-        self.cull()
+        try:
+            self.cull()
+        except Exception as e:  # never bother caller with cull problems
+            ml.ld("Exception from cull: {0!r}", e)
         socks = self.free_socks_by_addr.get(addr)
         if socks:
             sock = socks.pop()
             del self.sock_idle_times[sock]
-            try:
+            try:  # sock.fileno() will throw if EBADF
                 ml.ld("Acquiring sock {0}/FD {1}", str(id(sock)), str(sock.fileno()))
             except:
                 pass
@@ -51,10 +57,10 @@ class SockPool(object):
     def release(self, sock):
         #this is also a way of "registering" a socket with the pool
         #basically, this says "I'm done with this socket, make it available for anyone else"
-        try:
+        try:  # sock.fileno() will throw if EBADF
             ml.ld("Releasing sock {0} /FD {1}", str(id(sock)), str(sock.fileno()))
         except:
-            pass  # gevent sometimes throws on fileno
+            pass  
         try:
             if select.select([sock], [], [], 0)[0]:
                 self.killsock(sock)
@@ -76,13 +82,13 @@ class SockPool(object):
             culled = max([(self.sock_idle_times[a], a) for a in addr_socks])[1]
         # handle case of too many sockets total
         elif self.total_sockets >= self.max_sockets:
-            culled = max([(v, k) for k,v in self.sock_idle_times.iteritems()])[1]
+            culled = max([(v, k) for k, v in self.sock_idle_times.iteritems()])[1]
         if culled:
             self.total_sockets -= 1
             self.free_socks_by_addr[culled.getpeername()].remove(culled)
             del self.sock_idle_times[culled]
 
-        
+
     def cull(self):
         #cull sockets which are in a bad state
         culled = []
@@ -100,7 +106,11 @@ class SockPool(object):
                         pass
                     culled.append(sock)
                 else:
-                    live.append(sock)
+                    try:  # check that the underlying fileno still exists
+                        sock.fileno()
+                        live.append(sock)
+                    except socket.error:
+                        pass  # if no fileno, the socket is dead and no need to close it
             # STEP 2 - CULL READABLE SOCKETS
             if live:  # (if live is [], select.select() would error)
                 readable = set(select.select(live, [], [], 0)[0])

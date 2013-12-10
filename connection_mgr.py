@@ -27,6 +27,7 @@ import weakref
 import random
 
 import gevent.socket
+import gevent
 
 import async
 import context
@@ -46,6 +47,10 @@ class ConnectionManager(object):
         self.ops_config = ops_config  # NOTE: how to update this?
         self.protected = protected
         self.server_models = ServerModelDirectory()
+        # do as I say, not as I do!  we need to use gevent.spawn instead of async.spawn
+        # because at the time the connection manager is constructed, the infra context
+        # is not yet fully initialized
+        self.culler = gevent.spawn(self.cull_loop)
 
     def get_connection(self, name_or_addr, ssl=False):
         '''
@@ -77,15 +82,29 @@ class ConnectionManager(object):
         else:
             sock_config = ops_config.get_endpoint_config()
 
-        errors = []
+        if name is None:  # default to a string-ification of ip for the name
+            name = address_list[0][0].replace('.', '-')
+
+        for pool in self.sockpools.values():
+            pool.cull()
+
+        total_num_in_use = sum([len(model.active_connections) 
+                                for model in self.server_models.values()])
+
+        if total_num_in_use >= GLOBAL_MAX_CONNECTIONS:
+            ctx.intervals['net.out_of_sockets'].tick()
+            raise OutOfSockets("maximum global socket limit {0} hit: {1}".format(
+                GLOBAL_MAX_CONNECTIONS, total_num_in_use))
+
         num_in_use = sum([len(self.server_models[address].active_connections)
                           for address in address_list])
 
         if num_in_use >= MAX_CONNECTIONS:
             ctx.intervals['net.out_of_sockets'].tick()
-            ctx.intervals['net.out_of_sockets.' + str(name) + '.' + str(num_in_use)].tick()
+            ctx.intervals['net.out_of_sockets.' + str(name)].tick()
             raise OutOfSockets("maximum sockets for {0} already in use: {1}".format(name, num_in_use))
 
+        errors = []
         for address in address_list:
             try:
                 return self._connect_to_address(name, ssl, sock_config, address)
@@ -124,8 +143,10 @@ class ConnectionManager(object):
             while True:
                 try:
                     ml.ld("CONNECTING...")
-                    sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000)
-                    ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
+                    with context.get_context().cal.trans('CONNECT',
+                                                         str(address[0]) + ":" + str(address[1])):
+                        sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000)
+                        ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
                     break
                 except socket.error:
                     if False:  # TODO: how to tell if this is an unrecoverable error
@@ -134,7 +155,7 @@ class ConnectionManager(object):
                         server_model.last_error = time.time()
                         if sock_config.transient_markdown_enabled:
                             ctx = context.get_context()
-                            ctx.intervals['net.markdowns.' + str(name) + '.' + 
+                            ctx.intervals['net.markdowns.' + str(name) + '.' +
                                           str(address[0]) + ':' + str(address[1])].tick()
                             ctx.intervals['net.markdowns'].tick()
                             ctx.cal.event('ERROR', 'TMARKDOWN', '2', {'name': str(name), 'addr': address})
@@ -152,8 +173,20 @@ class ConnectionManager(object):
 
     def release_connection(self, sock):
         # check the connection for updating of SSL cert (?)
-        self.sockpools[sock._protected].release(sock)
+        if context.get_context().sockpool_enabled:
+            self.sockpools[sock._protected].release(sock)
+        else:
+            async.killsock(sock)
 
+    def cull_loop(self):
+        while 1:
+            for pool in self.sockpools.values():
+                async.sleep(CULL_INTERVAL)
+                pool.cull()
+            async.sleep(CULL_INTERVAL)
+
+
+CULL_INTERVAL = 1.0
 
 # something falsey, and weak-ref-able
 NULL_PROTECTED = type("NullProtected", (object,), {'__nonzero__': lambda self: False})()
@@ -164,8 +197,10 @@ TRANSIENT_MARKDOWN_DURATION = 10.0  # seconds
 try:
     import resource
     MAX_CONNECTIONS = int(0.8 * resource.getrlimit(resource.RLIMIT_NOFILE))
+    GLOBAL_MAX_CONNECTIONS = MAX_CONNECTIONS
 except:
     MAX_CONNECTIONS = 800
+    GLOBAL_MAX_CONNECTIONS = 800
 # At least, move these to context object for now
 
 
@@ -284,13 +319,20 @@ class AddressGroup(object):
         return "<AddressGroup " + repr(self.tiers) + ">"
 
 
-class MarkedDownError(socket.error): pass
+class MarkedDownError(socket.error):
+    pass
 
-class OutOfSockets(socket.error): pass
 
-class NameNotFound(socket.error): pass
+class OutOfSockets(socket.error):
+    pass
 
-class MultiConnectFailure(socket.error): pass
+
+class NameNotFound(socket.error):
+    pass
+
+
+class MultiConnectFailure(socket.error):
+    pass
 
 
 def get_topos(name):

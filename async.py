@@ -333,9 +333,55 @@ except AttributeError:
         pass
 
 
+def _wrap(v):
+    def wrapper(self, *a, **kw):
+        try:
+            return v(SSL.Connection if type(self) is type else self._proxy,
+                     *a, **kw)
+        except SSL.ZeroReturnError:
+            return ''
+        except SSL.Error as e:
+            t = type(e)  # convert OpenSSL errors to sub-classes of SSL.error
+            if t not in SSL_EX_MAP:
+                SSL_EX_MAP[t] = type(t.__name__, (__socket__.error, t), {})
+            raise SSL_EX_MAP[t](*e.args)
+    functools.update_wrapper(wrapper, v,
+                             set(functools.WRAPPER_ASSIGNMENTS) & set(dir(v)))
+    return wrapper
+
+
+SSL_EX_MAP = {}
+
+
+def make_sock_close_wrapper():
+    items = dict(SSL.Connection.__dict__)
+    wrap_items = {}
+    for k, v in items.items():
+        if k in ('__init__', '__module__', '__slots__', '__new__', '__getattribute__'):
+            continue
+        wrap_items[k] = _wrap(v) if callable(v) else v
+    def __init__(self, sock):
+        self._proxy = sock
+    wrap_items['__init__'] = __init__
+    wrap_items['close'] = lambda self, *a, **kw: None
+    #OpenSSL.SSL.Connection itself uses __getattr__ for some things,
+    #so in addition to copying over the dict we also need to pass through
+    wrap_items['__getattr__'] = lambda self, k: getattr(self._proxy, k)
+    return type('SockCloseWrapper', (object,), wrap_items)
+
+#this class is a proxy for an underlying socket (OpenSSL.SSL.Connection in this case)
+#with the exception of close, which it ignores for the purposes of not closing the
+#socket before OpenSSL buffers have been cleared to the underlying socket when
+#gevent.pywsgi calls close()
+SockCloseWrapper = make_sock_close_wrapper()
+
+
 class SSLSocket(socket):
 
     def __init__(self, sock, server_side=False):
+        'sock is an instance of OpenSSL.SSL.Connection'
+        if server_side:  # work-around gevent.pywsgi hard-closing the underlying socket
+            sock = SockCloseWrapper(sock)
         socket.__init__(self, _sock=sock)
         self._makefile_refs = 0
         if server_side:
@@ -355,7 +401,7 @@ class SSLSocket(socket):
 
     def accept(self):
         sock, addr = socket.accept(self)
-        client = SSLObject(sock._sock, server_side=True)
+        client = SSLSocket(sock._sock, server_side=True)
         client.do_handshake()
         return client, addr
 
@@ -437,10 +483,10 @@ class SSLSocket(socket):
             except SSL.ZeroReturnError:
                 ml.ld2("SSL: {{{0}}}/FD {1}:  INDATA: {{}}", id(self), self._sock.fileno())
                 return ''
-            except SSL.SysCallError, ex:
+            except SSL.SysCallError as ex:
                 ml.ld2("SSL: {{{0}}}/FD {1}: Call Exception", id(self), self._sock.fileno())
                 raise sslerror(SysCallError_code_mapping.get(ex.args[0], ex.args[0]), ex.args[1])
-            except SSL.Error, ex:
+            except SSL.Error as ex:
                 ml.ld2("SSL: {{{0}}}/FD {1}: Exception", id(self), self._sock.fileno())
                 raise sslerror(str(ex))
 

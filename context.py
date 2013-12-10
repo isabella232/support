@@ -113,6 +113,7 @@ class Context(object):
         # whether a greenlet REPL should be started when a server is run in dev mode
         self.asf_server = None
         self.cryptoclient_ping_time_secs = 180 
+        self.sockpool_enabled = True
 
         #MONITORING DATA
         self.network_exchanges_stored = 100
@@ -268,21 +269,6 @@ class Context(object):
     @serve_daemon.deleter
     def serve_daemon(self):
         self._serve_daemon = None
-
-    @property
-    def sockpool_enabled(self):
-        import sockpool
-
-        return isinstance(self.sockpool, sockpool.SockPool)
-
-    @sockpool_enabled.setter
-    def sockpool_enabled(self, val):
-        import sockpool
-
-        if val and not isinstance(self.sockpool, sockpool.SockPool):
-            self.sockpool = sockpool.SockPool()
-        elif not val and isinstance(self.sockpool, sockpool.SockPool):
-            self.sockpool = sockpool.NullSockPool()
 
     @property
     def sampling(self):
