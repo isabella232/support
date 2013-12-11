@@ -342,7 +342,7 @@ def _sys_stats_monitor(context):
             pass
         try:
             tmp.stats['queues.cpu_bound.depth'].add(
-                tmp.thread_locals.cpu_bound_thread.task_queue.qsize())
+                len(tmp.thread_locals.cpu_bound_thread.in_q))
         except AttributeError:
             pass
         try:

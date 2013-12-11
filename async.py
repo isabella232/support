@@ -123,15 +123,11 @@ def _make_threadpool_dispatch_decorator(name, size):
             start = started[0]
             duration = curtime() - start
             queued = start - enqueued
-            ctx.stats[name + '.' + f.__name__ + '.queued(ms)'].add(queued * 1000)
-            ctx.stats[name + '.' + f.__name__ + '.duration(ms)'].add(duration * 1000)
-            ctx.stats[name + '.queued(ms)'].add(queued * 1000)
-            ctx.stats[name + '.duration(ms)'].add(duration * 1000)
             if hasattr(ret, '__len__') and callable(ret.__len__):
-                length = ret.__len__()
-                ctx.stats['cpu_bound.' + f.__name__ + '.len'].add(length)
-                if duration:  # may be 0
-                    ctx.stats['cpu_bound.' + f.__name__ + '.rate(B/ms)'].add(length / (duration * 1000.0))
+                ret_size = ret.__len__()
+            else:
+                ret_size = None
+            _queue_stats(name, f.__name__, queued, duration, ret_size)
             return ret
 
         g.no_defer = f
@@ -140,6 +136,10 @@ def _make_threadpool_dispatch_decorator(name, size):
     return dispatch
 
 
+# TODO: build this out to support a pool of threads and fully support
+# the gevent.threadpool.ThreadPool API and upstream back to gEvent
+# so they have a threadpool which is purely event based instead of
+# using polling
 class CPUThread(object):
     '''
     Manages a single worker thread to dispatch cpu intensive tasks to.
@@ -164,6 +164,7 @@ class CPUThread(object):
         self.stopping = False
         self.waiters = {}
         self.results = {}
+        self.timings = {}
         # start things spinning as late as possible
         self.worker.start()
         self.notifier = gevent.spawn(self._notify)
@@ -182,26 +183,38 @@ class CPUThread(object):
                     continue
                 # arbitrary non-preemptive service discipline can go here
                 # FIFO for now, but we should experiment with others
-                jobid, func, args, kwargs = self.in_q.popleft()
+                jobid, func, args, kwargs, enqueued = self.in_q.popleft()
+                started = curtime()
                 try:
                     self.results[jobid] = func(*args, **kwargs)
                 except Exception as e:
                     self.results[jobid] = self._Caught(e)
                 self.out_q.append(jobid)
                 self.out_async.send()
+                # keep track of some statistics
+                queued, duration = started - enqueued, curtime() - started
+                size = None
+                ret = self.results[jobid]
+                if hasattr(ret, '__len__') and callable(ret.__len__):
+                    size = len(ret)
+                _queue_stats('cpu_bound', func.__name__, queued, duration, size)
+
         except:
-            import traceback
-            traceback.print_exc()
+            self._error()
 
     def apply(self, func, args, kwargs):
         jobid = self.jobid
         self.jobid += 1
-        self.in_q.append((jobid, func, args, kwargs))
+        # a bit paranoid, but set up the "done" Event() object
+        # first thing to ensure it is available before the job
+        # begins execution
+        done = gevent.event.Event()
+        self.waiters[jobid] = done
+        self.in_q.append((jobid, func, args, kwargs, curtime()))
+        context.get_context().stats['cpu_bound.depth'].add(1 + len(self.in_q))
         while not self.in_async:
             gevent.sleep(0.01)  # poll until worker thread is working
         self.in_async.send()
-        done = gevent.event.Event()
-        self.waiters[jobid] = done
         done.wait()
         res = self.results[jobid]
         if isinstance(res, self._Caught):
@@ -220,15 +233,34 @@ class CPUThread(object):
                 self.waiters[jobid].set()
                 del self.waiters[jobid]
         except:
-            import traceback
-            traceback.print_exc()
+            self._error()
 
     class _Caught(object):
         def __init__(self, err):
             self.err = err
 
     def __repr__(self):
-        return "<CPUThread in_q:{0} out_q:{1}>".format(len(self.in_q), len(self.out_q))
+        return "<CPUThread@{0} in_q:{1} out_q:{2}>".format(id(self), len(self.in_q), len(self.out_q))
+
+    def _error(self):
+        # TODO: something better, but this is darn useful for debugging
+        import traceback
+        traceback.print_exc()
+        if context.get_context().thread_locals.cpu_bound_thread is self:
+            del context.get_context().thread_locals.cpu_bound_thread      
+
+
+def _queue_stats(qname, fname, queued_ns, duration_ns, size_B=None):
+    ctx = context.get_context()
+    fprefix = qname + '.' + fname
+    ctx.stats[fprefix + '.queued(ms)'].add(queued_ns * 1000)
+    ctx.stats[fprefix + '.duration(ms)'].add(duration_ns * 1000)
+    ctx.stats[qname + '.queued(ms)'].add(queued_ns * 1000)
+    ctx.stats[qname + '.duration(ms)'].add(duration_ns * 1000)
+    if size_B is not None:
+        ctx.stats[fprefix + '.len'].add(size_B)
+        if duration_ns:  # may be 0
+            ctx.stats[fprefix + '.rate(B/ms)'].add(size_B / (duration_ns * 1000.0))
 
 
 def timed_execution(timeout_secs = 120.0, in_timeout_value = None):
@@ -255,7 +287,6 @@ else:
     curtime = time.time
 
 
-cpu_bound = _make_threadpool_dispatch_decorator('cpu_bound', 1)
 io_bound = _make_threadpool_dispatch_decorator('io_bound', 10)  # TODO: make size configurable
 # N.B.  In many cases fcntl could be used as an alternative method of achieving non-blocking file
 # io on unix systems
@@ -266,10 +297,10 @@ def cpu_bound(f):
         ctx = context.get_context()
         if not ctx.cpu_thread_enabled or imp.lock_held():
             return f(*a, **kw)
-        if not hasattr(ctx, 'cpu_thread'):
-            ctx.cpu_thread = CPUThread()
-        print "calling", f.__name__, ctx.cpu_thread
-        return context.get_context().cpu_thread.apply(f, a, kw)
+        if not hasattr(ctx.thread_locals, 'cpu_bound_thread'):
+            ctx.thread_locals.cpu_bound_thread = CPUThread()
+        ml.ld3("Calling in cpu thread {0}", f.__name__)
+        return context.get_context().thread_locals.cpu_bound_thread.apply(f, a, kw)
     g.no_defer = f
     return g
 
@@ -278,11 +309,9 @@ def close_threadpool():
     tlocals = context.get_context().thread_locals
     if hasattr(tlocals, 'cpu_bound_thread'):
         ml.ld2("Closing thread pool {0}", id(tlocals.cpu_thread))
-        cpu_thread = tlocals.cpu_thread
-        cpu_thread.join()
-        cpu_thread.kill()
-        del tlocals.cpu_thread
-    return
+        cpu_thread = tlocals.cpu_bound_thread
+        cpu_thread.stopping = True
+        del tlocals.cpu_bound_thread
 
 
 def _safe_req(req):
