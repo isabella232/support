@@ -156,15 +156,14 @@ class CPUThread(object):
         self.out_q = collections.deque()
         self.in_async = None
         self.out_async = gevent.get_hub().loop.async()
-        self.out_event = gevent.event.Event()
-        self.out_async.start(self.out_event.set)
+        self.out_q_has_data = gevent.event.Event()
+        self.out_async.start(self.out_q_has_data.set)
         self.jobid = 0
         self.worker = threading.Thread(target=self._run)
         self.worker.daemon = True
         self.stopping = False
         self.waiters = {}
         self.results = {}
-        self.timings = {}
         # start things spinning as late as possible
         self.worker.start()
         self.notifier = gevent.spawn(self._notify)
@@ -172,14 +171,14 @@ class CPUThread(object):
     def _run(self):
         try:
             self.in_async = gevent.get_hub().loop.async()
-            self.in_event = gevent.event.Event()
-            self.in_async.start(self.in_event.set)
+            self.in_q_has_data = gevent.event.Event()
+            self.in_async.start(self.in_q_has_data.set)
 
             while not self.stopping:
                 if not self.in_q:
                     # wait for more work
-                    self.in_event.clear()
-                    self.in_event.wait()
+                    self.in_q_has_data.clear()
+                    self.in_q_has_data.wait()
                     continue
                 # arbitrary non-preemptive service discipline can go here
                 # FIFO for now, but we should experiment with others
@@ -226,8 +225,8 @@ class CPUThread(object):
             while not self.stopping:
                 if not self.out_q:
                     # wait for jobs to complete
-                    self.out_event.clear()
-                    self.out_event.wait()
+                    self.out_q_has_data.clear()
+                    self.out_q_has_data.wait()
                     continue
                 jobid = self.out_q.popleft()
                 self.waiters[jobid].set()
