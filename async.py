@@ -5,6 +5,8 @@ import time
 import imp
 import traceback
 import platform
+import threading
+import collections
 
 from asf.asf_context import ASFError
 #TODO: migrate ASFError out of ASF to a more root location
@@ -138,6 +140,97 @@ def _make_threadpool_dispatch_decorator(name, size):
     return dispatch
 
 
+class CPUThread(object):
+    '''
+    Manages a single worker thread to dispatch cpu intensive tasks to.
+
+    Signficantly less overhead than gevent.threadpool.ThreadPool() since it 
+    uses prompt notifications rather than polling.  The trade-off is that only
+    one thread can be managed this way.
+
+    Since there is only one thread, hub.loop.async() objects may be used
+    instead of polling to handle inter-thread communication.
+    '''
+    def __init__(self):
+        self.in_q = collections.deque()
+        self.out_q = collections.deque()
+        self.in_async = None
+        self.out_async = gevent.get_hub().loop.async()
+        self.out_event = gevent.event.Event()
+        self.out_async.start(self.out_event.set)
+        self.jobid = 0
+        self.worker = threading.Thread(target=self._run)
+        self.worker.daemon = True
+        self.stopping = False
+        self.waiters = {}
+        self.results = {}
+        # start things spinning as late as possible
+        self.worker.start()
+        self.notifier = gevent.spawn(self._notify)
+
+    def _run(self):
+        try:
+            self.in_async = gevent.get_hub().loop.async()
+            self.in_event = gevent.event.Event()
+            self.in_async.start(self.in_event.set)
+
+            while not self.stopping:
+                if not self.in_q:
+                    # wait for more work
+                    self.in_event.clear()
+                    self.in_event.wait()
+                    continue
+                # arbitrary non-preemptive service discipline can go here
+                # FIFO for now, but we should experiment with others
+                jobid, func, args, kwargs = self.in_q.popleft()
+                try:
+                    self.results[jobid] = func(*args, **kwargs)
+                except Exception as e:
+                    self.results[jobid] = self._Caught(e)
+                self.out_q.append(jobid)
+                self.out_async.send()
+        except:
+            import traceback
+            traceback.print_exc()
+
+    def apply(self, func, args, kwargs):
+        jobid = self.jobid
+        self.jobid += 1
+        self.in_q.append((jobid, func, args, kwargs))
+        while not self.in_async:
+            gevent.sleep(0.01)  # poll until worker thread is working
+        self.in_async.send()
+        done = gevent.event.Event()
+        self.waiters[jobid] = done
+        done.wait()
+        res = self.results[jobid]
+        if isinstance(res, self._Caught):
+            raise res.err
+        return res
+
+    def _notify(self):
+        try:
+            while not self.stopping:
+                if not self.out_q:
+                    # wait for jobs to complete
+                    self.out_event.clear()
+                    self.out_event.wait()
+                    continue
+                jobid = self.out_q.popleft()
+                self.waiters[jobid].set()
+                del self.waiters[jobid]
+        except:
+            import traceback
+            traceback.print_exc()
+
+    class _Caught(object):
+        def __init__(self, err):
+            self.err = err
+
+    def __repr__(self):
+        return "<CPUThread in_q:{0} out_q:{1}>".format(len(self.in_q), len(self.out_q))
+
+
 def timed_execution(timeout_secs = 120.0, in_timeout_value = None):
     '''
     decorator to mark a function as wanting an unconditional timeout
@@ -153,6 +246,7 @@ def timed_execution(timeout_secs = 120.0, in_timeout_value = None):
         return g
     return decorat
 
+
 if hasattr(time, "perf_counter"):
     curtime = time.perf_counter  # 3.3
 elif platform.system() == "Windows":
@@ -165,6 +259,19 @@ cpu_bound = _make_threadpool_dispatch_decorator('cpu_bound', 1)
 io_bound = _make_threadpool_dispatch_decorator('io_bound', 10)  # TODO: make size configurable
 # N.B.  In many cases fcntl could be used as an alternative method of achieving non-blocking file
 # io on unix systems
+
+def cpu_bound(f):
+    @functools.wraps(f)
+    def g(*a, **kw):
+        ctx = context.get_context()
+        if not ctx.cpu_thread_enabled or imp.lock_held():
+            return f(*a, **kw)
+        if not hasattr(ctx, 'cpu_thread'):
+            ctx.cpu_thread = CPUThread()
+        print "calling", f.__name__, ctx.cpu_thread
+        return context.get_context().cpu_thread.apply(f, a, kw)
+    g.no_defer = f
+    return g
 
 
 def close_threadpool():
