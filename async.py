@@ -216,6 +216,7 @@ class CPUThread(object):
         self.in_async.send()
         done.wait()
         res = self.results[jobid]
+        del self.results[jobid]
         if isinstance(res, self._Caught):
             raise res.err
         return res
