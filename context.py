@@ -150,6 +150,9 @@ class Context(object):
     def set_config(self, config):
         self.config = config
         self._update_addresses()
+        if self.appname:
+            import opscfg
+            self.ops_config = opscfg.OpsCfg(self.appname)
 
     def _update_addresses(self):
         if self.stage_host:
@@ -167,16 +170,6 @@ class Context(object):
         self.address_groups = dict(
             [(name, connection_mgr.AddressGroup((((1, address),),)))
              for name, address in addresses.items()])
-
-        if self.config:
-            #self.address_book = AddressBook([self.config.addresses, addresses], 
-            #                                self.config.aliases)
-            import opscfg
-            self.ops_config = opscfg.OpsCfg(self.appname)
-        else:
-            pass
-            #self.address_book = AddressBook([addresses])
-
 
     def get_mayfly(self, name, namespace):
         name2 = None
