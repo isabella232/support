@@ -246,7 +246,8 @@ class CPUThread(object):
         # TODO: something better, but this is darn useful for debugging
         import traceback
         traceback.print_exc()
-        if context.get_context().thread_locals.cpu_bound_thread is self:
+        if hasattr(context.get_context().thread_locals, 'cpu_bound_thread') and \
+                   context.get_context().thread_locals.cpu_bound_thread is self:
             del context.get_context().thread_locals.cpu_bound_thread      
 
 
