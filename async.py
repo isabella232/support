@@ -185,21 +185,22 @@ class CPUThread(object):
                 jobid, func, args, kwargs, enqueued = self.in_q.popleft()
                 started = curtime()
                 try:
-                    self.results[jobid] = func(*args, **kwargs)
+                    ret = self.results[jobid] = func(*args, **kwargs)
                 except Exception as e:
-                    self.results[jobid] = self._Caught(e)
+                    ret = self.results[jobid] = self._Caught(e)
                 self.out_q.append(jobid)
                 self.out_async.send()
                 # keep track of some statistics
                 queued, duration = started - enqueued, curtime() - started
                 size = None
-                ret = self.results[jobid]
+                # ret s set up above before async send
                 if hasattr(ret, '__len__') and callable(ret.__len__):
                     size = len(ret)
-                _queue_stats('cpu_bound', func.__name__, queued, duration, size)
+                    _queue_stats('cpu_bound', func.__name__, queued, duration, size)
 
         except:
             self._error()
+            # this may always halt the server process
 
     def apply(self, func, args, kwargs):
         jobid = self.jobid
