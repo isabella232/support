@@ -1,5 +1,5 @@
 '''
-Defines a ServerGroup class for running and managing servers, as well as a set of 
+Defines a ServerGroup class for running and managing servers, as well as a set of
 base server types.
 
 The following information is needed to start a server:
@@ -80,7 +80,10 @@ class ServerGroup(object):
             post_fork=self._post_fork, child_pre_exit=self.stop, parent_pre_stop=self.stop,
             size=self.num_workers, sleep=async.sleep, fork=gevent.fork)
         if self.daemonize:
-            self.arbiter.spawn_daemon(pidfile = "{0}.pid".format(context.get_context().appname))
+            ctx = context.get_context()
+            pidfile = os.path.join(ctx.pid_file_path,
+                                   '{0}.pid'.format(ctx.appname))
+            self.arbiter.spawn_daemon(pidfile=pidfile)
         else:
             self.arbiter.run()
 
@@ -319,4 +322,3 @@ class ASFServer(object):
         if self.admin_server:
             self.admin_server.start()
 '''
-

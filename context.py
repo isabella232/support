@@ -41,6 +41,7 @@ class Context(object):
         self.num_workers = None  # used in python as num_children
                                  # read from opscfg as max_connections
         self.pid = None
+        self.pid_file_path = ''
 
         #ASYNC RELATED STUFF
         self.greenlet_ancestors = WeakKeyDictionary()
@@ -112,7 +113,7 @@ class Context(object):
         self.dev_service_repl_enabled = True
         # whether a greenlet REPL should be started when a server is run in dev mode
         self.asf_server = None
-        self.cryptoclient_ping_time_secs = 180 
+        self.cryptoclient_ping_time_secs = 180
         self.sockpool_enabled = True
 
         #MONITORING DATA
