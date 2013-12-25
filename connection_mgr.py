@@ -158,7 +158,7 @@ class ConnectionManager(object):
                             ctx.intervals['net.markdowns.' + str(name) + '.' +
                                           str(address[0]) + ':' + str(address[1])].tick()
                             ctx.intervals['net.markdowns'].tick()
-                            ctx.cal.event('ERROR', 'TMARKDOWN', '2', {'name': str(name), 'addr': address})
+                            ctx.cal.event('ERROR', 'TMARKDOWN', '2', 'name=' + str(name) + '&addr=' + str(address))
                         raise
                     failed += 1
 
