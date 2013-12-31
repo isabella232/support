@@ -72,10 +72,30 @@ class Context(object):
         self._dev = dev
         self._debug_errors = False
 
+        #NETWORK RELATED STUFF
+        self.port = None
+        self.admin_port = None
+        self.ip = "127.0.0.1"
+        try:
+            self.ip = socket.gethostbyname(socket.gethostname())
+        except socket.error:
+            try:
+                self.ip = get_ip_from_hosts()
+            except:
+                for hostname, port in [("github.paypal.com", 80)]:
+                    try:  # TODO: more hostname / ports to connect to
+                        addr = socket.gethostbyname(hostname), port
+                        conn = socket.create_connection(addr)
+                        self.ip = conn.getsockname()[0]
+                        conn.close()
+                        break
+                    except socket.error:
+                        pass
+
         #TOPO RELATED STUFF
         self.stage_address_map = topos.StageAddressMap()
         try:
-            self.topos = topos.TopoFile()
+            self.topos = topos.TopoFile(ip=self.ip)
         except EnvironmentError:
             self.topos = None
         self.set_stage_host(stage_host)
@@ -89,22 +109,6 @@ class Context(object):
         self.ops_config = opscfg.DefaultConfig()
         self.opscfg_revmap = opscfg.ReverseMap()
 
-        #NETWORK RELATED STUFF
-        self.port = None
-        self.admin_port = None
-        self.ip = "127.0.0.1"
-        try:
-            self.ip = socket.gethostbyname(socket.gethostname())
-        except socket.error:
-            for hostname, port in [("github.paypal.com", 80)]:
-                try:  # TODO: more hostname / ports to connect to
-                    addr = socket.gethostbyname(hostname), port
-                    conn = socket.create_connection(addr)
-                    self.ip = conn.getsockname()[0]
-                    conn.close()
-                    break
-                except socket.error:
-                    pass
         self._serve_ufork = None
         self._serve_daemon = None
         self._wsgi_middleware = None
@@ -354,6 +358,20 @@ def _sys_stats_monitor(context):
         tmp.durations['monitoring.duration'].end(start)
         tmp = None
         sleep(interval)
+
+
+def get_ip_from_hosts():
+    '''
+    get the current ip from the hosts file, without doing any DNS;
+    available as a fallback
+    '''
+    import platform
+    hostname = platform.node()
+    with open('/etc/hosts') as hosts:
+        for line in hosts:
+            if hostname in line:
+                return line.split()[0]
+
 
 
 CONTEXT = None
