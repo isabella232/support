@@ -158,13 +158,11 @@ class CPUThread(object):
         self.out_async = gevent.get_hub().loop.async()
         self.out_q_has_data = gevent.event.Event()
         self.out_async.start(self.out_q_has_data.set)
-        self.jobid = 0
         self.worker = threading.Thread(target=self._run)
         self.worker.daemon = True
         self.stopping = False
-        self.waiters = {}
         self.results = {}
-        # start things spinning as late as possible
+        # start running thread / greenlet after everything else is set up
         self.worker.start()
         self.notifier = gevent.spawn(self._notify)
 
@@ -173,7 +171,6 @@ class CPUThread(object):
             self.in_async = gevent.get_hub().loop.async()
             self.in_q_has_data = gevent.event.Event()
             self.in_async.start(self.in_q_has_data.set)
-
             while not self.stopping:
                 if not self.in_q:
                     # wait for more work
@@ -197,27 +194,20 @@ class CPUThread(object):
                 if hasattr(ret, '__len__') and callable(ret.__len__):
                     size = len(ret)
                     _queue_stats('cpu_bound', func.__name__, queued, duration, size)
-
         except:
             self._error()
             # this may always halt the server process
 
     def apply(self, func, args, kwargs):
-        jobid = self.jobid
-        self.jobid += 1
-        # a bit paranoid, but set up the "done" Event() object
-        # first thing to ensure it is available before the job
-        # begins execution
         done = gevent.event.Event()
-        self.waiters[jobid] = done
-        self.in_q.append((jobid, func, args, kwargs, curtime()))
+        self.in_q.append((done, func, args, kwargs, curtime()))
         context.get_context().stats['cpu_bound.depth'].add(1 + len(self.in_q))
         while not self.in_async:
-            gevent.sleep(0.01)  # poll until worker thread is working
+            gevent.sleep(0.01)  # poll until worker thread has finished initializing
         self.in_async.send()
         done.wait()
-        res = self.results[jobid]
-        del self.results[jobid]
+        res = self.results[done]
+        del self.results[done]
         if isinstance(res, self._Caught):
             raise res.err
         return res
@@ -230,9 +220,7 @@ class CPUThread(object):
                     self.out_q_has_data.clear()
                     self.out_q_has_data.wait()
                     continue
-                jobid = self.out_q.popleft()
-                self.waiters[jobid].set()
-                del self.waiters[jobid]
+                self.out_q.popleft().set()
         except:
             self._error()
 
