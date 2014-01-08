@@ -1,5 +1,9 @@
 '''
 A simple, plain HTTP client which mixes httplib with gevent and PayPal protecteds.
+
+API is currently a single function:
+
+http_client.request("get", "http://example.com/foo")
 '''
 import httplib
 from urlparse import urlparse, urlunparse
@@ -11,7 +15,13 @@ from gevent import socket
 import OpenSSL.SSL
 
 
-class GHTTPConnection(httplib.HTTPConnection):
+# TODO: make and use a better HTTP library instead of wrapping httplib.
+# hopefully this is at least a pretty stable abstraction that can migrate over
+# ... if nothing else, much better than shrugging our shoulders when someone
+# asks how to make an http request
+
+
+class _GHTTPConnection(httplib.HTTPConnection):
     def __init__(self, host, port=None, protected=None, strict=None,
                  timeout=socket._GLOBAL_DEFAULT_TIMEOUT):
         httplib.HTTPConnection.__init__(self, host, port, strict, timeout)
@@ -45,7 +55,7 @@ def request(method, url, body=None, headers={},
 
     protected = (parsed.scheme == 'https') and (True if use_protected else "PLAIN_SSL")
 
-    conn = GHTTPConnection(domain, port, protected=protected)
+    conn = _GHTTPConnection(domain, port, protected=protected)
 
     selector = urlunparse(parsed._replace(scheme='', netloc=''))
 
@@ -68,5 +78,30 @@ def request(method, url, body=None, headers={},
 
     if body is not None:
         conn.send(body)
-    return conn.getresponse()
+    raw = conn.getresponse()
+    return Response(
+        Request(method, url, headers, body),
+        raw.status, raw.getheaders(), raw.read())
 
+
+class Request(object):
+    def __init__(self, method, url, headers, body):
+        self.method = method
+        self.url = url
+        self.headers = headers
+        self.body = body
+
+    def __repr__(self):
+        return "<http_client.Request {0} {1}>".format(self.method, self.url)
+
+
+class Response(object):
+    def __init__(self, request, status, headers, body):
+        self.request = request
+        self.status = status
+        self.headers = headers
+        self.body = body
+
+    def __repr__(self):
+        return "<http_client.Response ({0}) {1} {2}>".format(
+            self.status, self.request.method, self.request.url)
