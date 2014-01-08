@@ -27,6 +27,7 @@ import weakref
 import random
 
 import gevent.socket
+import gevent.ssl
 import gevent
 
 import async
@@ -126,6 +127,8 @@ class ConnectionManager(object):
                 protected = self.protected or ctx.protected
             elif isinstance(ssl, Protected):
                 protected = ssl
+            elif ssl == PLAIN_SSL:
+                protected = PLAIN_SSL_PROTECTED
         else:
             protected = NULL_PROTECTED  # something falsey and weak-refable
 
@@ -163,7 +166,10 @@ class ConnectionManager(object):
                     failed += 1
 
             if ssl:
-                sock = async.wrap_socket_context(sock, protected.ssl_client_context)
+                if ssl == PLAIN_SSL:
+                    sock = gevent.ssl.wrap_socket(sock)
+                else:
+                    sock = async.wrap_socket_context(sock, protected.ssl_client_context)
 
             sock = MonitoredSocket(sock, server_model.active_connections, protected)
             server_model.sock_in_use(sock)
@@ -190,7 +196,9 @@ CULL_INTERVAL = 1.0
 
 # something falsey, and weak-ref-able
 NULL_PROTECTED = type("NullProtected", (object,), {'__nonzero__': lambda self: False})()
-
+# a marker for doing plain ssl with no protected
+PLAIN_SSL = "PLAIN_SSL"
+PLAIN_SSL_PROTECTED = type("PlainSslProtected", (object,), {})()
 
 # TODO: better sources for this?
 TRANSIENT_MARKDOWN_DURATION = 10.0  # seconds
