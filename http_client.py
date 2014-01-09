@@ -7,6 +7,7 @@ http_client.request("get", "http://example.com/foo")
 '''
 import httplib
 from urlparse import urlparse, urlunparse
+import functools
 
 import async
 import context
@@ -44,6 +45,9 @@ class _GHTTPConnection(httplib.HTTPConnection):
 
 def request(method, url, body=None, headers={},
             literal=False, use_protected=False):
+    if method not in _HTTP_METHODS:
+        raise ValueError("invalid http method {0}".format(method))
+
     parsed = urlparse(url)
     if parsed.scheme not in ('http', 'https'):
         raise ValueError('unknown protocol %s' % parsed.scheme)
@@ -105,3 +109,16 @@ class Response(object):
     def __repr__(self):
         return "<http_client.Response ({0}) {1} {2}>".format(
             self.status, self.request.method, self.request.url)
+
+
+#http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
+_HTTP_METHODS = ('GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'TRACE', 'OPTION',
+                 'CONNECT', 'PATCH')
+
+
+def _init_methods():
+    g = globals()
+    for m in _HTTP_METHODS:
+        g[m.lower()] = functools.partial(request, m)
+
+_init_methods()
