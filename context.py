@@ -7,6 +7,8 @@ import weakref
 from threading import local
 from collections import namedtuple, defaultdict, deque
 import socket
+import os.path
+
 import faststat
 
 import ll
@@ -93,7 +95,6 @@ class Context(object):
                         pass
 
         #TOPO RELATED STUFF
-        self.stage_address_map = topos.StageAddressMap()
         try:
             self.topos = topos.TopoFile(ip=self.ip)
         except EnvironmentError:
@@ -161,11 +162,11 @@ class Context(object):
 
     def _update_addresses(self):
         if self.stage_host:
-            addresses = self.stage_address_map.get_host_map(self.stage_ip)
-            addresses = dict([(k, (self.stage_ip, v))
-                              for k, v in addresses.items()])
-            addresses.update(CAL_DEV_ADDRESSES)
-        elif self.topos:
+            import topos
+            self.topos = topos.TopoFile(
+                os.path.expanduser('~/.pyinfra/topo/STAGE2.default.topo'), 
+                ip=self.stage_ip)
+        if self.topos:
             addresses = self.topos.get(self.appname) or {}
         else:
             addresses = {}
