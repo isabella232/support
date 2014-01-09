@@ -176,6 +176,16 @@ class Context(object):
         self.address_groups = dict(
             [(name, connection_mgr.AddressGroup((((1, address),),)))
              for name, address in addresses.items()])
+        # combine _r1, _r2, _r3... read backups into a single AddressGroup
+        read_backups = defaultdict(list)
+        for i in range(10):
+            suffix = "_r" + str(i)
+            for name, address in addresses.items():
+                if name.endswith(suffix):
+                    read_backups[name[:-3]].append( ((1, address),) )
+        for key, value in read_backups.items():
+            self.address_groups[key] = connection_mgr.AddressGroup(value)
+
 
     def get_mayfly(self, name, namespace):
         name2 = None
