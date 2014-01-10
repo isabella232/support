@@ -148,7 +148,7 @@ class ConnectionManager(object):
                     ml.ld("CONNECTING...")
                     with context.get_context().cal.trans('CONNECT',
                                                          str(address[0]) + ":" + str(address[1])):
-                        sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000)
+                        sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000.0)
                         ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
                     break
                 except socket.error:
@@ -174,7 +174,7 @@ class ConnectionManager(object):
             sock = MonitoredSocket(sock, server_model.active_connections, protected)
             server_model.sock_in_use(sock)
 
-        sock.settimeout(sock_config.response_timeout_ms / 1000)
+        sock.settimeout(sock_config.response_timeout_ms / 1000.0)
         return sock
 
     def release_connection(self, sock):
