@@ -22,6 +22,7 @@ import gevent.socket
 import async
 from protected import Protected
 import context
+import threading
 
 
 class ServerGroup(object):
@@ -89,8 +90,12 @@ class ServerGroup(object):
 
     def _post_fork(self):
         # TODO: revisit this with newer gevent release
-        gevent.hub.get_hub().loop.reinit()  # threadpools need to be restarted
-        gevent.sleep(0)  # let reinit() scheduled greenlets run
+        hub = gevent.hub.get_hub()
+        hub.loop.reinit()  # reinitializes libev
+        hub._threadpool = None  # eliminate gevent's internal threadpools
+        gevent.sleep(0)  # let greenlets run
+        # finally, eliminate our threadpools
+        context.get_context().thread_locals = threading.local()
         if self.post_fork:
             self.post_fork()
         self.start()
