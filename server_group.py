@@ -92,7 +92,7 @@ class ServerGroup(object):
         gevent.hub.get_hub().loop.reinit()  # threadpools need to be restarted
         gevent.sleep(0)  # let reinit() scheduled greenlets run
         if self.post_fork:
-            self.port_fork()
+            self.post_fork()
         self.start()
 
     def _stop_start(self, start):  # just a bit of DRY
