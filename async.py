@@ -531,17 +531,23 @@ class SSLSocket(socket):
         client.do_handshake()
         return client, addr
 
-    def do_handshake(self):
+    def do_handshake(self, timeout=timeout_default):
+        if timeout is timeout_default:
+            timeout = self.timeout
+        # TODO: how to handle if timeout is 0.0, e.g. somebody
+        # wants to use this thing in a select() loop?
+        # don't worry about for now, because you'd have to be crazy
+        # to put a select loop when there are all these excellent greenlets available
         while True:
             try:
                 self._sock.do_handshake()
                 break
             except SSL.WantReadError:
                 sys.exc_clear()
-                wait_read(self.fileno())
+                wait_read(self.fileno(), timeout=timeout)
             except SSL.WantWriteError:
                 sys.exc_clear()
-                wait_write(self.fileno())
+                wait_write(self.fileno(), timeout=timeout)
             except SSL.SysCallError, ex:
                 raise sslerror(SysCallError_code_mapping.get(ex.args[0], ex.args[0]), ex.args[1])
             except SSL.Error, ex:
