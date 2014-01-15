@@ -52,9 +52,11 @@ class ServerGroup(object):
                         sslcontext = getattr(protected, 'ssl_dev_server_context')
                     else:
                         sslcontext = getattr(protected, 'ssl_server_context')
-                    server = MultiProtocolWSGIServer(sock, app, context=sslcontext)
+                    server = MultiProtocolWSGIServer(
+                        sock, app, spawn=10000, context=sslcontext)
                 else:
-                    server = SslContextWSGIServer(sock, app, context=protected.ssl_server_context)
+                    server = SslContextWSGIServer(
+                        sock, app, spawn=10000, context=protected.ssl_server_context)
             else:
                 server = WSGIServer(sock, app)
             server.log = self.server_log or RotatingGeventLog()
@@ -100,24 +102,18 @@ class ServerGroup(object):
             self.post_fork()
         self.start()
 
-    def _stop_start(self, start):  # just a bit of DRY
+    def start(self):
         errs = {}
         for server in self.servers:
             try:
-                if start:
-                    server.start()
-                else:
-                    server.stop()
+                server.start()
             except Exception as e:
                 errs[server] = e
         if errs:
             raise RuntimeError(errs)
 
-    def start(self):
-        self._stop_start(True)
-
-    def stop(self):
-        self._stop_start(False)
+    def stop(self, timeout=30.0):
+        async.join([async.spawn(server.stop, timeout) for server in self.servers], raise_exc=True)
 
 
 def _make_server_sock(address):
