@@ -240,6 +240,10 @@ class Context(object):
             return 8888
         return None
 
+    @port.setter
+    def port(self, val):
+        self._port = val
+
     @property
     def dev(self):
         return self._dev
