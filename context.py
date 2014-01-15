@@ -78,8 +78,9 @@ class Context(object):
         self.port = None
         self.admin_port = None
         self.ip = "127.0.0.1"
+        self.hostname = socket.gethostname()
         try:
-            self.ip = socket.gethostbyname(socket.gethostname())
+            self.ip = socket.gethostbyname(self.hostname)
         except socket.error:
             try:
                 self.ip = get_ip_from_hosts()
