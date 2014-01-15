@@ -38,6 +38,7 @@ def spawn(*a, **kw):
 
 
 sleep = gevent.sleep  # alias gevent.sleep here so user doesn't have to know/worry about gevent
+Timeout = gevent.Timeout  # alias Timeout here as well since this is a darn useful class
 
 
 def _exception_catcher(f, *a, **kw):
