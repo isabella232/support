@@ -740,5 +740,5 @@ def run_repl(local=None, banner="infra REPL"):
     code.interact(banner, _green_raw_input, local=local or {})
 
 
-def start_repl(local=None, banner="infra REPL"):
+def start_repl(local=None, banner="infra REPL (exit with Ctrl+C)"):
     gevent.spawn(run_repl, local, banner)
