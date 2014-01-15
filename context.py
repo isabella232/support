@@ -227,6 +227,16 @@ class Context(object):
             q.pop()
 
     @property
+    def port(self):
+        if self._port is not None:
+            return self._port
+        return self.topos.get(self.appname)['bind_port']
+
+    @port.setter
+    def port(self, val):
+        self._port = val
+
+    @property
     def dev(self):
         return self._dev
 
