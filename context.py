@@ -187,7 +187,6 @@ class Context(object):
         for key, value in read_backups.items():
             self.address_groups[key] = connection_mgr.AddressGroup(value)
 
-
     def get_mayfly(self, name, namespace):
         name2 = None
         if name in self.address_groups:
@@ -204,20 +203,8 @@ class Context(object):
         else:
             raise ValueError('Unknown Mayfly: %r' % name)
 
-    '''
-    def make_occ(self, name):
-        'make instead of get to indicate this is creating a stateful object'
-        try:
-            ip, port = self.address_book.occ_addr(name)
-        except KeyError:
-            raise ValueError('Unknown OCC: %r' % name)
-
-        import occ
-        return occ.Connection(ip, port, self.protected)
-
-    def get_addr(self, name):
-        return self.address_book[name]
-    '''
+    def get_warnings(self):
+        return _find_warnings(self)
 
     # TODO: go around and instrument code to call this function
     # on network send/recv
@@ -402,6 +389,46 @@ def get_ip_from_hosts():
             if hostname in line:
                 return line.split()[0]
 
+
+def _find_warnings(root, max_depth=6, _cur_depth=1, _sofar=None):
+    '''
+    recursively walk attributes and items to find all warnings attributes
+    '''
+    if _sofar is None:
+        _sofar = {}
+    warnings = {}
+
+    if id(root) in _sofar:
+        return _sofar[id(root)]
+
+    children = {}
+    try:
+        if hasattr(root, "__dict__"):
+            children.update(root.__dict__)
+    except:
+        pass
+        #import traceback; traceback.print_exc()
+    try:
+        if hasattr(root, "items") and callable(root.items):
+            children.update(root)
+    except:
+        pass
+        #import traceback; traceback.print_exc()
+
+    if _cur_depth <= max_depth:
+        for key, val in children.items():
+            sub_warnings = _find_warnings(val, max_depth, _cur_depth + 1, _sofar)
+            if sub_warnings:
+                warnings[key] = sub_warnings
+
+    if hasattr(root, "warnings") and root.warnings:
+        warnings['warnings'] = root.warnings
+
+    if hasattr(root, "errors") and root.errors:
+        warnings['errors'] = root.errors
+
+    _sofar[id(root)] = warnings
+    return warnings
 
 
 CONTEXT = None
