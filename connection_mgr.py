@@ -327,6 +327,44 @@ class AddressGroup(object):
         return "<AddressGroup " + repr(self.tiers) + ">"
 
 
+class AddressGroupMap(dict):
+    '''
+    For dev mode, will lazily pull in additional addresses.
+    '''
+    def __missing__(self, key):
+        ctx = context.get_context()
+        if ctx.stage_ip and ctx.topos:
+            newkey = None
+            for k in (key, key + "_r1", key + "_ca", key + "_r1_ca"):
+                if k in ctx.topos.apps:
+                    newkey = k
+                    break
+            if newkey is not None:
+                # TODO: maybe do r1 / r2 fallback; however, given this is stage only
+                #  that use case is pretty slim
+                ports = [int(ctx.topos.get_port(newkey))]
+                val = AddressGroup( ([(1, (ctx.stage_ip, p)) for p in ports],) )
+                self.__dict__.setdefault("warnings", {}).setdefault("inferred_addresses", [])
+                self.warnings["inferred_addresses"].append((key, val))
+                self[key] = val
+                if key != newkey:
+                    self.warnings["inferred_addresses"].append((newkey, val))
+                self[newkey] = val
+                return val
+        self.__dict__.setdefault("errors", {}).setdefault("unknown_addresses", set())
+        self.errors["unknown_addresses"].add(key)
+        ctx.intervals["error.address.missing." + repr(key)].tick()
+        ctx.intervals["error.address.missing"].tick()
+        raise KeyError("unknown address requested " + repr(key))
+
+_ADDRESS_SUFFIXES = ["_r" + str(i) for i in range(10)]
+_ADDRESS_SUFFIXES = ("_ca",) + tuple(["_r" + str(i) for i in range(10)])
+
+
+
+
+
+
 class MarkedDownError(socket.error):
     pass
 

@@ -174,7 +174,7 @@ class Context(object):
 
         import connection_mgr
 
-        self.address_groups = dict(
+        self.address_groups = connection_mgr.AddressGroupMap(
             [(name, connection_mgr.AddressGroup((((1, address),),)))
              for name, address in addresses.items()])
         # combine _r1, _r2, _r3... read backups into a single AddressGroup
