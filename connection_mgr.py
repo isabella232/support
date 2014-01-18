@@ -361,10 +361,6 @@ _ADDRESS_SUFFIXES = ["_r" + str(i) for i in range(10)]
 _ADDRESS_SUFFIXES = ("_ca",) + tuple(["_r" + str(i) for i in range(10)])
 
 
-
-
-
-
 class MarkedDownError(socket.error):
     pass
 
