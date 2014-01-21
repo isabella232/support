@@ -8,6 +8,7 @@ from threading import local
 from collections import namedtuple, defaultdict, deque
 import socket
 import os.path
+import time
 
 import faststat
 
@@ -206,11 +207,11 @@ class Context(object):
     def get_warnings(self):
         return _find_warnings(self)
 
-    # TODO: go around and instrument code to call this function
-    # on network send/recv
+    # empirically tested to take ~ 2 microseconds;
+    # keep an eye to make sure this can't blow up
     def store_network_data(self, name, direction, data):
         q = self.stored_network_data[name]
-        q.appendleft((direction, summarize(data, 4096)))
+        q.appendleft((direction, time.time(), summarize(data, 4096)))
         while len(q) > self.network_exchanges_stored:
             q.pop()
 

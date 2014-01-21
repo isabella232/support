@@ -171,7 +171,7 @@ class ConnectionManager(object):
                 else:
                     sock = async.wrap_socket_context(sock, protected.ssl_client_context)
 
-            sock = MonitoredSocket(sock, server_model.active_connections, protected)
+            sock = MonitoredSocket(sock, server_model.active_connections, protected, name)
             server_model.sock_in_use(sock)
 
         sock.settimeout(sock_config.response_timeout_ms / 1000.0)
@@ -249,16 +249,30 @@ class MonitoredSocket(object):
     '''
     A socket proxy which allows socket lifetime to be monitored.
     '''
-    def __init__(self, sock, registry, protected):
+    def __init__(self, sock, registry, protected, name=None):
         self._msock = sock
         self._registry = registry  # TODO: better name for this
         self._spawned = time.time()
         self._protected = protected
         # alias some functions through for improved performance
         #  (__getattr__ is pretty slow compared to normal attribute access)
-        self.send = sock.send
-        self.recv = sock.recv
+        #self.send = sock.send
+        #self.recv = sock.recv
         self.sendall = sock.sendall
+        self.name = name
+
+    def send(self, data, flags=0):
+        ret = self._msock.send(data, flags)
+        context.get_context().store_network_data(
+            (self.name, self._msock.getpeername()), 
+            "send", data)
+
+    def recv(self, bufsize, flags=0):
+        data = self._msock.recv(bufsize, flags)
+        context.get_context().store_network_data(
+            (self.name, self._msock.getpeername()),
+            "recv", data)
+        return data
 
     def close(self):
         if self in self._registry:
