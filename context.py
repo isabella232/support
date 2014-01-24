@@ -80,6 +80,7 @@ class Context(object):
         self.admin_port = None
         self.ip = "127.0.0.1"
         self.hostname = socket.gethostname()
+        self.fqdn = socket.getfqdn()
         try:
             self.ip = socket.gethostbyname(self.hostname)
         except socket.error:
@@ -166,7 +167,7 @@ class Context(object):
         if self.stage_host:
             import topos
             self.topos = topos.TopoFile(
-                os.path.expanduser('~/.pyinfra/topo/STAGE2.default.topo'), 
+                os.path.expanduser('~/.pyinfra/topo/STAGE2.default.topo'),
                 ip=self.stage_ip)
         if self.topos:
             addresses = self.topos.get(self.appname) or {}
