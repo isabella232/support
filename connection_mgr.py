@@ -148,7 +148,7 @@ class ConnectionManager(object):
                     ml.ld("CONNECTING...")
                     with context.get_context().cal.trans('CONNECT',
                                                          str(address[0]) + ":" + str(address[1])):
-                        sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000)
+                        sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000.0)
                         ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
                     break
                 except socket.error:
@@ -171,10 +171,10 @@ class ConnectionManager(object):
                 else:
                     sock = async.wrap_socket_context(sock, protected.ssl_client_context)
 
-            sock = MonitoredSocket(sock, server_model.active_connections, protected)
+            sock = MonitoredSocket(sock, server_model.active_connections, protected, name)
             server_model.sock_in_use(sock)
 
-        sock.settimeout(sock_config.response_timeout_ms / 1000)
+        sock.settimeout(sock_config.response_timeout_ms / 1000.0)
         return sock
 
     def release_connection(self, sock):
@@ -249,16 +249,30 @@ class MonitoredSocket(object):
     '''
     A socket proxy which allows socket lifetime to be monitored.
     '''
-    def __init__(self, sock, registry, protected):
+    def __init__(self, sock, registry, protected, name=None):
         self._msock = sock
         self._registry = registry  # TODO: better name for this
         self._spawned = time.time()
         self._protected = protected
         # alias some functions through for improved performance
         #  (__getattr__ is pretty slow compared to normal attribute access)
-        self.send = sock.send
-        self.recv = sock.recv
+        #self.send = sock.send
+        #self.recv = sock.recv
         self.sendall = sock.sendall
+        self.name = name
+
+    def send(self, data, flags=0):
+        ret = self._msock.send(data, flags)
+        context.get_context().store_network_data(
+            (self.name, self._msock.getpeername()), 
+            "send", data)
+
+    def recv(self, bufsize, flags=0):
+        data = self._msock.recv(bufsize, flags)
+        context.get_context().store_network_data(
+            (self.name, self._msock.getpeername()),
+            "recv", data)
+        return data
 
     def close(self):
         if self in self._registry:
@@ -325,6 +339,40 @@ class AddressGroup(object):
 
     def __repr__(self):
         return "<AddressGroup " + repr(self.tiers) + ">"
+
+
+class AddressGroupMap(dict):
+    '''
+    For dev mode, will lazily pull in additional addresses.
+    '''
+    def __missing__(self, key):
+        ctx = context.get_context()
+        if ctx.stage_ip and ctx.topos:
+            newkey = None
+            for k in (key, key + "_r1", key + "_ca", key + "_r1_ca"):
+                if k in ctx.topos.apps:
+                    newkey = k
+                    break
+            if newkey is not None:
+                # TODO: maybe do r1 / r2 fallback; however, given this is stage only
+                #  that use case is pretty slim
+                ports = [int(ctx.topos.get_port(newkey))]
+                val = AddressGroup( ([(1, (ctx.stage_ip, p)) for p in ports],) )
+                self.__dict__.setdefault("warnings", {}).setdefault("inferred_addresses", [])
+                self.warnings["inferred_addresses"].append((key, val))
+                self[key] = val
+                if key != newkey:
+                    self.warnings["inferred_addresses"].append((newkey, val))
+                self[newkey] = val
+                return val
+        self.__dict__.setdefault("errors", {}).setdefault("unknown_addresses", set())
+        self.errors["unknown_addresses"].add(key)
+        ctx.intervals["error.address.missing." + repr(key)].tick()
+        ctx.intervals["error.address.missing"].tick()
+        raise KeyError("unknown address requested " + repr(key))
+
+_ADDRESS_SUFFIXES = ["_r" + str(i) for i in range(10)]
+_ADDRESS_SUFFIXES = ("_ca",) + tuple(["_r" + str(i) for i in range(10)])
 
 
 class MarkedDownError(socket.error):

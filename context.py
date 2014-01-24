@@ -8,6 +8,7 @@ from threading import local
 from collections import namedtuple, defaultdict, deque
 import socket
 import os.path
+import time
 
 import faststat
 
@@ -78,8 +79,10 @@ class Context(object):
         self.port = None
         self.admin_port = None
         self.ip = "127.0.0.1"
+        self.hostname = socket.gethostname()
+        self.fqdn = socket.getfqdn()
         try:
-            self.ip = socket.gethostbyname(socket.gethostname())
+            self.ip = socket.gethostbyname(self.hostname)
         except socket.error:
             try:
                 self.ip = get_ip_from_hosts()
@@ -164,7 +167,7 @@ class Context(object):
         if self.stage_host:
             import topos
             self.topos = topos.TopoFile(
-                os.path.expanduser('~/.pyinfra/topo/STAGE2.default.topo'), 
+                os.path.expanduser('~/.pyinfra/topo/STAGE2.default.topo'),
                 ip=self.stage_ip)
         if self.topos:
             addresses = self.topos.get(self.appname) or {}
@@ -173,9 +176,18 @@ class Context(object):
 
         import connection_mgr
 
-        self.address_groups = dict(
+        self.address_groups = connection_mgr.AddressGroupMap(
             [(name, connection_mgr.AddressGroup((((1, address),),)))
              for name, address in addresses.items()])
+        # combine _r1, _r2, _r3... read backups into a single AddressGroup
+        read_backups = defaultdict(list)
+        for i in range(10):
+            suffix = "_r" + str(i)
+            for name, address in addresses.items():
+                if name.endswith(suffix):
+                    read_backups[name[:-3]].append( ((1, address),) )
+        for key, value in read_backups.items():
+            self.address_groups[key] = connection_mgr.AddressGroup(value)
 
     def get_mayfly(self, name, namespace):
         name2 = None
@@ -193,28 +205,34 @@ class Context(object):
         else:
             raise ValueError('Unknown Mayfly: %r' % name)
 
-    '''
-    def make_occ(self, name):
-        'make instead of get to indicate this is creating a stateful object'
-        try:
-            ip, port = self.address_book.occ_addr(name)
-        except KeyError:
-            raise ValueError('Unknown OCC: %r' % name)
+    def get_warnings(self):
+        return _find_warnings(self)
 
-        import occ
-        return occ.Connection(ip, port, self.protected)
-
-    def get_addr(self, name):
-        return self.address_book[name]
-    '''
-
-    # TODO: go around and instrument code to call this function
-    # on network send/recv
+    # empirically tested to take ~ 2 microseconds;
+    # keep an eye to make sure this can't blow up
     def store_network_data(self, name, direction, data):
         q = self.stored_network_data[name]
-        q.appendleft((direction, summarize(data, 4096)))
+        q.appendleft((direction, time.time(), summarize(data, 4096)))
         while len(q) > self.network_exchanges_stored:
             q.pop()
+
+    @property
+    def dev(self):
+        return self._dev
+
+    @property
+    def port(self):
+        if self._port is not None:
+            return self._port
+        if self.topos and self.topos.get(self.appname):
+            return int(self.topos.get(self.appname)['bind_port'])
+        if self.dev:
+            return 8888
+        return None
+
+    @port.setter
+    def port(self, val):
+        self._port = val
 
     @property
     def dev(self):
@@ -373,6 +391,46 @@ def get_ip_from_hosts():
             if hostname in line:
                 return line.split()[0]
 
+
+def _find_warnings(root, max_depth=6, _cur_depth=1, _sofar=None):
+    '''
+    recursively walk attributes and items to find all warnings attributes
+    '''
+    if _sofar is None:
+        _sofar = {}
+    warnings = {}
+
+    if id(root) in _sofar:
+        return _sofar[id(root)]
+
+    children = {}
+    try:
+        if hasattr(root, "__dict__"):
+            children.update(root.__dict__)
+    except:
+        pass
+        #import traceback; traceback.print_exc()
+    try:
+        if hasattr(root, "items") and callable(root.items):
+            children.update(root)
+    except:
+        pass
+        #import traceback; traceback.print_exc()
+
+    if _cur_depth <= max_depth:
+        for key, val in children.items():
+            sub_warnings = _find_warnings(val, max_depth, _cur_depth + 1, _sofar)
+            if sub_warnings:
+                warnings[key] = sub_warnings
+
+    if hasattr(root, "warnings") and root.warnings:
+        warnings['warnings'] = root.warnings
+
+    if hasattr(root, "errors") and root.errors:
+        warnings['errors'] = root.errors
+
+    _sofar[id(root)] = warnings
+    return warnings
 
 
 CONTEXT = None

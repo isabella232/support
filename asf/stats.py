@@ -3,7 +3,7 @@
 import time
 from collections import defaultdict
 
-from clastic.core import Application
+from clastic import Application
 from clastic.middleware import Middleware
 from clastic.render import default_response
 
@@ -64,7 +64,7 @@ def _get_stats_dict(_application):
     rt_hits = stats_mw.hits
     return {'resp_counts': dict([(url, rh.n) for url, rh
                                  in stats_mw.url_hits.items()]),
-            'route_stats': dict([(rt.rule, get_route_stats(rt_hits[rt])) for rt
+            'route_stats': dict([(rt.pattern, get_route_stats(rt_hits[rt])) for rt
                                  in rt_hits if rt_hits[rt]])}
 
 
@@ -78,4 +78,3 @@ def _create_app():
 if __name__ == '__main__':
     sapp = _create_app()
     sapp.serve()
-    

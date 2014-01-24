@@ -22,6 +22,7 @@ import gevent.socket
 import async
 from protected import Protected
 import context
+import threading
 
 
 class ServerGroup(object):
@@ -51,9 +52,11 @@ class ServerGroup(object):
                         sslcontext = getattr(protected, 'ssl_dev_server_context')
                     else:
                         sslcontext = getattr(protected, 'ssl_server_context')
-                    server = MultiProtocolWSGIServer(sock, app, context=sslcontext)
+                    server = MultiProtocolWSGIServer(
+                        sock, app, spawn=10000, context=sslcontext)
                 else:
-                    server = SslContextWSGIServer(sock, app, context=protected.ssl_server_context)
+                    server = SslContextWSGIServer(
+                        sock, app, spawn=10000, context=protected.ssl_server_context)
             else:
                 server = WSGIServer(sock, app)
             server.log = self.server_log or RotatingGeventLog()
@@ -89,30 +92,28 @@ class ServerGroup(object):
 
     def _post_fork(self):
         # TODO: revisit this with newer gevent release
-        gevent.hub.get_hub().loop.reinit()  # threadpools need to be restarted
-        gevent.sleep(0)  # let reinit() scheduled greenlets run
+        hub = gevent.hub.get_hub()
+        hub.loop.reinit()  # reinitializes libev
+        hub._threadpool = None  # eliminate gevent's internal threadpools
+        gevent.sleep(0)  # let greenlets run
+        # finally, eliminate our threadpools
+        context.get_context().thread_locals = threading.local()
         if self.post_fork:
-            self.port_fork()
+            self.post_fork()
         self.start()
 
-    def _stop_start(self, start):  # just a bit of DRY
+    def start(self):
         errs = {}
         for server in self.servers:
             try:
-                if start:
-                    server.start()
-                else:
-                    server.stop()
+                server.start()
             except Exception as e:
                 errs[server] = e
         if errs:
             raise RuntimeError(errs)
 
-    def start(self):
-        self._stop_start(True)
-
-    def stop(self):
-        self._stop_start(False)
+    def stop(self, timeout=30.0):
+        async.join([async.spawn(server.stop, timeout) for server in self.servers], raise_exc=True)
 
 
 def _make_server_sock(address):
@@ -200,125 +201,3 @@ class RotatingGeventLog(object):
         self.msgs.appendleft(msg)
         if len(self.msgs) > self.size:
             self.msgs.pop()
-
-
-'''
-THE_PID = os.getpid()
-# current PID -- used for detecting if gevent threads need re-initing
-# TODO: is there a cleaner way to achieve this by inspecting the gevent hub object?
-
-
-class ASFServer(object):
-    def __init__(self, service_map, address, protocol=None,
-                 service_dispatcher=None, dev=False, sslcontext=None,
-                 **kw):
-        import meta_service  # avoiding circular dependency
-
-        self.service_map = service_map
-        self.service_dispatcher = service_dispatcher or ServiceDispatcher
-        self.num_workers = max(kw.get('num_workers'), 0) or None
-        self.instance_map = dict([(k, v() if isinstance(v, type) else v) for k, v in service_map.items()])
-        ctx = context.get_context()
-        if ctx.admin_port:
-            self.admin_instance_map = {}
-            self.admin_instance_map['MetaService'] = meta_service.MetaService(self)
-        else:
-            self.instance_map['MetaService'] = meta_service.MetaService(self)
-        self.address = address
-        self.sock = gevent.socket.socket()
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.sock.bind(self.address)
-        self.sock.listen(128)  # TODO: what is best value?
-        service_dispatcher = self.service_dispatcher(self.instance_map)
-        if kw.get("_wsgi_middleware"):
-            self.wsgi = kw["_wsgi_middleware"](service_dispatcher)
-        else:
-            self.wsgi = service_dispatcher
-        asf_ctx = asf_context.get_context()
-        self.protocol = protocol or ('http' if dev else 'https')
-        if ctx.dev and ctx.ssl_client_cert_optional_in_dev:
-            ssl_context_name = 'ssl_dev_server_context'
-        else:
-            ssl_context_name = 'ssl_server_context'
-        if not sslcontext:
-            sslcontext = getattr(asf_ctx.protected, ssl_context_name, None)
-        if not sslcontext:
-            self.protected = ctx.protected
-            sslcontext = getattr(self.protected, ssl_context_name, None)
-        self.sslcontext = sslcontext
-        if self.protocol == 'https':
-            if not self.sslcontext:
-                raise ValueError('could not find/load server-side'
-                                 ' SSL certificate (protected)')
-            self.server = SslContextWSGIServer(self.sock, self.wsgi, context=self.sslcontext)
-        else:
-            # test/dev mode; be http and https cross-compatible
-            self.server = MultiProtocolWSGIServer(self.sock, self.wsgi, context=self.sslcontext)
-        if context.get_context().admin_port:
-            self.admin_wsgi = self.service_dispatcher(self.admin_instance_map)
-            self.admin_sock = gevent.socket.socket()
-            self.admin_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.admin_sock.bind(('127.0.0.1', context.get_context().admin_port))
-            ml.la("Admin listening to 127.0.0.1:{0}", context.get_context().admin_port)
-            self.admin_sock.listen(128)  # TODO: what is best value?
-            self.admin_server = MultiProtocolWSGIServer(self.admin_sock, self.admin_wsgi, context=self.sslcontext)
-        else:
-            self.admin_sock = None
-            self.admin_server = None
-            self.admin_wsgi = None
-
-        self.server.log = kw.get('gevent_log') or RotatingGeventLog()
-
-        self.post_fork = kw.get('post_fork')
-        #flags
-        self.serve_ufork = kw.get('serve_ufork', not dev)
-        self.serve_daemon = kw.get('serve_daemon', not dev)
-
-        self.pid = kw.get('pid', self.serve_ufork)
-        if self.pid is None and self.serve_ufork:
-            self.pid = context.get_context().appname + ".pid"
-
-    def run(self):
-        if not self.serve_ufork:
-            self._post_fork()
-            try:
-                while 1:
-                    async.sleep(1.0)  # otherwise REPL will block server
-            finally:
-                self.sock.close()
-                self.server.stop()
-            return
-
-        if not ufork:
-            raise RuntimeError('called run_service without dev=True'
-                               ' on platform without fork().')
-
-        self.arbiter = ufork.Arbiter(
-            post_fork=self._post_fork, child_pre_exit=self.server.stop,
-            parent_pre_stop=self.sock.close, size=self.num_workers,
-            sleep=async.sleep, fork=gevent.fork, printfunc=lambda x: sys.stdout.write(str(x)))
-
-        # work-around for infra/gevent/ufork interaction which
-        # causes getfqdn to have issues in child threads
-        # TODO: figure out what is happening there
-        self.server.set_environ({'SERVER_NAME': gevent.socket.getfqdn(self.address[0])})
-
-        if self.serve_daemon:
-            ll.use_the_file()  # log to disk in daemonized
-            self.arbiter.spawn_daemon(self.pid)
-        else:
-            self.arbiter.run()
-
-    def _post_fork(self):
-        global THE_PID
-        if THE_PID != os.getpid():  # _post_fork not just for forks
-            gevent.hub.get_hub().loop.reinit()  # threads were hosed
-            gevent.sleep(0)  # let them get unhosed
-            THE_PID = os.getpid()
-        if self.post_fork:
-            self.post_fork()
-        ml.ld("Post Fork")
-        self.server.start()
-        if self.admin_server:
-            self.admin_server.start()
-'''
