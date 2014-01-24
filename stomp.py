@@ -28,7 +28,7 @@ class LARClient(object):
             "event_name": event_name,
             "correlation_id": async.get_cur_correlation_id(),
         }
-        self.conn.send("/queue/relaydasf_msgs", headers, asf.serdes.vo2compbin(vo))
+        self.conn.send("/queue/relaydasf_msgs", asf.serdes.vo2compbin(vo), headers)
 
 
 class Connection(object):
@@ -62,6 +62,7 @@ class Connection(object):
         self.server_info = None
         self.msg_id = 0
         self.no_receipt = set()  # send ids for which there was no receipt
+        self.start()
     
     def send(self, destination, body="", extra_headers=None):
         headers = { 
@@ -166,7 +167,7 @@ class Connection(object):
                 if cur.command == 'HEARTBEAT':
                     # discard
                     pass
-                print "GOT", cur.command, "\n", cur.headers, "\n", cur.body
+                #print "GOT", cur.command, "\n", cur.headers, "\n", cur.body
                 if cur.command == "MESSAGE":
                     if 'ack' in cur.headers:
                         ack = Frame("ACK", {})
