@@ -723,23 +723,28 @@ import code
 import gevent.fileobject
 
 
-def run_repl(local=None, banner="infra REPL"):
-    'Run a greenlet-friendly Read-Eval-Print Loop.'
+class GreenConsole(code.InteractiveConsole):
+    def __init__(self):
+        code.InteractiveConsole.__init__(self)
+        self._green_stdin = gevent.fileobject.FileObject(sys.stdin)
+        self._green_stdout = gevent.fileobject.FileObject(sys.stdout)
+        self._green_stderr = gevent.fileobject.FileObject(sys.stderr)
 
-    _green_stdin = gevent.fileobject.FileObject(sys.stdin)
-    _green_stdout = gevent.fileobject.FileObject(sys.stdout)
+    def write(self, data):
+        while data:  # print in chunks < 4096
+            self._green_stderr.write(data[:4096])
+            self._green_stderr.flush()
+            data = data[4096:]
+            sleep(0)
 
-    def _green_raw_input(prompt):
-        _green_stdout.write(prompt)
-        _green_stdout.flush()
-        inp = _green_stdin.readline()
+    def raw_input(self, prompt=""):
+        self.write(prompt)
+        inp = self._green_stdin.readline()
         if inp == "":
             raise OSError("standard in was closed while running REPL")
         inp = inp[:-1]
         return inp
 
-    code.interact(banner, _green_raw_input, local=local or {})
-
 
 def start_repl(local=None, banner="infra REPL (exit with Ctrl+C)"):
-    gevent.spawn(run_repl, local, banner)
+    gevent.spawn(GreenConsole().interact(banner))
