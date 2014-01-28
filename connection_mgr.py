@@ -125,6 +125,11 @@ class ConnectionManager(object):
         if ssl:
             if ssl is True:
                 protected = self.protected or ctx.protected
+                if protected is None:
+                    raise EnvironmentError("Unable to make protected connection to " +
+                        repr(name or "unknown") + " at " + repr(address) + 
+                        " with no protected loaded."
+                        " (maybe you forgot to call infra.init()/infra.init_dev()?)")
             elif isinstance(ssl, Protected):
                 protected = ssl
             elif ssl == PLAIN_SSL:
