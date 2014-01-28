@@ -235,8 +235,19 @@ class Context(object):
         self._port = val
 
     @property
-    def dev(self):
-        return self._dev
+    def admin_port(self):
+        if self._admin_port is not None:
+            return self._admin_port
+        if (self.topos and self.topos.get(self.appname) and
+            'admin_ssl_connector_port' in self.topos.get(self.appname)):
+            return int(self.topos.get(self.appname)['admin_ssl_connector_port'])
+        if self.dev:
+            return 8889
+        return None
+
+    @admin_port.setter
+    def admin_port(self, val):
+        self._admin_port = val
 
     @property
     def debug_errors(self):
