@@ -217,6 +217,15 @@ class Context(object):
             q.pop()
 
     @property
+    def feel(self):
+        if not hasattr(self, "_feel"):
+            import feel
+            self._feel = feel.LAR()
+            self.cal.event("MSG", "INIT", '0', 
+                "server=" + repr(self._feel.lar.conn.address))
+        return self._feel
+
+    @property
     def dev(self):
         return self._dev
 
