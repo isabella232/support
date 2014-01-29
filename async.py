@@ -561,7 +561,7 @@ class SSLSocket(socket):
     def send(self, data, flags=0, timeout=timeout_default):
         ml.ld2("SSL: {{{0}}}/FD {1}: OUTDATA: {{{2}}}",
                id(self), self._sock.fileno(),
-               data)
+               data.tobytes())
         if timeout is timeout_default:
             timeout = self.timeout
         while True:
