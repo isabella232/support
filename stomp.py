@@ -4,6 +4,7 @@ Implementation of the STOMP (Streaming/Simple Text Oriented Message Protocol).
 Used at PayPal for YAM, LAR, and possibly other message systems.
 '''
 import collections
+import weakref
 
 from gevent import socket
 import gevent.queue
@@ -115,9 +116,9 @@ class Connection(object):
             raise ValueError("called stomp.Connection.start() twice")
         self.started = True
         self._reconnect()
-        self.send_glet = gevent.spawn(self._run_send)
-        self.recv_glet = gevent.spawn(self._run_recv)
-        self.sock_glet = gevent.spawn(self._run_socket_fixer)
+        self.send_glet = gevent.spawn(_run_send, weakref.proxy(self))
+        self.recv_glet = gevent.spawn(_run_recv, weakref.proxy(self))
+        self.sock_glet = gevent.spawn(_run_socket_fixer, weakref.proxy(self))
 
     def stop(self):
         self.stopping = True
@@ -148,49 +149,52 @@ class Connection(object):
         self.sock_ready.set()
 
 
-    def _run_send(self):
-        while not self.stopping:
-            try:
-                cur = self.send_q.peek()
-                self.sock.sendall(cur.serialize())
-                self.send_q.get()
-            except socket.error:
-                # wait for socket ready again
-                self.sock_ready.clear()
-                self.sock_broken.set()
-                self.sock_ready.wait()
+### these are essentially methods of the Connection class; they are broken
+### out to regular functions so that bound methods in greenlet call stacks
+### do not interfere with garbage collection
+def _run_send(self):
+    while not self.stopping:
+        try:
+            cur = self.send_q.peek()
+            self.sock.sendall(cur.serialize())
+            self.send_q.get()
+        except socket.error:
+            # wait for socket ready again
+            self.sock_ready.clear()
+            self.sock_broken.set()
+            self.sock_ready.wait()
 
-    def _run_recv(self):
-        while not self.stopping:
-            try:
-                cur = Frame.parse_from_socket(self.sock)
-                if cur.command == 'HEARTBEAT':
-                    # discard
-                    pass
-                #print "GOT", cur.command, "\n", cur.headers, "\n", cur.body
-                if cur.command == "MESSAGE":
-                    if 'ack' in cur.headers:
-                        ack = Frame("ACK", {})
-                        self.send_q.put(ack)
-                if cur.command == 'RECEIPT':
-                    if cur.headers.get('receipt-id') in self.no_receipt:
-                        self.no_receipt.remove(cur.headers.get('receipt-id'))
-                if cur.command == 'ERROR':
-                    pass
-
-            except socket.error:
-                # wait for socket to be ready again
-                self.sock_ready.clear()
-                self.sock_broken.set()
-                self.sock_ready.wait()
-
-    def _run_socket_fixer(self):
-        while not self.stopping:
-            self.sock_broken.wait()
-            try:
-                self._reconnect()
-            except:
+def _run_recv(self):
+    while not self.stopping:
+        try:
+            cur = Frame.parse_from_socket(self.sock)
+            if cur.command == 'HEARTBEAT':
+                # discard
                 pass
+            #print "GOT", cur.command, "\n", cur.headers, "\n", cur.body
+            if cur.command == "MESSAGE":
+                if 'ack' in cur.headers:
+                    ack = Frame("ACK", {})
+                    self.send_q.put(ack)
+            if cur.command == 'RECEIPT':
+                if cur.headers.get('receipt-id') in self.no_receipt:
+                    self.no_receipt.remove(cur.headers.get('receipt-id'))
+            if cur.command == 'ERROR':
+                pass
+
+        except socket.error:
+            # wait for socket to be ready again
+            self.sock_ready.clear()
+            self.sock_broken.set()
+            self.sock_ready.wait()
+
+def _run_socket_fixer(self):
+    while not self.stopping:
+        self.sock_broken.wait()
+        try:
+            self._reconnect()
+        except:
+            pass
 
 
 CLIENT_CMDS = set(["SEND", "SUBSCRIBE", "UNSUBSCRIBE", "BEGIN", "COMMIT",
