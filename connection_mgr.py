@@ -295,6 +295,11 @@ class MonitoredSocket(object):
     def __getattr__(self, attr):
         return getattr(self._msock, attr)
 
+    # TODO: is there another way to handle this without a __del__?
+    # Perhaps using weakrefs from the referrent side.  __del__ should
+    # be avoided if possible since garbage cycles involving objects
+    # with __del__ defined cannot be automatically collected
+    # (see http://docs.python.org/2/library/gc.html#gc.garbage)
     def __del__(self):
         #note: this way there is no garbage printed about "KeyError in __del__"
         #empirically, even with a try/except a warning is printed out
