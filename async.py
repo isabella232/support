@@ -747,4 +747,4 @@ class GreenConsole(code.InteractiveConsole):
 
 
 def start_repl(local=None, banner="infra REPL (exit with Ctrl+C)"):
-    gevent.spawn(GreenConsole().interact(banner))
+    gevent.spawn(GreenConsole().interact, banner)
