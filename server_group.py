@@ -11,6 +11,7 @@ The following information is needed to start a server:
 import collections
 import socket
 import os
+import threading
 
 if hasattr(os, "fork"):
     import ufork
@@ -22,7 +23,6 @@ import gevent.socket
 import async
 from protected import Protected
 import context
-import threading
 
 
 class ServerGroup(object):
@@ -47,7 +47,8 @@ class ServerGroup(object):
             else:
                 protected = None
             if protected:
-                if dev:
+                # TODO: maybe this determination belongs centralized in context?
+                if dev or env.pp_host_env() in ("STAGE2", "HYPER"):
                     if ctx.ssl_client_cert_optional_in_dev:
                         sslcontext = getattr(protected, 'ssl_dev_server_context')
                     else:
