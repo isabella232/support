@@ -52,6 +52,7 @@ class Connection(object):
         self.on_error = on_error
         self.send_q = gevent.queue.Queue()
         self.sock = None
+        self.sock_container = [self.sock]  # level of indirection for closing sock after GC
         self.sock_ready = gevent.event.Event()
         self.sock_broken = gevent.event.Event()
         self.stopping = False
@@ -116,9 +117,10 @@ class Connection(object):
             raise ValueError("called stomp.Connection.start() twice")
         self.started = True
         self._reconnect()
-        self.send_glet = gevent.spawn(_run_send, weakref.proxy(self))
-        self.recv_glet = gevent.spawn(_run_recv, weakref.proxy(self))
-        self.sock_glet = gevent.spawn(_run_socket_fixer, weakref.proxy(self))
+        weak = weakref.proxy(self, _killsock_later(self.sock_container))
+        self.send_glet = gevent.spawn(_run_send, weak)
+        self.recv_glet = gevent.spawn(_run_recv, weak)
+        self.sock_glet = gevent.spawn(_run_socket_fixer, weak)
 
     def stop(self):
         self.stopping = True
@@ -137,6 +139,7 @@ class Connection(object):
         if self.sock:
             async.killsock(self.sock)
         self.sock = context.get_context().get_connection(self.address, True)
+        self.sock_container[0] = self.sock
         headers = { "login": self.login, "passcode": self.passcode }
         self.sock.sendall(Frame("CONNECT", headers).serialize())
         resp = Frame.parse_from_socket(self.sock)
@@ -195,6 +198,9 @@ def _run_socket_fixer(self):
             self._reconnect()
         except:
             pass
+
+def _killsock_later(sock_container):
+    return lambda weak: async.killsock(sock_container[0])
 
 
 CLIENT_CMDS = set(["SEND", "SUBSCRIBE", "UNSUBSCRIBE", "BEGIN", "COMMIT",
