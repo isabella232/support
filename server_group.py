@@ -23,6 +23,7 @@ import gevent.socket
 import async
 from protected import Protected
 import context
+import env
 
 
 class ServerGroup(object):
