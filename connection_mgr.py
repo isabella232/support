@@ -272,6 +272,12 @@ class MonitoredSocket(object):
             (self.name, self._msock.getpeername()), 
             "send", data)
 
+    def sendall(self, data, flags=0):
+        ret = self._msock.sendall(data, flags)
+        context.get_context().store_network_data(
+            (self.name, self._msock.getpeername()), 
+            "sendall", data)
+
     def recv(self, bufsize, flags=0):
         data = self._msock.recv(bufsize, flags)
         context.get_context().store_network_data(
