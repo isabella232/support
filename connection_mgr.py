@@ -112,6 +112,7 @@ class ConnectionManager(object):
             except socket.error as err:
                 if len(address_list) == 1:
                     raise
+                ml.ld("Connection err {0!r}, {1}, {2!r}", address, name, err)
                 errors.append((address, err))
         raise MultiConnectFailure(errors)
 
@@ -156,7 +157,7 @@ class ConnectionManager(object):
                         sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000.0)
                         ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
                     break
-                except socket.error:
+                except socket.error as err:
                     if False:  # TODO: how to tell if this is an unrecoverable error
                         raise
                     if failed >= sock_config.max_connect_retry:
@@ -167,6 +168,7 @@ class ConnectionManager(object):
                                           str(address[0]) + ':' + str(address[1])].tick()
                             ctx.intervals['net.markdowns'].tick()
                             ctx.cal.event('ERROR', 'TMARKDOWN', '2', 'name=' + str(name) + '&addr=' + str(address))
+                        ml.ld("Connection err {0!r}, {1}, {2!r}", address, name, err)
                         raise
                     failed += 1
 
