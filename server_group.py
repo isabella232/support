@@ -100,6 +100,9 @@ class ServerGroup(object):
         gevent.sleep(0)  # let greenlets run
         # finally, eliminate our threadpools
         context.get_context().thread_locals = threading.local()
+        import ll
+        if context.get_context().serve_daemon:
+            ll.use_std_out()  # stdout was closed during daemonization.
         if self.post_fork:
             self.post_fork()
         self.start()
