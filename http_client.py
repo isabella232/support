@@ -71,6 +71,9 @@ def request(method, url, body=None, headers={},
 
     conn.putrequest(method, selector, **skips)
     # OMD!
+    if not literal and body is not None and 'Content-Length' not in headers:
+        conn._set_content_length(body)
+
     for header, value in headers.items():
         if type(value) is list:
             for subvalue in value:
