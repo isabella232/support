@@ -727,15 +727,6 @@ class GreenConsole(code.InteractiveConsole):
     def __init__(self):
         code.InteractiveConsole.__init__(self)
         self._green_stdin = gevent.fileobject.FileObject(sys.stdin)
-        self._green_stdout = gevent.fileobject.FileObject(sys.stdout)
-        self._green_stderr = gevent.fileobject.FileObject(sys.stderr)
-
-    def write(self, data):
-        while data:  # print in chunks < 4096
-            self._green_stderr.write(data[:4096])
-            self._green_stderr.flush()
-            data = data[4096:]
-            sleep(0)
 
     def raw_input(self, prompt=""):
         self.write(prompt)
