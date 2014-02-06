@@ -102,7 +102,8 @@ class ServerGroup(object):
         context.get_context().thread_locals = threading.local()
         import ll
         if context.get_context().serve_daemon:
-            ll.use_std_out()  # stdout was closed during daemonization.
+            ll.use_the_file()  # stdout was closed during daemonization.
+                               # plus ufork stdout logging issue
         if self.post_fork:
             self.post_fork()
         self.start()
