@@ -74,6 +74,8 @@ class Context(object):
 
         self._dev = dev
         self._debug_errors = False
+        self.start_browser = False
+        # whether to start a browser pointed at meta on server startup
 
         #NETWORK RELATED STUFF
         self.port = None
