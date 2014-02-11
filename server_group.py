@@ -18,6 +18,7 @@ if hasattr(os, "fork"):
 else:
     ufork = None
 from gevent.pywsgi import WSGIServer
+from gevent import server
 import gevent.socket
 
 import async
@@ -28,6 +29,11 @@ import env
 
 class ServerGroup(object):
     def __init__(self, wsgi_apps=(), stream_handlers=(), prefork=False, daemonize=False, dev=False, **kw):
+        '''
+        Create a new ServerGroup which will can be started / stopped / forked as a group.
+        wsgi_apps should be of the form  [ (wsgi_app, address, ssl), ...  ]
+        stream_handlers should be of the form  [ (handler_func, address), ...  ]
+        '''
         self.prefork = prefork
         self.daemonize = daemonize
         self.post_fork = kw.get('post_fork')  # callback to be executed post fork
@@ -38,8 +44,7 @@ class ServerGroup(object):
         self.num_workers = ctx.num_workers
         self.servers = []
         self.socks = {}
-        for app in wsgi_apps:
-            app, address, ssl = app
+        for app, address, ssl in wsgi_apps:
             sock = _make_server_sock(address)
             if isinstance(ssl, Protected):
                 protected = ssl
@@ -67,8 +72,12 @@ class ServerGroup(object):
             # prevent a "blocking" call to DNS on each request
             # (NOTE: although the OS won't block, gevent will dispatch to a threadpool which is expensive)
             server.set_environ({'SERVER_NAME': gevent.socket.getfqdn(address[0])})
-        for handler in stream_handlers:
-            pass
+        for handler, address in stream_handlers:
+            sock = _make_server_sock(address)
+            server = server.StreamServer(sock, handler, spawn=10000)
+            self.servers.append(server)
+
+
 
     def run(self):
         if not self.prefork:
@@ -207,3 +216,58 @@ class RotatingGeventLog(object):
         self.msgs.appendleft(msg)
         if len(self.msgs) > self.size:
             self.msgs.pop()
+
+
+### a little helper for running an interactive console over a socket
+import code
+import sys
+
+class SockConsole(code.InteractiveConsole):
+    def __init__(self, sock):
+        code.InteractiveConsole.__init__(self)
+        self.sock = sock
+        self.sock_file = sock.makefile()
+
+    def write(self, data):
+        self.sock.sendall(data)
+
+    def raw_input(self, prompt=""):
+        self.write(prompt)
+        inp = self.sock_file.readline()
+        if inp == "":
+            raise OSError("client socket closed")
+        inp = inp[:-1]
+        return inp
+
+    def _display_hook(self, obj):
+        '''
+        Handle an item returned from the exec statement.
+        '''
+        self._last = ""
+        if obj is None:
+            return
+        self.locals['_'] = None
+        self._last = repr(obj)
+        self.locals['_'] = obj
+
+    def runcode(self, _code):
+        '''
+        Wraps base runcode to put displayhook around it.
+        TODO: add a new displayhook dispatcher so that the
+        current SockConsole is a greenlet-tree local.
+        (In case the statement being executed itself
+        causes greenlet switches.)
+        '''
+        prev = sys.displayhook
+        sys.displayhook = self._display_hook
+        self._last = None
+        code.InteractiveConsole.runcode(self, _code)
+        sys.displayhook = prev
+        if self._last is not None:
+            self.write(self._last)
+
+
+def console_sock_handle(sock, address):
+    console = SockConsole(sock)
+    console.interact("Connected to pid {0} from {1}...".format(
+        os.getpid(), address))

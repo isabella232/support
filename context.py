@@ -80,6 +80,7 @@ class Context(object):
         #NETWORK RELATED STUFF
         self.port = None
         self.admin_port = None
+        self.backdoor_port = None
         self.ip = "127.0.0.1"
         self.hostname = socket.gethostname()
         self.fqdn = socket.getfqdn()
@@ -261,6 +262,21 @@ class Context(object):
     @admin_port.setter
     def admin_port(self, val):
         self._admin_port = val
+
+    @property
+    def backdoor_port(self):
+        if self._backdoor_port is not None:
+            return self._backdoor_port
+        # TODO: should this come out of topos?
+        if self.dev:
+            if self._port is not None:
+                return self._port + 2
+            return 8890
+        return None
+
+    @backdoor_port.setter
+    def backdoor_port(self, val):
+        self._backdoor_port = val
 
     @property
     def debug_errors(self):
