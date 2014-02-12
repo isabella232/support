@@ -77,8 +77,6 @@ class ServerGroup(object):
             server = server.StreamServer(sock, handler, spawn=10000)
             self.servers.append(server)
 
-
-
     def run(self):
         if not self.prefork:
             self.start()
@@ -145,6 +143,8 @@ def my_close(self):
 
 class SslContextWSGIServer(WSGIServer):
     def wrap_socket_and_handle(self, client_socket, address):
+        context.get_context().client_sockets[client_socket] = 1
+
         if not self.ssl_args:
             raise ValueError('https server requires server-side'
                              ' SSL certificate (protected)')
@@ -161,6 +161,8 @@ class SslContextWSGIServer(WSGIServer):
 
 class MultiProtocolWSGIServer(SslContextWSGIServer):
     def wrap_socket_and_handle(self, client_socket, address):
+        context.get_context().client_sockets[client_socket] = 1
+
         protocol = _socket_protocol(client_socket)
         if protocol == "http":
             return self.handle(client_socket, address)

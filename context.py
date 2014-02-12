@@ -78,6 +78,8 @@ class Context(object):
         # whether to start a browser pointed at meta on server startup
 
         #NETWORK RELATED STUFF
+        self.client_sockets = WeakKeyDictionary()
+        self.server_group = None
         self.port = None
         self.admin_port = None
         self.backdoor_port = None
