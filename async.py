@@ -600,6 +600,9 @@ class SSLSocket(gevent.socket.socket):
                 raise sslerror(str(ex))
 
 
+SysCallError_code_mapping = {-1: 8}
+
+
 def wrap_socket_context(sock, context, server_side=False):
     timeout = sock.gettimeout()
     try:
