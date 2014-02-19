@@ -565,8 +565,7 @@ class SSLSocket(gevent.socket.socket):
 
     def close(self):
         if self._makefile_refs < 1:
-            self._sock.shutdown()
-            # QQQ wait until shutdown completes?
+            self.shutdown()
             socket.close(self)
         else:
             self._makefile_refs -= 1
