@@ -37,6 +37,7 @@ def spawn(*a, **kw):
 
 sleep = gevent.sleep  # alias gevent.sleep here so user doesn't have to know/worry about gevent
 Timeout = gevent.Timeout  # alias Timeout here as well since this is a darn useful class
+with_timeout = gevent.with_timeout
 
 
 def _exception_catcher(f, *a, **kw):
@@ -250,22 +251,6 @@ def _queue_stats(qname, fname, queued_ns, duration_ns, size_B=None):
         ctx.stats[fprefix + '.len'].add(size_B)
         if duration_ns:  # may be 0
             ctx.stats[fprefix + '.rate(B/ms)'].add(size_B / (duration_ns * 1000.0))
-
-
-def timed_execution(timeout_secs = 120.0, in_timeout_value = None):
-    '''
-    decorator to mark a function as wanting an unconditional timeout
-    '''
-    def decorat(f):
-        @functools.wraps(f)
-        def g(*a, **kw):
-            the_timeout_value = object()
-            rr = gevent.with_timeout(timeout_secs, f, timeout_value=the_timeout_value, *a, **kw)
-            if rr == the_timeout_value:
-                return in_timeout_value
-            return rr
-        return g
-    return decorat
 
 
 if hasattr(time, "perf_counter"):
