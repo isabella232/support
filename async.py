@@ -14,7 +14,6 @@ import gevent.pool
 import gevent.socket
 import gevent.threadpool
 import gevent.greenlet
-import gevent.hub  # for check_fork wrapper
 
 import pp_crypt
 import context
@@ -654,7 +653,7 @@ def check_fork(fn):
         def wrapper(request):
                 global PID
                 if PID != os.getpid():
-                        gevent.hub.get_hub().loop.reinit()
+                        gevent.get_hub().loop.reinit()
                         PID = os.getpid()
                 return fn(request)
         return wrapper
