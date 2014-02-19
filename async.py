@@ -429,17 +429,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SO
 
 
 from OpenSSL import SSL
-from gevent.socket import socket, _fileobject, __socket__, error, timeout, EWOULDBLOCK
-from gevent.socket import wait_read, wait_write, timeout_default
+from gevent.socket import socket, timeout_default
 import sys
 
-#__all__ = ['ssl', 'sslerror']
-
 try:
-    sslerror = __socket__.sslerror
+    sslerror = gevent.socket.__socket__.sslerror
 except AttributeError:
-
-    class sslerror(error):
+    class sslerror(gevent.socket.error):
         pass
 
 
@@ -453,7 +449,7 @@ def _wrap(v):
         except SSL.Error as e:
             t = type(e)  # convert OpenSSL errors to sub-classes of SSL.error
             if t not in SSL_EX_MAP:
-                SSL_EX_MAP[t] = type(t.__name__, (__socket__.error, t), {})
+                SSL_EX_MAP[t] = type(t.__name__, (gevent.socket.__socket__.error, t), {})
             raise SSL_EX_MAP[t](*e.args)
     functools.update_wrapper(wrapper, v,
                              set(functools.WRAPPER_ASSIGNMENTS) & set(dir(v)))
@@ -486,7 +482,10 @@ def make_sock_close_wrapper():
 SockCloseWrapper = make_sock_close_wrapper()
 
 
-class SSLSocket(socket):
+#TODO: convert to subclass of OpenSSL.SSL.Connection?
+# then, replace the _sock attribute of an existing gevent socket with this?
+# would this allow for the SockCloseWrapper to be eliminated?
+class SSLSocket(gevent.socket.socket):
 
     def __init__(self, sock, server_side=False):
         'sock is an instance of OpenSSL.SSL.Connection'
@@ -516,26 +515,11 @@ class SSLSocket(socket):
         return client, addr
 
     def do_handshake(self, timeout=timeout_default):
-        if timeout is timeout_default:
-            timeout = self.timeout
+        self._do_ssl(self._sock.do_handshake, timeout)
         # TODO: how to handle if timeout is 0.0, e.g. somebody
         # wants to use this thing in a select() loop?
         # don't worry about for now, because you'd have to be crazy
         # to put a select loop when there are all these excellent greenlets available
-        while True:
-            try:
-                self._sock.do_handshake()
-                break
-            except SSL.WantReadError:
-                sys.exc_clear()
-                wait_read(self.fileno(), timeout=timeout)
-            except SSL.WantWriteError:
-                sys.exc_clear()
-                wait_write(self.fileno(), timeout=timeout)
-            except SSL.SysCallError, ex:
-                raise sslerror(SysCallError_code_mapping.get(ex.args[0], ex.args[0]), ex.args[1])
-            except SSL.Error, ex:
-                raise sslerror(str(ex))
 
     def connect(self, *args):
         socket.connect(self, *args)
@@ -543,68 +527,18 @@ class SSLSocket(socket):
 
     def send(self, data, flags=0, timeout=timeout_default):
         ml.ld2("SSL: {{{0}}}/FD {1}: OUTDATA: {{{2}}}",
-               id(self), self._sock.fileno(),
-               data.tobytes())
-        if timeout is timeout_default:
-            timeout = self.timeout
-        while True:
-            try:
-                return self._sock.send(data, flags)
-            except SSL.WantWriteError as ex:
-                if self.timeout == 0.0:
-                    raise timeout(str(ex))
-                else:
-                    sys.exc_clear()
-                    wait_write(self.fileno(), timeout=timeout)
-            except SSL.WantReadError as ex:
-                if self.timeout == 0.0:
-                    raise timeout(str(ex))
-                else:
-                    sys.exc_clear()
-                    wait_read(self.fileno(), timeout=timeout)
-            except SSL.SysCallError as ex:
-                if ex[0] == -1 and data == "":
-                    # errors when writing empty strings are expected and can be ignored
-                    return 0
-                raise sslerror(SysCallError_code_mapping.get(ex.args[0], ex.args[0]), ex.args[1])
-            except SSL.Error as ex:
-                raise sslerror(str(ex))
+               id(self), self._sock.fileno(), data.tobytes())
+        return self._do_ssl(lambda: self._sock.send(data, flags), timeout)
 
     def recv(self, buflen, flags=0):
         pending = self._sock.pending()
         if pending:
-            retval = self._sock.recv(min(pending, buflen), flags)
-            ml.ld2("SSL: {{{0}}}/FD {1}: INDATA: {{{2}}}",
-                   id(self), self._sock.fileno(), retval)
-            return retval
-        while True:
-            try:
-                retval = self._sock.recv(buflen)
-                ml.ld2("SSL: {{{0}}}/FD {1}: INDATA: {{{2}}}",
-                       id(self), self._sock.fileno(), retval)
-                return retval
-            except SSL.WantReadError as ex:
-                if self.timeout == 0.0:
-                    raise timeout(str(ex))
-                else:
-                    sys.exc_clear()
-                    wait_read(self.fileno(), timeout=self.timeout)
-            except SSL.WantWriteError as ex:
-                if self.timeout == 0.0:
-                    ml.ld2("SSL: {{{0}}}/FD {1}: Timing out", id(self), self._sock.fileno())
-                    raise timeout(str(ex))
-                else:
-                    sys.exc_clear()
-                    wait_read(self.fileno(), timeout=self.timeout)
-            except SSL.ZeroReturnError:
-                ml.ld2("SSL: {{{0}}}/FD {1}:  INDATA: {{}}", id(self), self._sock.fileno())
-                return ''
-            except SSL.SysCallError as ex:
-                ml.ld2("SSL: {{{0}}}/FD {1}: Call Exception", id(self), self._sock.fileno())
-                raise sslerror(SysCallError_code_mapping.get(ex.args[0], ex.args[0]), ex.args[1])
-            except SSL.Error as ex:
-                ml.ld2("SSL: {{{0}}}/FD {1}: Exception", id(self), self._sock.fileno())
-                raise sslerror(str(ex))
+            retval = self._sock.recv(min(pending, buflen))
+        else:
+            retval = self._do_ssl(lambda: self._sock.recv(buflen))
+        ml.ld2("SSL: {{{0}}}/FD {1}: INDATA: {{{2}}}",
+               id(self), self._sock.fileno(), retval)
+        return retval
 
     def read(self, buflen=1024):
         """
@@ -616,15 +550,17 @@ class SSLSocket(socket):
     def write(self, data):
         try:
             return self.sendall(data)
-        except SSL.Error, ex:
+        except SSL.Error as ex:
             raise sslerror(str(ex))
 
     def makefile(self, mode='r', bufsize=-1):
         self._makefile_refs += 1
-        return _fileobject(self, mode, bufsize, close=True)
+        return gevent.socket._fileobject(self, mode, bufsize, close=True)
 
-    def shutdown(self, how):
-        self._sock.shutdown()
+    def shutdown(self, how, timeout=timeout_default):
+        if timeout is timeout_default:
+            timeout = self.timeout
+        self._do_ssl(self._sock.shutdown)
         #accept how parameter for compatibility with normal sockets,
         #although OpenSSL.SSL.Connection objects do not accept how
 
@@ -636,8 +572,34 @@ class SSLSocket(socket):
         else:
             self._makefile_refs -= 1
 
-
-SysCallError_code_mapping = {-1: 8}
+    def _do_ssl(self, func, timeout=timeout_default):
+        'call some network funcion, re-handshaking if necessary'
+        if timeout is timeout_default:
+            timeout = self.timeout
+        while True:
+            try:
+                return func()
+            except SSL.WantReadError as ex:
+                if timeout == 0.0:
+                    raise gevent.socket.timeout(str(ex))
+                else:
+                    sys.exc_clear()
+                    gevent.socket.wait_read(self.fileno(), timeout=timeout)
+            except SSL.WantWriteError as ex:
+                if timeout == 0.0:
+                    raise gevent.socket.timeout(str(ex))
+                else:
+                    sys.exc_clear()
+                    gevent.socket.wait_write(self.fileno(), timeout=timeout)
+            except SSL.ZeroReturnError:
+                ml.ld2("SSL: {{{0}}}/FD {1}:  INDATA: {{}}", id(self), self._sock.fileno())
+                return ''
+            except SSL.SysCallError as ex:
+                ml.ld2("SSL: {{{0}}}/FD {1}: Call Exception", id(self), self._sock.fileno())
+                raise sslerror(SysCallError_code_mapping.get(ex.args[0], ex.args[0]), ex.args[1])
+            except SSL.Error as ex:
+                ml.ld2("SSL: {{{0}}}/FD {1}: Exception", id(self), self._sock.fileno())
+                raise sslerror(str(ex))
 
 
 def wrap_socket_context(sock, context, server_side=False):
@@ -669,14 +631,14 @@ def killsock(sock):
     try:
         # TODO: better ideas for how to get SHUT_RDWR constant?
         sock.shutdown(gevent.socket.SHUT_RDWR)
-    except (error, SSL.Error):
+    except (gevent.socket.error, SSL.Error):
         pass  # just being nice to the server, don't care if it fails
     except Exception as e:
         context.get_context().cal.event("INFO", "SOCKET", "0",
                                         "unexpected error closing socket: " + repr(e))
     try:
         sock.close()
-    except (error, SSL.Error):
+    except (gevent.socket.error, SSL.Error):
         pass  # just being nice to the server, don't care if it fails
     except Exception as e:
         context.get_context().cal.event("INFO", "SOCKET", "0",
