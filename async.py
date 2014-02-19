@@ -26,13 +26,11 @@ ml = ll.LLogger()
 
 @functools.wraps(gevent.spawn)
 def spawn(*a, **kw):
-    if a:
-        f = a[0]
+    if 'run' in kw:
+        f = kw.pop('run')
     else:
-        f = kw['run']
-    # NOTE: tested functools.wraps to take 3.827 microseconds, which is okay
-    gr = gevent.spawn(
-        functools.wraps(f)(_exception_catcher), *a, **kw)
+        f, a = a[0], a[1:]
+    gr = gevent.spawn(_exception_catcher, f, *a, **kw)
     context.get_context().greenlet_ancestors[gr] = gevent.getcurrent()
     return gr
 
