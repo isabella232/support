@@ -520,6 +520,16 @@ class SSLSocket(gevent.socket.socket):
         # don't worry about for now, because you'd have to be crazy
         # to put a select loop when there are all these excellent greenlets available
 
+    def set_renegotiate(self, timeout=timeout_default):
+        '''
+        Set the renegotiate flag so that the next send/recv
+        or do_handshake will cause the session to be
+        renegotiated.
+        This allows session to be updated to reflect
+        changes on SSL context (e.g. change ciphers).
+        '''
+        self._do_ssl(self._sock.renegotiate, timeout)
+
     def connect(self, *args):
         socket.connect(self, *args)
         self.do_handshake()
