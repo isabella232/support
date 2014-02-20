@@ -525,8 +525,9 @@ class SSLSocket(gevent.socket.socket):
         self.do_handshake()
 
     def send(self, data, flags=0, timeout=timeout_default):
-        ml.ld2("SSL: {{{0}}}/FD {1}: OUTDATA: {{{2}}}",
-               id(self), self._sock.fileno(), data.tobytes())
+        #ml.ld2("SSL: {{{0}}}/FD {1}: OUTDATA: {{{2}}}",
+        #       id(self), self._sock.fileno(), data.tobytes())
+        # tobytes() fails on strings -- how did this ever work?
         return self._do_ssl(lambda: self._sock.send(data, flags), timeout)
 
     def recv(self, buflen, flags=0):
