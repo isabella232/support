@@ -55,7 +55,7 @@ def urllib2_request(u2req, timeout=None):
     url = u2req._Request__original
     body = u2req.get_data()
     headers = dict(u2req.unredirected_hdrs)
-    headers.update(dict(k, v) for k, v in u2req.headers.items()
+    headers.update((k, v) for k, v in u2req.headers.items()
                    if k not in headers)
     try:
         kwargs = {}
@@ -92,7 +92,6 @@ def request(method, url, body=None, headers={},
 
     protected = (parsed.scheme == 'https') and (True if use_protected
                                                 else "PLAIN_SSL")
-
     conn = _GHTTPConnection(domain, port, protected=protected, timeout=timeout)
 
     selector = urlunparse(parsed._replace(scheme='', netloc=''))
@@ -121,6 +120,8 @@ def request(method, url, body=None, headers={},
         conn.send(body)
     raw = conn.getresponse()    # does NOT hold a reference to the
                                 # HTTPConnection
+    raw._connection = conn      # so the finalizer doesn't get called
+                                # until the request has died
     return Response(
         Request(method, url, headers, body),
         raw.status, raw.getheaders(), raw)
