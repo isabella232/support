@@ -91,6 +91,8 @@ class SockPool(object):
 
     def cull(self):
         #cull sockets which are in a bad state
+        import async  # break circular dependency
+
         culled = []
         self.total_sockets = 0
         #sort the living from the soon-to-be-dead
@@ -125,7 +127,7 @@ class SockPool(object):
         # shutdown all the culled sockets
         for sock in culled:
             del self.sock_idle_times[sock]
-            self.killsock(sock)
+            async.spawn(self.killsock, sock)
 
 
 class NullSockPool(object):
