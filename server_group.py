@@ -18,7 +18,7 @@ if hasattr(os, "fork"):
 else:
     ufork = None
 from gevent.pywsgi import WSGIServer
-from gevent import server
+import gevent.server
 import gevent.socket
 
 import async
@@ -39,8 +39,10 @@ class ServerGroup(object):
         self.post_fork = kw.get('post_fork')  # callback to be executed post fork
         self.server_log = kw.get('gevent_log')
         self.wsgi_apps = wsgi_apps
-        self.stream_handlers = stream_handlers
+        self.stream_handlers = list(stream_handlers)
         ctx = context.get_context()
+        if dev or env.pp_host_env in ("STAGE2", "HYPER"):  # add REPL-server
+            self.stream_handlers.append( (console_sock_handle, ("0.0.0.0", ctx.backdoor_port) ) )
         self.num_workers = ctx.num_workers
         self.servers = []
         self.socks = {}
@@ -72,9 +74,9 @@ class ServerGroup(object):
             # prevent a "blocking" call to DNS on each request
             # (NOTE: although the OS won't block, gevent will dispatch to a threadpool which is expensive)
             server.set_environ({'SERVER_NAME': gevent.socket.getfqdn(address[0])})
-        for handler, address in stream_handlers:
+        for handler, address in self.stream_handlers:
             sock = _make_server_sock(address)
-            server = server.StreamServer(sock, handler, spawn=10000)
+            server = gevent.server.StreamServer(sock, handler, spawn=10000)
             self.servers.append(server)
 
     def run(self):
