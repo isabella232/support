@@ -143,7 +143,25 @@ def my_close(self):
     context.get_context().stats['fake_close'].add(1.0)
 
 
+class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
+    '''
+    quick work-around to re-enable gevent's work-around of the
+    makefile() call in the pywsgi handler keeping sockets alive
+    past their shelf life
+    '''
+    def __init__(self, socket, address, server, rfile=None):
+        if rfile is None and hasattr(socket, "_makefile_refs"):
+            rfile = socket.makefile()
+            # restore gEvent's work-around of not letting wsgi.environ['input']
+            # keep the socket alive in CLOSE_WAIT state after client is gone
+            # to work with async.SSLSocket
+            socket._makefile_refs -= 1
+        super(MakeFileCloseWSGIHandler, self).__init__(socket, address, server, rfile)
+
+
 class SslContextWSGIServer(pywsgi.WSGIServer):
+    handler_class = MakeFileCloseWSGIHandler    
+
     def wrap_socket_and_handle(self, client_socket, address):
         context.get_context().client_sockets[client_socket] = 1
 
@@ -173,22 +191,6 @@ class MultiProtocolWSGIServer(SslContextWSGIServer):
             return self.handle(ssl_socket, address)
         else:
             context.get_context().counts["server.pings"] += 1
-
-
-class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
-    '''
-    quick work-around to re-enable gevent's work-around of the
-    makefile() call in the pywsgi handler keeping sockets alive
-    past their shelf life
-    '''
-    def __init__(self, socket, address, server, rfile=None):
-        if rfile is None and hasattr(socket, "_makefile_refs"):
-            rfile = socket.makefile()
-            # restore gEvent's work-around of not letting wsgi.environ['input']
-            # keep the socket alive in CLOSE_WAIT state after client is gone
-            # to work with async.SSLSocket
-            socket._makefile_refs -= 1
-        super(MakeFileCloseWSGIHandler, self).__init__(socket, address, server, rfile)
 
 
 #http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
