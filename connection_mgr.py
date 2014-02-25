@@ -237,7 +237,7 @@ class ServerModel(object):
     '''
     def __init__(self, address):
         self.last_error = 0
-        self.active_connections = {}
+        self.active_connections = weakref.WeakKeyDictionary()
         self.address = address
 
     def sock_in_use(self, sock):
@@ -302,19 +302,6 @@ class MonitoredSocket(object):
 
     def __getattr__(self, attr):
         return getattr(self._msock, attr)
-
-    # TODO: is there another way to handle this without a __del__?
-    # Perhaps using weakrefs from the referrent side.  __del__ should
-    # be avoided if possible since garbage cycles involving objects
-    # with __del__ defined cannot be automatically collected
-    # (see http://docs.python.org/2/library/gc.html#gc.garbage)
-    def __del__(self):
-        #note: this way there is no garbage printed about "KeyError in __del__"
-        #empirically, even with a try/except a warning is printed out
-        #if an exception happens here
-        registry = getattr(self, "_registry", None)
-        if registry and self in registry:
-            del registry[self]
 
 
 Address = collections.namedtuple('Address', 'ip port')
