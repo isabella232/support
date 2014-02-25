@@ -41,7 +41,7 @@ class ServerGroup(object):
         self.wsgi_apps = wsgi_apps
         self.stream_handlers = list(stream_handlers)
         ctx = context.get_context()
-        if dev or env.pp_host_env in ("STAGE2", "HYPER"):  # add REPL-server
+        if ctx.backdoor_port is not None:
             self.stream_handlers.append( (console_sock_handle, ("0.0.0.0", ctx.backdoor_port) ) )
         self.num_workers = ctx.num_workers
         self.servers = []
