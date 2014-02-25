@@ -73,7 +73,10 @@ class ConnectionManager(object):
             try:
                 address_list = list(address_groups[name])
             except KeyError:
-                raise NameNotFound("no address found for name {0}".format(name))
+                err_str = "no address found for name {0}".format(name)
+                if ctx.stage_ip is None:
+                    err_str += " (no stage communication configured; did you forget?)"
+                raise NameNotFound(err_str)
         else:
             address_list = [name_or_addr]
             name = ctx.opscfg_revmap.get(name_or_addr)
