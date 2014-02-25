@@ -5,7 +5,7 @@ import getpass
 from weakref import WeakKeyDictionary
 import weakref
 from threading import local
-from collections import namedtuple, defaultdict, deque
+from collections import defaultdict, deque
 import socket
 import os.path
 import time
@@ -221,13 +221,12 @@ class Context(object):
         while len(q) > self.network_exchanges_stored:
             q.pop()
 
-    @property
-    def feel(self):
+    def get_feel(self):
         if not hasattr(self, "_feel"):
             import feel
             self._feel = feel.LAR()
-            self.cal.event("MSG", "INIT", '0', 
-                "server=" + repr(self._feel.lar.conn.address))
+            feel_addr = self._feel.lar.conn.address
+            self.cal.event("MSG", "INIT", '0', "server=%r" % feel_addr)
         return self._feel
 
     @property
