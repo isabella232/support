@@ -17,6 +17,7 @@ import gevent.greenlet
 
 import pp_crypt
 import context
+import errno
 
 import ll
 
@@ -143,7 +144,7 @@ class CPUThread(object):
     '''
     Manages a single worker thread to dispatch cpu intensive tasks to.
 
-    Signficantly less overhead than gevent.threadpool.ThreadPool() since it 
+    Signficantly less overhead than gevent.threadpool.ThreadPool() since it
     uses prompt notifications rather than polling.  The trade-off is that only
     one thread can be managed this way.
 
@@ -236,7 +237,7 @@ class CPUThread(object):
         traceback.print_exc()
         if hasattr(context.get_context().thread_locals, 'cpu_bound_thread') and \
                    context.get_context().thread_locals.cpu_bound_thread is self:
-            del context.get_context().thread_locals.cpu_bound_thread      
+            del context.get_context().thread_locals.cpu_bound_thread
 
 
 def _queue_stats(qname, fname, queued_ns, duration_ns, size_B=None):
@@ -680,10 +681,39 @@ import code
 import gevent.fileobject
 
 
+class RetryingWriteAndFlushFile(object):
+
+    def __init__(self, wrapped):
+        self.wrapped = wrapped
+        self.fileno = wrapped.fileno()
+
+    def write(self, data):
+        towrite = len(data)
+        offset = 0
+        while towrite > 0:
+            try:
+                written = os.write(self.fileno, data[offset:])
+                towrite -= written
+                offset += written
+            except Exception as e:
+                err = getattr(e, 'errno', None)
+                if err in (errno.EAGAIN, errno.EWOULDBLOCK):
+                    continue
+                raise
+
+    def writelines(self, sos):
+        return self.write(''.join(sos))
+
+    def __getattr__(self, attr):
+        return getattr(self.wrapped, attr)
+
+
 class GreenConsole(code.InteractiveConsole):
     def __init__(self):
         code.InteractiveConsole.__init__(self)
         self._green_stdin = gevent.fileobject.FileObject(sys.stdin)
+        sys.stdout = RetryingWriteAndFlushFile(sys.stdout)
+        sys.stderr = RetryingWriteAndFlushFile(sys.stderr)
 
     def raw_input(self, prompt=""):
         self.write(prompt)
