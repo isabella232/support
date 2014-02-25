@@ -678,17 +678,13 @@ def check_fork(fn):
 
 import sys
 import code
-import gevent.fileobject
+import gevent.os
 
 
 class GreenConsole(code.InteractiveConsole):
-    def __init__(self):
-        code.InteractiveConsole.__init__(self)
-        self._green_stdin = gevent.fileobject.FileObjectThreadPool(sys.stdin)
-
     def raw_input(self, prompt=""):
         self.write(prompt)
-        inp = self._green_stdin.readline()
+        inp = gevent.os.tp_read(0, 1024*1024)
         if inp == "":
             raise OSError("standard in was closed while running REPL")
         inp = inp[:-1]
