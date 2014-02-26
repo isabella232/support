@@ -142,8 +142,8 @@ class Context(object):
         self.stopping = False
         self.sys_stats_greenlet = None
         self.monitor_interval = 0.01  # ~100x per second
-        self.greenlet_settrace = True  # histogram of CPU runs
-        self.monitoring_greenlet = True  # monitor queue depths
+        self.set_greenlet_trace(True)  # histogram of CPU runs
+        self.set_monitoring_greenlet(True)  # monitor queue depths
 
         # CLIENT BEHAVIORS
         self.mayfly_client_retries = 3
@@ -332,8 +332,7 @@ class Context(object):
     def sampling(self):
         return self.profiler is not None
 
-    @sampling.setter
-    def sampling(self, val):
+    def set_sampling(self, val):
         from sampro import sampro
         if val not in (True, False):
             raise ValueError("sampling may only be set to True or False")
@@ -348,8 +347,7 @@ class Context(object):
     def monitoring_greenlet(self):
         return self.sys_stats_greenlet is not None
 
-    @monitoring_greenlet.setter
-    def monitoring_greenlet(self, val):
+    def set_monitoring_greenlet(self, val):
         import gevent
         if val not in (True, False):
             raise ValueError("sampling may only be set to True or False")
@@ -371,6 +369,42 @@ class Context(object):
         if self.profiler:
             self.profiler.stop()
         self.stopping = True
+
+    @property
+    def greenlet_settrace(self):
+        'check if any greenlet trace function is registered'
+        import greenlet
+        return bool(greenlet.gettrace())
+
+    def set_greenlet_trace(self, value):
+        'turn on tracking of greenlet switches'
+        if value not in (True, False):
+            raise ValueError("value must be True or False")
+        if value is False:
+            try:
+                greenlet.settrace(None)
+            except AttributeError:
+                pass  # oh well
+        import greenlet
+        import gevent
+        from async import curtime
+
+        last_time = [curtime()]
+
+        def trace(why, gs):
+            if why:
+                ml.ld4(why)
+                ct = curtime()
+                the_time = (ct - last_time[0]) * 1000.0
+                last_time[0] = ct
+                if gs[0] is gevent.hub.get_hub():
+                    self.stats['greenlet_idle(ms)'].add(the_time)
+                else:
+                    self.stats['greenlet_switch(ms)'].add(the_time)
+        try:
+            greenlet.settrace(trace)
+        except AttributeError:
+            pass  # oh well
 
     def get_connection(self, *a, **kw):
         return self.connection_mgr.get_connection(*a, **kw)
