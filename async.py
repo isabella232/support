@@ -679,12 +679,23 @@ def check_fork(fn):
 import sys
 import code
 import gevent.os
+import gevent.fileobject
 
 
 class GreenConsole(code.InteractiveConsole):
+    def __init__(self):
+        code.InteractiveConsole.__init__(self)
+        # Windows and POSIX have so many subtle differences in their
+        # handling of stdin that we need to vary the method based on platform
+        if os.name == 'nt':
+            self._green_stdin = gevent.fileobject.FileObject(sys.stdin)
+
     def raw_input(self, prompt=""):
         self.write(prompt)
-        inp = gevent.os.tp_read(0, 1024*1024)
+        if os.name == 'nt':
+            inp = self._green_stdin.readline()
+        else:
+            inp = gevent.os.tp_read(0, 1024*1024)
         if inp == "":
             raise OSError("standard in was closed while running REPL")
         inp = inp[:-1]
