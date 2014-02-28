@@ -111,7 +111,8 @@ class ConnectionManager(object):
         errors = []
         for address in address_list:
             try:
-                return self._connect_to_address(name, ssl, sock_config, address)
+                with ctx.cal.trans('CONNECT', name + ':' + address[0], msg={"lport": address[1]}):
+                    return self._connect_to_address(name, ssl, sock_config, address)
             except socket.error as err:
                 if len(address_list) == 1:
                     raise
@@ -155,7 +156,7 @@ class ConnectionManager(object):
             while True:
                 try:
                     ml.ld("CONNECTING...")
-                    with context.get_context().cal.trans('CONNECT',
+                    with context.get_context().cal.trans('CONNECT_TCP',
                                                          str(address[0]) + ":" + str(address[1])):
                         sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000.0)
                         ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
@@ -176,10 +177,12 @@ class ConnectionManager(object):
                     failed += 1
 
             if ssl:
-                if ssl == PLAIN_SSL:
-                    sock = gevent.ssl.wrap_socket(sock)
-                else:
-                    sock = async.wrap_socket_context(sock, protected.ssl_client_context)
+                with context.get_context().cal.trans('CONNECT_SSL', 
+                                                     str(address[0]) + ":" + str(address[1])):
+                    if ssl == PLAIN_SSL:
+                        sock = gevent.ssl.wrap_socket(sock)
+                    else:
+                        sock = async.wrap_socket_context(sock, protected.ssl_client_context)
 
             sock = MonitoredSocket(sock, server_model.active_connections, protected, name)
             server_model.sock_in_use(sock)
