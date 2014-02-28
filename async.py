@@ -536,9 +536,16 @@ class SSLSocket(gevent.socket.socket):
         self.do_handshake()
 
     def send(self, data, flags=0, timeout=timeout_default):
-        #ml.ld2("SSL: {{{0}}}/FD {1}: OUTDATA: {{{2}}}",
-        #       id(self), self._sock.fileno(), data.tobytes())
+        if ll.get_log_level() < ll.LOG_LEVELS['DEBUG2']:
+            if hasattr(data, 'tobytes'):
+                ml.ld2("SSL: {{{0}}}/FD {1}: OUTDATA: {{{2}}}",
+                       id(self), self._sock.fileno(), data.tobytes())
+            else:
+                ml.ld2("SSL: {{{0}}}/FD {1}: OUTDATA: {{{2}}}",
+                       id(self), self._sock.fileno(), data)
+                
         # tobytes() fails on strings -- how did this ever work?
+        # data is buffer on many platforms - thought it was only 2.6
         return self._do_ssl(lambda: self._sock.send(data, flags), timeout)
 
     def recv(self, buflen, flags=0):
