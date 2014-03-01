@@ -156,7 +156,7 @@ class ConnectionManager(object):
             while True:
                 try:
                     ml.ld("CONNECTING...")
-                    with context.get_context().cal.trans('CONNECT_TCP',
+                    with context.get_context().cal.atrans('CONNECT_TCP',
                                                          str(address[0]) + ":" + str(address[1])):
                         sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000.0)
                         ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
@@ -177,7 +177,7 @@ class ConnectionManager(object):
                     failed += 1
 
             if ssl:
-                with context.get_context().cal.trans('CONNECT_SSL', 
+                with context.get_context().cal.atrans('CONNECT_SSL', 
                                                      str(address[0]) + ":" + str(address[1])):
                     if ssl == PLAIN_SSL:
                         sock = gevent.ssl.wrap_socket(sock)
