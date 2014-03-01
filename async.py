@@ -71,7 +71,9 @@ def get_cur_correlation_id():
         t = time.time()
         corr_val = "{0}{1}{2}{3}".format(gevent.socket.gethostname(),
                                          os.getpid(), int(t), int(t % 1 * 10 ** 6))
-        corr_id = "{0:x}{1:x}".format(pp_crypt.fnv_hash(corr_val), int(t % 1 * 10 ** 6))
+        corr_id = "{0:x}{1:x}".format(
+            pp_crypt.fnv_hash(corr_val) & 0xFFFFFFFF, 
+            int(t % 1 * 10 ** 6) & 0xFFFFFFFF)
         corr_ids[cur] = corr_id
     return corr_ids[cur]
 
