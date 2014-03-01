@@ -115,6 +115,7 @@ class ServerGroup(object):
                                # plus ufork stdout logging issue
         if self.post_fork:
             self.post_fork()
+        context.get_context().cal.event('WORKER', 'STARTED', 0, {'pid': os.getpid()})
         self.start()
 
     def start(self):
