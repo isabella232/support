@@ -3,6 +3,7 @@ This module defines a context object which holds on to all global state.
 '''
 import getpass
 from weakref import WeakKeyDictionary
+from multiprocessing import cpu_count
 import weakref
 from threading import local
 from collections import defaultdict, deque
@@ -41,8 +42,9 @@ class Context(object):
         self.config = None
 
         #UFORK STUFF
-        self.num_workers = None  # used in python as num_children
-                                 # read from opscfg as max_connections
+        self.num_workers = max(cpu_count() - 1, 2)
+        # used in python as num_children
+        # read from opscfg as max_connections
         self.pid = None
         self.pid_file_path = ''
 
