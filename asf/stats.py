@@ -32,8 +32,15 @@ class StatsMiddleware(Middleware):
             end_time = time.time()
             elapsed_time = end_time - start_time
             self.hits[_route][resp_status].add(elapsed_time)
+            if len(self.url_hits) > 2 * MAX_URLS:
+                items = [(k, v) for k,v in self.url_hits.items()]
+                items.sort(key=lambda e: e[1].n, reverse=True)
+                # save most commonly used URLs
+                self.url_hits = defaultdict(faststat.Stats, items[:MAX_URLS])
             self.url_hits[request.path].add(elapsed_time)
         return resp
+
+MAX_URLS = 1024
 
 
 def dict_from_faststat(fs):
@@ -64,7 +71,7 @@ def _get_stats_dict(_application):
     rt_hits = stats_mw.hits
     return {'resp_counts': dict([(url, rh.n) for url, rh
                                  in stats_mw.url_hits.items()]),
-            'route_stats': dict([(rt.pattern, get_route_stats(rt_hits[rt])) for rt
+            'route_stats': dict([(getattr(rt, "pattern", None), get_route_stats(rt_hits[rt])) for rt
                                  in rt_hits if rt_hits[rt]])}
 
 
