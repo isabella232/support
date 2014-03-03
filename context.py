@@ -59,8 +59,7 @@ class Context(object):
         import cal
         self.cal = cal.DefaultClient()
         self.greenlet_trans_stack = WeakKeyDictionary()
-        self.recent_cal = deque()
-        self.max_recent_cal = 1024
+        self.recent_cal = deque(maxlen=1024) 
 
         #ASF RELATED STUFF
         from asf import asf_context
@@ -132,8 +131,7 @@ class Context(object):
         self.sockpool_enabled = True
 
         #MONITORING DATA
-        self.network_exchanges_stored = 100
-        self.stored_network_data = defaultdict(deque)
+        self.stored_network_data = defaultdict(lambda: deque(maxlen=100))
 
         self.stats = defaultdict(faststat.Stats)
         self.durations = defaultdict(faststat.Duration)
@@ -220,8 +218,6 @@ class Context(object):
     def store_network_data(self, name, direction, data):
         q = self.stored_network_data[name]
         q.appendleft((direction, time.time(), summarize(data, 4096)))
-        while len(q) > self.network_exchanges_stored:
-            q.pop()
 
     def get_feel(self):
         if not hasattr(self, "_feel"):
