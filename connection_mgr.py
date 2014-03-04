@@ -92,7 +92,7 @@ class ConnectionManager(object):
         for pool in self.sockpools.values():
             pool.cull()
 
-        total_num_in_use = sum([len(model.active_connections) 
+        total_num_in_use = sum([len(model.active_connections)
                                 for model in self.server_models.values()])
 
         if total_num_in_use >= GLOBAL_MAX_CONNECTIONS:
