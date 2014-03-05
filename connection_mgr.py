@@ -134,7 +134,7 @@ class ConnectionManager(object):
                 protected = self.protected or ctx.protected
                 if protected is None:
                     raise EnvironmentError("Unable to make protected connection to " +
-                        repr(name or "unknown") + " at " + repr(address) + 
+                        repr(name or "unknown") + " at " + repr(address) +
                         " with no protected loaded."
                         " (maybe you forgot to call infra.init()/infra.init_dev()?)")
             elif isinstance(ssl, Protected):
@@ -179,7 +179,7 @@ class ConnectionManager(object):
                     failed += 1
 
             if ssl:
-                with context.get_context().cal.atrans('CONNECT_SSL', 
+                with context.get_context().cal.atrans('CONNECT_SSL',
                                                      str(address[0]) + ":" + str(address[1])):
                     if ssl == PLAIN_SSL:
                         sock = gevent.ssl.wrap_socket(sock)
@@ -275,7 +275,7 @@ class ServerModel(object):
         self.active_connections[sock] = time.time()
 
     def __repr__(self):
-        return ("<ServerModel " + repr(self.address) + " last_error=" + 
+        return ("<ServerModel " + repr(self.address) + " last_error=" +
             datetime.datetime.fromtimestamp(int(self.last_error)).strftime('%Y-%m-%d %H:%M:%S') + ">")
 
 
@@ -302,13 +302,13 @@ class MonitoredSocket(object):
     def send(self, data, flags=0):
         ret = self._msock.send(data, flags)
         context.get_context().store_network_data(
-            (self.name, self._msock.getpeername()), 
+            (self.name, self._msock.getpeername()),
             "send", data)
 
     def sendall(self, data, flags=0):
         ret = self._msock.sendall(data, flags)
         context.get_context().store_network_data(
-            (self.name, self._msock.getpeername()), 
+            (self.name, self._msock.getpeername()),
             "sendall", data)
 
     def recv(self, bufsize, flags=0):
@@ -341,7 +341,7 @@ Address = collections.namedtuple('Address', 'ip port')
 class AddressGroup(object):
     '''
     An address group represents the set of addresses known by a specific name
-    to a client at runtime.  That is, in a specific environment (stage, live, etc), 
+    to a client at runtime.  That is, in a specific environment (stage, live, etc),
     an address group represents the set of <ip, port> pairs to try.
 
     An address group consists of tiers.
