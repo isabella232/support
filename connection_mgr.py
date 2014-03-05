@@ -28,11 +28,11 @@ import random
 
 import gevent.socket
 import gevent.ssl
+import gevent.resolver_thread
 import gevent
 
 import async
 import context
-import protected
 import sockpool
 from protected import Protected
 import ll
@@ -64,6 +64,8 @@ class ConnectionManager(object):
         address_aliases = self.address_aliases or ctx.address_aliases
         ops_config = self.ops_config or ctx.ops_config
         #### POTENTIAL ISSUE: OPS CONFIG IS MORE SPECIFIC THAN ADDRESS (owch)
+        if isinstance(gevent.get_hub().resolver, gevent.resolver_thread.Resolver):
+            gevent.get_hub().resolver = _Resolver()  # avoid pointless thread dispatches
 
         if name_or_addr in address_aliases:
             name_or_addr = address_aliases[name_or_addr]
@@ -223,6 +225,29 @@ except:
     MAX_CONNECTIONS = 800
     GLOBAL_MAX_CONNECTIONS = 800
 # At least, move these to context object for now
+
+
+class _Resolver(gevent.resolver_thread.Resolver):
+    '''
+    See gevent.resolver_thread module.  This is a way to avoid thread
+    dispatch for getaddrinfo called on (ip, port) tuples, since that is
+    such a common case and the thread dispatch seems to occassionally go
+    off the rails in high-load environments like stage2.
+    '''
+    def getaddrinfo(self, *args, **kwargs):
+        '''
+        only short-cut for one very specific case which is extremely
+        common in our code; don't worry about short-cutting the thread
+        dispatch for all possible cases
+        '''
+        if len(args) == 2 and isinstance(args[1], (int, long)):
+            try:
+                socket.inet_aton(args[0])
+            except socket.error:
+                pass
+            else: # args is of form (ip_string, integer) which is close enough...
+                return socket.getaddrinfo(*args)
+        return super(_Resolver, self).getaddrinfo(*args, **kwargs)
 
 
 class ServerModelDirectory(dict):
