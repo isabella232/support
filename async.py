@@ -14,6 +14,7 @@ import gevent.pool
 import gevent.socket
 import gevent.threadpool
 import gevent.greenlet
+import faststat
 
 import pp_crypt
 import context
@@ -22,6 +23,12 @@ import errno
 import ll
 
 ml = ll.LLogger()
+
+
+sleep = gevent.sleep  # alias gevent.sleep here so user doesn't have to know/worry about gevent
+Timeout = gevent.Timeout  # alias Timeout here as well since this is a darn useful class
+with_timeout = gevent.with_timeout
+nanotime = faststat.nanotime
 
 
 @functools.wraps(gevent.spawn)
@@ -33,11 +40,6 @@ def spawn(*a, **kw):
     gr = gevent.spawn(_exception_catcher, f, *a, **kw)
     context.get_context().greenlet_ancestors[gr] = gevent.getcurrent()
     return gr
-
-
-sleep = gevent.sleep  # alias gevent.sleep here so user doesn't have to know/worry about gevent
-Timeout = gevent.Timeout  # alias Timeout here as well since this is a darn useful class
-with_timeout = gevent.with_timeout
 
 
 def _exception_catcher(f, *a, **kw):
