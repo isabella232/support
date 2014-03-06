@@ -29,10 +29,9 @@ import env
 
 class ServerGroup(object):
     def __init__(self, wsgi_apps=(), stream_handlers=(), prefork=False, daemonize=False, dev=False, **kw):
-        '''
-        Create a new ServerGroup which will can be started / stopped / forked as a group.
-        wsgi_apps should be of the form  [ (wsgi_app, address, ssl), ...  ]
-        stream_handlers should be of the form  [ (handler_func, address), ...  ]
+        '''Create a new ServerGroup which will can be started / stopped / forked as a group.
+           * wsgi_apps: should be of the form  [ (wsgi_app, address, ssl), ...  ]
+           * stream_handlers: should be of the form  [ (handler_func, address), ...  ]
         '''
         self.prefork = prefork
         self.daemonize = daemonize
