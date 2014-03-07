@@ -40,7 +40,8 @@ the_file = sys.stdout
 log_msgs = defaultdict(int)
 
 
-LOG_LEVELS = {'NONE':   0,
+LOG_LEVELS = {'NEVER': -1,
+              'NONE':   0,
               'DEBUG':  1,
               'DEBUG2': 2,
               'DEBUG3': 3,
@@ -57,14 +58,14 @@ def print_log_summary():
 
 
 def get_log_level():
-    """Set global low lovel log level"""
+    """Set global low level log level"""
     return _log_level
 
 
 def set_log_level(level):
     """Set global low lovel log level"""
     global _log_level
-    level = max(level, LOG_LEVELS['NONE'])
+    level = max(level, LOG_LEVELS['NEVER'])
     level = min(level, LOG_LEVELS['DEBUG4'])
     _log_level = level
 
@@ -82,7 +83,7 @@ def use_std_out():
 
 
 def log_failure(bad_str):
-    """Statsn on failed logs"""
+    """Stats on failed logs"""
     import infra.context
     infra.get_context().stats["log.failure"].add(1)
     infra.get_context().stats["log.failure." + bad_str].add(1)
@@ -106,21 +107,21 @@ class LLogger(object):
         self.tag = tag
 
     def log_always(self, *args, **kw):
-        """Unconditionally log"""
+        """Log unless never"""
         global log_msgs
-        import gevent  # for getcurrent
         log_msgs[self.caller_mod + "--" + args[0]] += 1
-        try:
-            msg = apply(args[0].format, tuple(args[1:]))
-            print >> the_file,  "%s %s (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                                   self.caller_mod, id(gevent.getcurrent()),
-                                                   self.tag), msg
-        except:
-            log_failure(args[0])
+        if _log_level >= 0:
+            import gevent  # for getcurrent
+            try:
+                msg = apply(args[0].format, tuple(args[1:]))
+                print >> the_file,  "%s %s (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                                       self.caller_mod, id(gevent.getcurrent()),
+                                                       self.tag), msg
+            except:
+                log_failure(args[0])
 
     def log_debug(self, *args, **kw):
         """Log only with -d"""
-        global log_msgs
         log_msgs[self.caller_mod + "--" + args[0]] += 1
         if _log_level >= 1:
             import gevent  # for getcurrent
@@ -134,7 +135,6 @@ class LLogger(object):
 
     def log_debug2(self, *args, **kw):
         """Log only with -dd"""
-        global log_msgs
         log_msgs[self.caller_mod + "--" + args[0]] += 1
         if _log_level >= 2:
             import gevent  # for getcurrent
@@ -149,7 +149,7 @@ class LLogger(object):
 
     def log_debug3(self, *args, **kw):
         """Log only with -ddd"""
-        global log_msgs
+
         log_msgs[self.caller_mod + "--" + args[0]] += 1
         if _log_level >= 3:
             import gevent  # for getcurrent
