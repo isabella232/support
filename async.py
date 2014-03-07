@@ -540,7 +540,7 @@ class SSLSocket(gevent.socket.socket):
         self.do_handshake()
 
     def send(self, data, flags=0, timeout=timeout_default):
-        if ll.get_log_level() < ll.LOG_LEVELS['DEBUG2']:
+        if ll.get_log_level() >= ll.LOG_LEVELS['DEBUG2']:
             if hasattr(data, 'tobytes'):
                 ml.ld2("SSL: {{{0}}}/FD {1}: OUTDATA: {{{2}}}",
                        id(self), self._sock.fileno(), data.tobytes())
