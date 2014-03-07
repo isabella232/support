@@ -427,7 +427,7 @@ def _sys_stats_monitor(context):
         tmp.stats['greenlets.active'].add(_get_hub().loop.activecnt)
         tmp.stats['greenlets.pending'].add(_get_hub().loop.pendingcnt)
         try:
-            tmp.stats['queues.cal.depth'].add(tmp.cal.actor.queue.qsize())
+            tmp.stats['queues.cal.depth'].add(tmp.cal.actor.queue._qsize())
         except AttributeError:
             pass
         try:
@@ -437,7 +437,7 @@ def _sys_stats_monitor(context):
             pass
         try:
             tmp.stats['queues.io_bound.depth'].add(
-                tmp.thread_locals.io_bound_thread.task_queue.qsize())
+                tmp.thread_locals.io_bound_thread.task_queue._qsize())
         except AttributeError:
             pass
         interval = tmp.monitor_interval
