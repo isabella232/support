@@ -514,6 +514,7 @@ class SSLSocket(gevent.socket.socket):
 
     def accept(self):
         sock, addr = socket.accept(self)
+        ml.ld2("Accepted {0!r} {1!r}", sock, addr)
         client = SSLSocket(sock._sock, server_side=True)
         client.do_handshake()
         return client, addr
@@ -547,7 +548,7 @@ class SSLSocket(gevent.socket.socket):
             else:
                 ml.ld2("SSL: {{{0}}}/FD {1}: OUTDATA: {{{2}}}",
                        id(self), self._sock.fileno(), data)
-                
+
         # tobytes() fails on strings -- how did this ever work?
         # data is buffer on many platforms - thought it was only 2.6
         return self._do_ssl(lambda: self._sock.send(data, flags), timeout)
@@ -599,19 +600,22 @@ class SSLSocket(gevent.socket.socket):
             timeout = self.timeout
         while True:
             try:
+                ml.ld2("Calling {0} for do_ssl", func.__name__)
                 return func()
             except SSL.WantReadError as ex:
+                ml.ld2("SSL: {{{0}}}/FD {1}:  INDATA: Want Read", id(self), self._sock.fileno())
                 if timeout == 0.0:
                     raise gevent.socket.timeout(str(ex))
                 else:
                     sys.exc_clear()
-                    gevent.socket.wait_read(self.fileno(), timeout=timeout)
+                    gevent.socket.wait_read(self._sock.fileno(), timeout=timeout)
             except SSL.WantWriteError as ex:
+                ml.ld2("SSL: {{{0}}}/FD {1}:  INDATA: Want Write {{}}", id(self), self._sock.fileno())
                 if timeout == 0.0:
                     raise gevent.socket.timeout(str(ex))
                 else:
                     sys.exc_clear()
-                    gevent.socket.wait_write(self.fileno(), timeout=timeout)
+                    gevent.socket.wait_write(self._sock.fileno(), timeout=timeout)
             except SSL.ZeroReturnError:
                 ml.ld2("SSL: {{{0}}}/FD {1}:  INDATA: {{}}", id(self), self._sock.fileno())
                 return ''
