@@ -30,8 +30,17 @@ import env
 class ServerGroup(object):
     def __init__(self, wsgi_apps=(), stream_handlers=(), prefork=False, daemonize=False, dev=False, **kw):
         '''Create a new ServerGroup which will can be started / stopped / forked as a group.
-           * wsgi_apps: should be of the form  [ (wsgi_app, address, ssl), ...  ]
-           * stream_handlers: should be of the form  [ (handler_func, address), ...  ]
+
+        *wsgi_apps* should be of the form  [ (wsgi_app, address, ssl), ...  ]
+
+        *stream_handlers* should be of the form  [ (handler_func, address), ...  ]
+
+        address here refers to a tuple (ip, port), or more generally anything which is
+        acceptable as the address parameter to
+        `socket.bind() <http://docs.python.org/2/library/socket.html#socket.socket.bind>`_.
+
+        handler_func should have the following signature: f(socket, address), following
+        the `convention of gevent <http://www.gevent.org/servers.html>`_.
         '''
         self.prefork = prefork
         self.daemonize = daemonize
