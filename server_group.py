@@ -26,6 +26,9 @@ from protected import Protected
 import context
 import env
 
+import ll
+
+ml = ll.LLogger()
 
 class ServerGroup(object):
     def __init__(self, wsgi_apps=(), stream_handlers=(), prefork=False, daemonize=False, dev=False, **kw):
@@ -50,7 +53,7 @@ class ServerGroup(object):
         self.stream_handlers = list(stream_handlers)
         ctx = context.get_context()
         if ctx.backdoor_port is not None:
-            self.stream_handlers.append( (console_sock_handle, ("0.0.0.0", ctx.backdoor_port) ) )
+            self.stream_handlers.append((console_sock_handle, ("0.0.0.0", ctx.backdoor_port)))
         self.num_workers = ctx.num_workers
         self.servers = []
         self.socks = {}
@@ -90,6 +93,7 @@ class ServerGroup(object):
     def run(self):
         if not self.prefork:
             self.start()
+            ml.ld("Now really running-init over")
             try:
                 while 1:
                     async.sleep(1.0)
@@ -145,6 +149,7 @@ def _make_server_sock(address):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(address)
     sock.listen(128)  # Note: 128 is a "hint" to the OS than a strict rule about backlog size
+    ml.la("Listen to {0!r} gave this socket {1!r}", address, sock)
     return sock
 
 
