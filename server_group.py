@@ -81,7 +81,7 @@ class ServerGroup(object):
             self.socks[server] = sock
             # prevent a "blocking" call to DNS on each request
             # (NOTE: although the OS won't block, gevent will dispatch to a threadpool which is expensive)
-            server.set_environ({'SERVER_NAME': gevent.socket.getfqdn(address[0])})
+            server.set_environ({'SERVER_NAME': socket.getfqdn(address[0])})
         for handler, address in self.stream_handlers:
             sock = _make_server_sock(address)
             server = gevent.server.StreamServer(sock, handler, spawn=10000)
