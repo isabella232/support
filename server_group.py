@@ -30,6 +30,7 @@ import ll
 
 ml = ll.LLogger()
 
+
 class ServerGroup(object):
     def __init__(self, wsgi_apps=(), stream_handlers=(), prefork=False, daemonize=False, dev=False, **kw):
         '''Create a new ServerGroup which will can be started / stopped / forked as a group.
@@ -145,6 +146,7 @@ class ServerGroup(object):
 
 
 def _make_server_sock(address):
+    ml.ld("about to bind to {0!r}", address)
     sock = gevent.socket.socket()
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(address)
