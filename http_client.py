@@ -75,7 +75,7 @@ def urllib2_request(u2req, timeout=None):
         raise urllib2.URLError(e.msg)
 
 
-def request(method, url, body=None, headers={},
+def request(method, url, body=None, headers=None,
             literal=False, use_protected=False,
             timeout=socket._GLOBAL_DEFAULT_TIMEOUT):
     if method not in _HTTP_METHODS:
@@ -104,6 +104,8 @@ def request(method, url, body=None, headers={},
 
     conn.putrequest(method, selector, **skips)
     # OMD!
+    if headers is None:
+        headers = {}
     if not literal and body is not None and 'Content-Length' not in headers:
         conn._set_content_length(body)
 
