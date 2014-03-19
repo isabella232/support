@@ -99,13 +99,14 @@ def request(method, url, body=None, headers=None,
     skips = {'skip_host': True,
              'skip_accept_encoding': True} if literal else {}
 
+    if headers is None:
+        headers = {}
+
     if not literal:
         headers.setdefault('User-Agent', 'python')
 
     conn.putrequest(method, selector, **skips)
     # OMD!
-    if headers is None:
-        headers = {}
     if not literal and body is not None and 'Content-Length' not in headers:
         conn._set_content_length(body)
 
