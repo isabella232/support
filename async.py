@@ -76,12 +76,19 @@ def get_cur_correlation_id():
         corr_id = "{0:x}{1:x}".format(
             pp_crypt.fnv_hash(corr_val) & 0xFFFFFFFF, 
             int(t % 1 * 10 ** 6) & 0xFFFFFFFF)
+        ml.ld2("Generated corr_id {0}", corr_id)
         corr_ids[cur] = corr_id
     return corr_ids[cur]
 
 
 def set_cur_correlation_id(corr_id):
     context.get_context().greenlet_correlation_ids[gevent.getcurrent()] = corr_id
+
+
+def unset_cur_correlation_id():
+    greenlet_id = gevent.getcurrent()
+    if greenlet_id in context.get_context().greenlet_correlation_ids:
+        del context.get_context().greenlet_correlation_ids[greenlet_id]
 
 
 def _make_threadpool_dispatch_decorator(name, size):
