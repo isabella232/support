@@ -204,7 +204,7 @@ class CPUThread(object):
                 # ret s set up above before async send
                 if hasattr(ret, '__len__') and callable(ret.__len__):
                     size = len(ret)
-                    _queue_stats('cpu_bound', func.__name__, queued, duration, size)
+                _queue_stats('cpu_bound', func.__name__, queued, duration, size)
         except:
             self._error()
             # this may always halt the server process
