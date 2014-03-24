@@ -169,11 +169,15 @@ class Context(object):
             self.ops_config = opscfg.OpsCfg(self.appname)
 
     def _update_addresses(self):
+        stage_path = '/x/web/' + self.hostname.upper() + '/topo/STAGE2.default.topo'
         if self.stage_host:
             import topos
-            self.topos = topos.TopoFile(
-                os.path.expanduser('~/.pyinfra/topo/STAGE2.default.topo'),
-                ip=self.stage_ip)
+            if os.path.exists(stage_path):
+                self.topos = topos.TopoFile(stage_path, ip=self.stage_ip)
+            else:
+                self.topos = topos.TopoFile(
+                    os.path.expanduser('~/.pyinfra/topo/STAGE2.default.topo'),
+                    ip=self.stage_ip)
         if self.topos:
             addresses = self.topos.get(self.appname) or {}
         else:
