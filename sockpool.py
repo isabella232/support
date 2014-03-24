@@ -128,19 +128,3 @@ class SockPool(object):
         for sock in culled:
             del self.sock_idle_times[sock]
             async.spawn(self.killsock, sock)
-
-
-class NullSockPool(object):
-    def __init__(self):
-        import async  # breaks circular dependency
-
-        self.killsock = async.killsock
-
-    def acquire(sock, addr):
-        return None
-
-    def release(self, sock):
-        self.killsock(sock)
-
-    def cull(self):
-        return
