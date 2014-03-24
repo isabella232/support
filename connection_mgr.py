@@ -43,6 +43,7 @@ class ConnectionManager(object):
 
     def __init__(self, address_groups=None, address_aliases=None, ops_config=None, protected=None):
         self.sockpools = weakref.WeakKeyDictionary()  # one sockpool per protected
+        # self.sockpools = { weakref(protected) : {socket_type: [list of sockets]} }
         self.address_groups = address_groups
         self.address_aliases = address_aliases
         self.ops_config = ops_config  # NOTE: how to update this?
@@ -53,7 +54,7 @@ class ConnectionManager(object):
         # is not yet fully initialized
         self.culler = gevent.spawn(self.cull_loop)
 
-    def get_connection(self, name_or_addr, ssl=False):
+    def get_connection(self, name_or_addr, ssl=False, sock_type=None):
         '''
         name_or_addr - the logical name to connect to, e.g. "paymentreadserv" or "occ-ctoc"
         ssl - if set to True, wrap socket with context.protected;
@@ -91,7 +92,7 @@ class ConnectionManager(object):
         if name is None:  # default to a string-ification of ip for the name
             name = address_list[0][0].replace('.', '-')
 
-        for pool in self.sockpools.values():
+        for pool in sum([e.values() for e in self.sockpools.values()], []):
             pool.cull()
 
         total_num_in_use = sum([len(model.active_connections)
@@ -122,7 +123,7 @@ class ConnectionManager(object):
                 errors.append((address, err))
         raise MultiConnectFailure(errors)
 
-    def _connect_to_address(self, name, ssl, sock_config, address):
+    def _connect_to_address(self, name, ssl, sock_config, address, sock_type=None):
         ctx = context.get_context()
 
         if address not in self.server_models:
@@ -145,9 +146,11 @@ class ConnectionManager(object):
             protected = NULL_PROTECTED  # something falsey and weak-refable
 
         if protected not in self.sockpools:
-            self.sockpools[protected] = sockpool.SockPool()
+            self.sockpools[protected] = {sock_type: sockpool.SockPool()}
+        if sock_type not in self.sockpools[protected]:
+            self.sockpools[protected][sock_type] = sockpool.SockPool()
 
-        sock = self.sockpools[protected].acquire(address)
+        sock = self.sockpools[protected][sock_type].acquire(address)
         if not sock:
             if sock_config.transient_markdown_enabled:
                 last_error = server_model.last_error
@@ -186,7 +189,10 @@ class ConnectionManager(object):
                     else:
                         sock = async.wrap_socket_context(sock, protected.ssl_client_context)
 
-            sock = MonitoredSocket(sock, server_model.active_connections, protected, name)
+            if sock_type:
+                sock = sock_type(sock)
+
+            sock = MonitoredSocket(sock, server_model.active_connections, protected, name, sock_type)
             server_model.sock_in_use(sock)
 
         sock.settimeout(sock_config.response_timeout_ms / 1000.0)
@@ -195,13 +201,13 @@ class ConnectionManager(object):
     def release_connection(self, sock):
         # check the connection for updating of SSL cert (?)
         if context.get_context().sockpool_enabled:
-            self.sockpools[sock._protected].release(sock)
+            self.sockpools[sock._protected][sock._type].release(sock)
         else:
             async.killsock(sock)
 
     def cull_loop(self):
         while 1:
-            for pool in self.sockpools.values():
+            for pool in sum([e.values() for e in self.sockpools.values()], []):
                 async.sleep(CULL_INTERVAL)
                 pool.cull()
             async.sleep(CULL_INTERVAL)
@@ -287,11 +293,12 @@ class MonitoredSocket(object):
     '''
     A socket proxy which allows socket lifetime to be monitored.
     '''
-    def __init__(self, sock, registry, protected, name=None):
+    def __init__(self, sock, registry, protected, name=None, type=None):
         self._msock = sock
         self._registry = registry  # TODO: better name for this
         self._spawned = time.time()
         self._protected = protected
+        self._type = type
         # alias some functions through for improved performance
         #  (__getattr__ is pretty slow compared to normal attribute access)
         #self.send = sock.send
