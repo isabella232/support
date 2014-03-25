@@ -120,7 +120,7 @@ class ConnectionManager(object):
         for address in address_list:
             try:
                 with ctx.cal.trans('CONNECT', name + ':' + address[0], msg={"lport": address[1]}):
-                    return self._connect_to_address(name, ssl, sock_config, address)
+                    return self._connect_to_address(name, ssl, sock_config, address, sock_type)
             except socket.error as err:
                 if len(address_list) == 1:
                     raise
