@@ -59,6 +59,11 @@ class ConnectionManager(object):
         name_or_addr - the logical name to connect to, e.g. "paymentreadserv" or "occ-ctoc"
         ssl - if set to True, wrap socket with context.protected;
               if set to a protected.Protected object, wrap socket with that object
+        sock_type - a type to wrap the socket in; the intention here is for protocols
+              that want to run asynchronous keep-alives, or higher level handshaking
+              (strictly speaking, this is just a callable which accepts socket and
+               returns the thing that should be pooled, but for must uses it will
+               probably be a class)
         '''
         ctx = context.get_context()
         address_groups = self.address_groups or ctx.address_groups
@@ -189,11 +194,14 @@ class ConnectionManager(object):
                     else:
                         sock = async.wrap_socket_context(sock, protected.ssl_client_context)
 
-            if sock_type:
-                sock = sock_type(sock)
-
             sock = MonitoredSocket(sock, server_model.active_connections, protected, name, sock_type)
             server_model.sock_in_use(sock)
+
+            if sock_type:
+                if getattr(sock_type, "wants_protected", False):
+                    sock = sock_type(sock, protected)
+                else:
+                    sock = sock_type(sock)
 
         sock.settimeout(sock_config.response_timeout_ms / 1000.0)
         return sock
