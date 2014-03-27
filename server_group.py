@@ -103,11 +103,11 @@ class ServerGroup(object):
             return
         if not ufork:
             raise RuntimeError('attempting to run pre-forked on platform without fork')
+        ctx = context.get_context()
         self.arbiter = ufork.Arbiter(
             post_fork=self._post_fork, child_pre_exit=self.stop, parent_pre_stop=self.stop,
-            size=self.num_workers, sleep=async.sleep, fork=gevent.fork)
+            size=self.num_workers, sleep=async.sleep, fork=gevent.fork, child_memlimit=ctx.worker_memlimit)
         if self.daemonize:
-            ctx = context.get_context()
             pidfile = os.path.join(ctx.pid_file_path,
                                    '{0}.pid'.format(ctx.appname))
             self.arbiter.spawn_daemon(pidfile=pidfile)

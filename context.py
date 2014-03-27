@@ -32,6 +32,14 @@ class Context(object):
 
     2- Global data which would otherwise need to be kept track of by user code.
     (This stuff can be identified by the presence of getters)
+
+    There are many configuration attributes.  They ALL go to a sane default,
+    it is not necessary to touch them but they are available for advanced users.
+
+    num_workers -- number of worker processes to fork (default max(cpu_count - 1, 2))
+    worker_memlimit -- maximum amount of RAM used by process before worker suicide
+    pid_file_path -- location to store pid file at
+    
     '''
     def __init__(self, dev=False, stage_host=None):
         import topos
@@ -43,6 +51,7 @@ class Context(object):
 
         #UFORK STUFF
         self.num_workers = max(cpu_count() - 1, 2)
+        self.worker_memlimit = 2 ** 30
         # used in python as num_children
         # read from opscfg as max_connections
         self.pid = None
