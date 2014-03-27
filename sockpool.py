@@ -128,3 +128,7 @@ class SockPool(object):
         for sock in culled:
             del self.sock_idle_times[sock]
             async.spawn(self.killsock, sock)
+
+    def __repr__(self):
+        return "<sockpool.SockPool nsocks={0}/{1} naddrs={2}>".format(
+            self.total_sockets, self.max_sockets, len(self.free_socks_by_addr))
