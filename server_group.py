@@ -285,7 +285,9 @@ class SockConsole(code.InteractiveConsole):
         if obj is None:
             return
         self.locals['_'] = None
-        self._last = repr(obj)
+        # clean up output by adding \n here; so you don't see "hello world!">>> 
+        # TODO: is there a better way to handle this?
+        self._last = repr(obj) + "\n"
         self.locals['_'] = obj
 
     def runcode(self, _code):
