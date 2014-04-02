@@ -49,6 +49,8 @@ class ConnectionManager(object):
         self.ops_config = ops_config  # NOTE: how to update this?
         self.protected = protected
         self.server_models = ServerModelDirectory()
+        # map of user-level socket objects to MonitoredSocket instances
+        self.user_socket_map = weakref.WeakKeyDictionary()
         # do as I say, not as I do!  we need to use gevent.spawn instead of async.spawn
         # because at the time the connection manager is constructed, the infra context
         # is not yet fully initialized
@@ -156,6 +158,7 @@ class ConnectionManager(object):
             self.sockpools[protected][sock_type] = sockpool.SockPool()
 
         sock = self.sockpools[protected][sock_type].acquire(address)
+        msock = None
         if not sock:
             if sock_config.transient_markdown_enabled:
                 last_error = server_model.last_error
@@ -195,6 +198,7 @@ class ConnectionManager(object):
                         sock = async.wrap_socket_context(sock, protected.ssl_client_context)
 
             sock = MonitoredSocket(sock, server_model.active_connections, protected, name, sock_type)
+            msock = sock
             server_model.sock_in_use(sock)
 
             if sock_type:
@@ -204,12 +208,16 @@ class ConnectionManager(object):
                     sock = sock_type(sock)
 
         sock.settimeout(sock_config.response_timeout_ms / 1000.0)
+        if msock:
+            self.user_socket_map[sock] = msock
         return sock
 
     def release_connection(self, sock):
+        # fetch MonitoredSocket
+        msock = self.user_socket_map.get(sock, sock)
         # check the connection for updating of SSL cert (?)
         if context.get_context().sockpool_enabled:
-            self.sockpools[sock._protected][sock._type].release(sock)
+            self.sockpools[msock._protected][msock._type].release(sock)
         else:
             async.killsock(sock)
 
