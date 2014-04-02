@@ -16,7 +16,6 @@ import gevent.threadpool
 import gevent.greenlet
 import faststat
 
-import pp_crypt
 import context
 import errno
 
@@ -68,6 +67,7 @@ def get_cur_correlation_id():
         cur = ancestors[cur]
     #if no correlation id found, create a new one at highest level
     if cur not in corr_ids:
+        import pp_crypt  # breaking circular import
         #this is reproducing CalUtility.cpp
         #TODO: where do different length correlation ids come from in CAL logs?
         t = time.time()
@@ -278,7 +278,17 @@ io_bound = _make_threadpool_dispatch_decorator('io_bound', 10)  # TODO: make siz
 # N.B.  In many cases fcntl could be used as an alternative method of achieving non-blocking file
 # io on unix systems
 
-def cpu_bound(f):
+def cpu_bound(f, p=None):
+    '''
+    Cause the decorated function to have its execution deferred to a separate thread to avoid
+    blocking the IO loop in the main thread.
+
+    Example usage:
+
+    @async.cpu_bound
+    def my_slow_function():
+        pass
+    '''
     @functools.wraps(f)
     def g(*a, **kw):
         ctx = context.get_context()
@@ -291,6 +301,32 @@ def cpu_bound(f):
         ml.ld3("Calling in cpu thread {0}", f.__name__)
         return context.get_context().thread_locals.cpu_bound_thread.apply(f, a, kw)
     g.no_defer = f
+    return g
+
+
+def cpu_bound_if(p):
+    '''
+    Similar to cpu_bound, but should be called with a predicate parameter which determines
+    whether or not to dispatch to a cpu_bound thread.  The predicate will be passed the same
+    parameters as the function itself.
+
+    Example usage:
+
+    # will be deferred to a thread if parameter greater than 16k, else run locally
+    @async.cpu_bound_if(lambda s: len(s) > 16 * 1024)
+    def my_string_function(data):
+        pass
+    '''
+    def g(f):
+        f = cpu_bound(f)
+
+        @functools.wraps(f)
+        def h(*a, **kw):
+            if p(*a, **kw):
+                return f(*a, **kw)
+            return f.no_defer(*a, **kw)
+
+        return h
     return g
 
 
