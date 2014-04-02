@@ -178,6 +178,8 @@ class CPUThread(object):
         self.notifier = gevent.spawn(self._notify)
 
     def _run(self):
+        # in_cpubound_thread is sentinel to prevent double thread dispatch
+        context.get_context().thread_locals.in_cpubound_thread = True
         try:
             self.in_async = gevent.get_hub().loop.async()
             self.in_q_has_data = gevent.event.Event()
@@ -280,7 +282,9 @@ def cpu_bound(f):
     @functools.wraps(f)
     def g(*a, **kw):
         ctx = context.get_context()
-        if not ctx.cpu_thread_enabled or imp.lock_held():
+        # in_cpubound_thread is sentinel to prevent double-thread dispatch
+        if (not ctx.cpu_thread_enabled or imp.lock_held() 
+                or getattr(ctx.thread_locals, 'in_cpubound_thread', False)):
             return f(*a, **kw)
         if not hasattr(ctx.thread_locals, 'cpu_bound_thread'):
             ctx.thread_locals.cpu_bound_thread = CPUThread()
