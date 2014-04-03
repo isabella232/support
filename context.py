@@ -24,7 +24,8 @@ ml = ll.LLogger()
 class Context(object):
     '''
     Context object is meant to be the clearing-house for global data in an
-    application written using Python Infrastructure.
+    application written using Python Infrastructure.  There should only be
+    one Context at a time.  Access the context with infra.context.get_context().
 
     Two categories of data in here:
 
@@ -36,10 +37,24 @@ class Context(object):
     There are many configuration attributes.  They ALL go to a sane default,
     it is not necessary to touch them but they are available for advanced users.
 
-    num_workers -- number of worker processes to fork (default max(cpu_count - 1, 2))
-    worker_memlimit -- maximum amount of RAM used by process before worker suicide
-    pid_file_path -- location to store pid file at
-    
+    ========================= ===================================== ==============================
+    attribute                 description                           default
+    ========================= ===================================== ==============================
+    num_workers               number of pre-forked worker processes cpu_count-1, minimum 2
+
+    worker_memlimit           maximum amount of RAM used by process 1 GiB
+                              before worker suicide
+
+    pid_file_path             pid file location (used for server    [appname].pid 
+                              shutdown)
+
+    bakdoor_port              the port for the TCP REPL server      port + 2 in dev, None in live
+                              (None means no REPL server)
+
+    port                      the port that infra.serve() will use  topo[appname]["bind_port"], or
+                                                                    8888 if in dev and no topo
+                                                                    entry found
+    ========================= ===================================== ==============================
     '''
     def __init__(self, dev=False, stage_host=None):
         import topos
