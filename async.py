@@ -37,8 +37,42 @@ def spawn(*a, **kw):
     else:
         f, a = a[0], a[1:]
     gr = gevent.spawn(_exception_catcher, f, *a, **kw)
-    context.get_context().greenlet_ancestors[gr] = gevent.getcurrent()
+    ctx = context.get_context()
+    ctx.greenlet_ancestors[gr] = gevent.getcurrent()
+    ctx.cal.event('ASYNC', 'SPAWN', '0', {'name': f.__name__ + "(" + hex(id(gr))[-5:] + ")"})
+    gr.spawn_code = f.__code__
     return gr
+
+
+def join(reqs, raise_exc=False, timeout=None):
+    with context.get_context().cal.atrans('ASYNC', 'JOIN') as trans:
+        greenlets = []
+        for req in reqs:
+            if isinstance(req, gevent.greenlet.Greenlet):
+                greenlets.append(req)
+            else:
+                greenlets.append(spawn(_safe_req, req))
+        gevent.joinall(greenlets, raise_error=raise_exc, timeout=timeout)
+        results = []
+        aliases = getattr(context.get_context().cal, "aliaser", None)
+        aliases = aliases and aliases.mapping or {}
+        for gr, req in zip(greenlets, reqs):
+            # handle the case that we are joining on a greenlet that
+            # wasn't spawned via async.spawn and so doesn't have a
+            # spawn_code attribute
+            name = getattr(gr, "spawn_code", None)
+            name = (name and name.co_name or "") + "(" + hex(id(gr))[-5:] + ")"
+            if gr.successful():
+                results.append(gr.value)
+                trans.msg[name] = "0"
+            elif gr.ready():  # finished, but must have had error
+                results.append(gr.exception)
+                trans.msg[name] = "1"
+            else:  # didnt finish, must have timed out
+                results.append(AsyncTimeoutError(req, timeout))
+                trans.msg[name] = "U"
+            trans.msg[name] += ",tid=" + str(aliases.get(gr, "(-)"))
+        return results
 
 
 def _exception_catcher(f, *a, **kw):
@@ -345,25 +379,6 @@ def _safe_req(req):
         return req()
     except Exception as e:
         raise ASFError(e)
-
-
-def join(reqs, raise_exc=False, timeout=None):
-    greenlets = []
-    for req in reqs:
-        if isinstance(req, gevent.greenlet.Greenlet):
-            greenlets.append(req)
-        else:
-            greenlets.append(spawn(_safe_req, req))
-    gevent.joinall(greenlets, raise_error=raise_exc, timeout=timeout)
-    results = []
-    for gr, req in zip(greenlets, reqs):
-        if gr.successful():
-            results.append(gr.value)
-        elif gr.ready():  # finished, but must have had error
-            results.append(gr.exception)
-        else:  # didnt finish, must have timed out
-            results.append(AsyncTimeoutError(req, timeout))
-    return results
 
 
 class AsyncTimeoutError(ASFError):
