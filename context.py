@@ -451,7 +451,11 @@ def _sys_stats_monitor(context):
         tmp = context()
         if tmp is None or tmp.stopping:
             return
-        tmp.stats['gc.garbage'].add(len(gc.garbage))
+        # tmp.stats['gc.garbage'].add(len(gc.garbage))
+        # NOTE: gc.garbage() only does something if gc module has debug flag set
+        counts = gc.get_count()
+        for i in range(len(counts)):
+            tmp.stats['gc.count' + str(i)].add(counts[i])
         tmp.stats['greenlets.active'].add(_get_hub().loop.activecnt)
         tmp.stats['greenlets.pending'].add(_get_hub().loop.pendingcnt)
         try:
