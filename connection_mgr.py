@@ -153,9 +153,10 @@ class ConnectionManager(object):
             protected = NULL_PROTECTED  # something falsey and weak-refable
 
         if protected not in self.sockpools:
-            self.sockpools[protected] = {sock_type: sockpool.SockPool()}
+            self.sockpools[protected] = {}
         if sock_type not in self.sockpools[protected]:
-            self.sockpools[protected][sock_type] = sockpool.SockPool()
+            self.sockpools[protected][sock_type] = sockpool.SockPool(
+                timeout=getattr(sock_type, "idle_timeout", 0.25))
 
         sock = self.sockpools[protected][sock_type].acquire(address)
         msock = None
