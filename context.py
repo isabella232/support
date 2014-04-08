@@ -54,6 +54,8 @@ class Context(object):
     port                      the port that infra.serve() will use  topo[appname]["bind_port"], or
                                                                     8888 if in dev and no topo
                                                                     entry found
+
+    cal                       the current infra.cal.Client() object (appname, '127.0.0.1', 1118)
     ========================= ===================================== ==============================
     '''
     def __init__(self, dev=False, stage_host=None):
