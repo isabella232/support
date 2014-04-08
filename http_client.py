@@ -125,7 +125,7 @@ def request(method, url, body=None, headers=None,
                                 # HTTPConnection
     raw._connection = conn      # so the finalizer doesn't get called
                                 # until the request has died
-                                
+
     response_headers = []
     for header in raw.msg.headers:
         key, null, value = header.partition(': ')
@@ -153,10 +153,13 @@ class Response(object):
         self.status = status
         self.headers = headers
         self.http_response = http_response
+        self._body = None
 
     @property
     def body(self):
-        return self.http_response.read()
+        if self._body is None:
+            self._body = self.http_response.read()
+        return self._body
 
     def __repr__(self):
         return "<http_client.Response ({0}) {1} {2}>".format(
