@@ -173,6 +173,13 @@ class ConnectionManager(object):
                                                           str(address[0]) + ":" + str(address[1])):
                         sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000.0)
                         ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
+                    if ssl:  # TODO: how should SSL failures interact with markdown & connect count?
+                         with context.get_context().cal.atrans('CONNECT_SSL',
+                                                              str(address[0]) + ":" + str(address[1])):
+                            if ssl == PLAIN_SSL:
+                                sock = gevent.ssl.wrap_socket(sock)
+                            else:
+                                sock = async.wrap_socket_context(sock, protected.ssl_client_context)
                     break
                 except socket.error as err:
                     if False:  # TODO: how to tell if this is an unrecoverable error
@@ -188,13 +195,6 @@ class ConnectionManager(object):
                         ml.ld("Connection err {0!r}, {1}, {2!r}", address, name, err)
                         raise
                     failed += 1
-            if ssl:
-                with context.get_context().cal.atrans('CONNECT_SSL',
-                                                      str(address[0]) + ":" + str(address[1])):
-                    if ssl == PLAIN_SSL:
-                        sock = gevent.ssl.wrap_socket(sock)
-                    else:
-                        sock = async.wrap_socket_context(sock, protected.ssl_client_context)
 
             sock = MonitoredSocket(sock, server_model.active_connections, protected, name, sock_type)
             msock = sock
