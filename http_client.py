@@ -128,7 +128,7 @@ def request(method, url, body=None, headers=None,
                                 
     response_headers = []
     for header in raw.msg.headers:
-        key, null, value = header.partition(':')
+        key, null, value = header.partition(': ')
         response_headers.append((key, value))
 
     return Response(
