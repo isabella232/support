@@ -39,13 +39,13 @@ def spawn(*a, **kw):
     gr = gevent.spawn(_exception_catcher, f, *a, **kw)
     ctx = context.get_context()
     ctx.greenlet_ancestors[gr] = gevent.getcurrent()
-    ctx.cal.event('ASYNC', 'SPAWN', '0', {'name': f.__name__ + "(" + hex(id(gr))[-5:] + ")"})
+    ctx.cal.event('ASYNC', 'spawn.' + f.__name__, '0', {'id': hex(id(gr))[-5:]})
     gr.spawn_code = f.__code__
     return gr
 
 
 def join(reqs, raise_exc=False, timeout=None):
-    with context.get_context().cal.atrans('ASYNC', 'JOIN') as trans:
+    with context.get_context().cal.atrans('ASYNC', 'join') as trans:
         greenlets = []
         for req in reqs:
             if isinstance(req, gevent.greenlet.Greenlet):
@@ -76,8 +76,10 @@ def join(reqs, raise_exc=False, timeout=None):
 
 
 def _exception_catcher(f, *a, **kw):
+    ctx = context.get_context()
     try:
-        return f(*a, **kw)
+        with ctx.cal.trans('API', 'ASYNC-SPAWN'):  # .' + f.__name__.upper()):
+            return f(*a, **kw)
     except Exception as e:  # NOTE: would rather do this with weakrefs,
         if not hasattr(e, '__greenlet_traces'):  # but Exceptions are not weakref-able
             e.__greenlet_traces = []
