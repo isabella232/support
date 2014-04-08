@@ -125,9 +125,15 @@ def request(method, url, body=None, headers=None,
                                 # HTTPConnection
     raw._connection = conn      # so the finalizer doesn't get called
                                 # until the request has died
+                                
+    response_headers = []
+    for header in raw.msg.headers:
+        key, null, value = header.partition(': ')
+        response_headers.append((key, value))
+
     return Response(
         Request(method, url, headers, body),
-        raw.status, raw.getheaders(), raw)
+        raw.status, response_headers, raw)
 
 
 class Request(object):
