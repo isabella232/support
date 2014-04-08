@@ -17,6 +17,7 @@ if hasattr(os, "fork"):
     import ufork
 else:
     ufork = None
+import gevent
 from gevent import pywsgi
 import gevent.server
 import gevent.socket
@@ -142,7 +143,7 @@ class ServerGroup(object):
             raise RuntimeError(errs)
 
     def stop(self, timeout=30.0):
-        async.join([async.spawn(server.stop, timeout) for server in self.servers], raise_exc=True)
+        gevent.joinall([gevent.spawn(server.stop, timeout) for server in self.servers], raise_error=True)
 
 
 def _make_server_sock(address):
