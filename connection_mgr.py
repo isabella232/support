@@ -197,18 +197,18 @@ class ConnectionManager(object):
                     failed += 1
 
             sock = MonitoredSocket(sock, server_model.active_connections, protected, name, sock_type)
-            msock = sock
             server_model.sock_in_use(sock)
 
             if sock_type:
+                msock = sock
                 if getattr(sock_type, "wants_protected", False):
                     sock = sock_type(sock, protected)
                 else:
                     sock = sock_type(sock)
 
         sock.settimeout(sock_config.response_timeout_ms / 1000.0)
-        if msock:
-            self.user_socket_map[sock] = msock
+        if msock and sock is not msock:  # if sock == msock, collection will not work
+            self.user_socket_map[sock] = weakref.proxy(msock)
         return sock
 
     def release_connection(self, sock):
