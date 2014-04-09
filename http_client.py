@@ -1,9 +1,16 @@
 '''
-A simple, plain HTTP client which mixes httplib with gevent and PayPal protecteds.
+A simple HTTP client which mixes httplib with gevent and PayPal protecteds.
 
-API is currently a single function:
+It provides convenience functions for the standard set of `HTTP methods`_:
 
-http_client.request("get", "http://example.com/foo")
+>>> http_client.get('http://example.com/foo') # doctest: +SKIP
+
+which are just shortcuts for the corresponding :py:func:`request` call:
+
+>>> http_client.request("get", "http://example.com/foo") # doctest: +SKIP
+
+.. _HTTP Methods: http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol\
+#Request_methods
 '''
 import httplib
 from urlparse import urlparse, urlunparse
@@ -78,6 +85,51 @@ def urllib2_request(u2req, timeout=None):
 def request(method, url, body=None, headers=None,
             literal=False, use_protected=False,
             timeout=socket._GLOBAL_DEFAULT_TIMEOUT):
+    '''\
+    A function to issue HTTP requests.
+
+    **NB: If you want to issue ASF requests, you should be using
+    idealclient!**
+
+    :param method: the `HTTP method`_ for this request. Case
+      insensitive.
+
+    :param url: the URL to request. Must include a protocol
+      (e.g. `http`, `https`).
+
+    :param body: the body of the request, if applicable
+
+    :type body: a string or file-like object (i.e, an object that has
+      a ``read`` method).
+
+    :param headers: A dictionary of request headers
+
+    :type headers: :py:class:`dict`
+
+    :param literal: if true, instruct
+      :py:class:`~httplib.HTTPConnection` **not** to set the ``Host`` or
+      ``Accept-Encoding`` headers automatically.  Useful for testing
+
+    :param use_protected: if true, use the appropriate protected for
+      this call.
+
+    :param timeout: connection timeout for this request.
+
+    :returns: a :py:class:`Response` object.
+
+    An example, calling up google with a custom host header:
+
+    >>> request('get',
+    ...         'http://google.com',
+    ...         headers={'Host': 'www.google.com'},
+    ...         literal=True)
+    <http_client.Response (200) GET http://google.com>
+
+    .. _HTTP Method: http://en.wikipedia.org/wiki/\
+    Hypertext_Transfer_Protocol#Request_methods
+
+    '''
+    method = method.upper()
     if method not in _HTTP_METHODS:
         raise ValueError("invalid http method {0}".format(method))
 
@@ -125,18 +177,32 @@ def request(method, url, body=None, headers=None,
                                 # HTTPConnection
     raw._connection = conn      # so the finalizer doesn't get called
                                 # until the request has died
-
-    response_headers = []
-    for header in raw.msg.headers:
-        key, null, value = header.partition(': ')
-        response_headers.append((key, value))
-
     return Response(
         Request(method, url, headers, body),
-        raw.status, response_headers, raw)
+        raw.status, raw.msg, raw)
 
 
 class Request(object):
+    '''\
+    A simple wrapper for HTTP Requests
+
+    .. py:attribute:: method
+
+       The method used for this request (e.g., `POST`, `GET`).
+
+    .. py:attribute:: url
+
+       The requested URL.
+
+    .. py:attribute:: headers
+
+       The request headers (a :py:class:`list` of two-item :py:class:`tuples`)
+
+    .. py:attribute:: body
+
+       The body if present, otherwise `None`.
+    '''
+
     def __init__(self, method, url, headers, body):
         self.method = method
         self.url = url
@@ -148,6 +214,67 @@ class Request(object):
 
 
 class Response(object):
+    r'''\
+    A simple wrapper for HTTP responses.
+
+    .. py:attribute:: request
+
+      the :py:class:`Request` object that lead to this response
+
+    .. py:attribute:: status
+
+      the numeric status code for this Response
+
+    .. py:attribute:: headers
+
+      an :py:class:`~httplib.HTTPMessage` object containing this
+      response's headers.  You can treat this as a dictionary: for
+      example, you can get the value for the ``Host`` header with
+      ``msg['Host']``.  **You should, however, be careful with
+      duplicate headers.**
+
+      Consider the following headers:
+
+      >>> headers = '\r\n'.join(['X-First-Header: First, Value',
+      ...                       'X-First-Header: Second, Value',
+      ...                       'X-Second-Header: Final, Value',
+      ...                       ''])
+
+      Note that the header ``X-First-Header`` appears twice.
+
+      >>> from StringIO import StringIO
+      >>> from httplib import HTTPMessage
+      >>> msg = HTTPMessage(StringIO(headers))
+      >>> msg['X-First-Header']
+      'First, Value, Second, Value'
+
+      :py:class:`HTTPMessage` has *concatenated* the two values we
+      provided for `X-First-Header` (`First, Value` and `Second,
+      Value`) with a comma.  Unfortunately both of these values
+      contain a comma.  That means a simple :py:meth:`str.split` can't
+      recover the original values:
+
+      >>> msg['X-First-Header'].split(', ')
+      ['First', 'Value', 'Second', 'Value']
+
+      The same behavior occurs with :meth:`HTTPMessage.items`:
+
+      >>> msg.items() # doctest: +NORMALIZE_WHITESPACE
+      [('x-second-header', 'Final, Value'),
+       ('x-first-header', 'First, Value, Second, Value')]
+
+      To correctly recover values from duplicated header fields, use
+      :meth:`HTTPMessage.getheaders`:
+
+      >>> msg.getheaders('X-First-Header')
+      ['First, Value', 'Second, Value']
+
+    .. py:attribute:: http_response
+
+       the underlying :py:class:`~httplib.HTTPResponse` object for
+       this response.
+    '''
+
     def __init__(self, request, status, headers, http_response):
         self.request = request
         self.status = status
@@ -157,6 +284,14 @@ class Response(object):
 
     @property
     def body(self):
+        """the body of the request, if applicable.
+
+        Since this value is lazily loaded, if you never access it the
+        response's body will never be downloaded.  Once loaded it's
+        stored locally, so repeated accesses won't trigger repeated
+        network calls.
+        """
+
         if self._body is None:
             self._body = self.http_response.read()
         return self._body
