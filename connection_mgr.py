@@ -56,7 +56,7 @@ class ConnectionManager(object):
         # is not yet fully initialized
         self.culler = gevent.spawn(self.cull_loop)
 
-    def get_connection(self, name_or_addr, ssl=False, sock_type=None, extra=None):
+    def get_connection(self, name_or_addr, ssl=False, sock_type=None):
         '''
         name_or_addr - the logical name to connect to, e.g. "paymentreadserv" or "occ-ctoc"
         ssl - if set to True, wrap socket with context.protected;
@@ -122,7 +122,7 @@ class ConnectionManager(object):
         for address in address_list:
             try:
                 with ctx.cal.trans('CONNECT', name + ':' + address[0], msg={"lport": address[1]}):
-                    return self._connect_to_address(name, ssl, sock_config, address, sock_type, extra=extra)
+                    return self._connect_to_address(name, ssl, sock_config, address, sock_type)
             except socket.error as err:
                 if len(address_list) == 1:
                     raise
@@ -130,7 +130,7 @@ class ConnectionManager(object):
                 errors.append((address, err))
         raise MultiConnectFailure(errors)
 
-    def _connect_to_address(self, name, ssl, sock_config, address, sock_type=None, extra=None):
+    def _connect_to_address(self, name, ssl, sock_config, address, sock_type=None):
         ctx = context.get_context()
         if address not in self.server_models:
             self.server_models[address] = ServerModel(address)
@@ -201,16 +201,10 @@ class ConnectionManager(object):
             server_model.sock_in_use(sock)
 
             if sock_type:
-                if getattr(sock_type, "wants_extra", False):
-                    if getattr(sock_type, "wants_protected", False):
-                        sock = sock_type(sock, protected, extra=extra)
-                    else:
-                        sock = sock_type(sock, extra=extra)
+                if getattr(sock_type, "wants_protected", False):
+                    sock = sock_type(sock, protected)
                 else:
-                    if getattr(sock_type, "wants_protected", False):
-                        sock = sock_type(sock, protected)
-                    else:
-                        sock = sock_type(sock)
+                    sock = sock_type(sock)
 
         sock.settimeout(sock_config.response_timeout_ms / 1000.0)
         if msock:
