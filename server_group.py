@@ -193,7 +193,7 @@ class SslContextWSGIServer(pywsgi.WSGIServer):
             client_socket.send(_NO_SSL_HTTP_RESPONSE)
             async.killsock(client_socket)
         else:
-            context.get_context().counts["server.pings"] += 1
+            context.get_context().intervals["server.pings"].tick()
 
 
 class MultiProtocolWSGIServer(SslContextWSGIServer):
@@ -207,7 +207,7 @@ class MultiProtocolWSGIServer(SslContextWSGIServer):
             ssl_socket = async.wrap_socket_context(client_socket, **self.ssl_args)
             return self.handle(ssl_socket, address)
         else:
-            context.get_context().counts["server.pings"] += 1
+            context.get_context().intervals["server.pings"].tick()
 
 
 #http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods

@@ -85,8 +85,11 @@ class Context(object):
         import cal
         self.cal = cal.DefaultClient()
         self.greenlet_trans_stack = WeakKeyDictionary()
-        self.recent_cal = deque(maxlen=1024) 
 
+        # recent stuff
+        self.recent = defaultdict(lambda: deque(maxlen=1024))
+        self.recent['network'] = defaultdict(lambda: deque(maxlen=100))
+        
         #ASF RELATED STUFF
         from asf import asf_context
         self.asf_context = asf_context.ASFContext()
@@ -157,12 +160,9 @@ class Context(object):
         self.sockpool_enabled = True
 
         #MONITORING DATA
-        self.stored_network_data = defaultdict(lambda: deque(maxlen=100))
-
         self.stats = defaultdict(faststat.Stats)
         self.durations = defaultdict(faststat.Duration)
         self.intervals = defaultdict(faststat.Interval)
-        self.counts = defaultdict(int)
         self.profiler = None  # sampling profiler
 
         self.stopping = False
@@ -246,7 +246,7 @@ class Context(object):
     # empirically tested to take ~ 2 microseconds;
     # keep an eye to make sure this can't blow up
     def store_network_data(self, name, direction, data):
-        q = self.stored_network_data[name]
+        q = self.recent['network'][name]
         q.appendleft((direction, time.time(), summarize(data, 4096)))
 
     def get_feel(self):
@@ -558,7 +558,7 @@ def set_context(context):
 def counted(f):
     @functools.wraps(f)
     def g(*a, **kw):
-        get_context().counts[f.__name__] += 1
+        get_context().intervals['decorator.' + f.__name__] += 1
         return f(*a, **kw)
     return g
 
