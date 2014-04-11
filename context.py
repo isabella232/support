@@ -394,9 +394,13 @@ class Context(object):
 
         (e.g. sampling profiler thread, system monitor greenlet)
         '''
+        self.stopping = True
         if self.profiler:
             self.profiler.stop()
-        self.stopping = True
+        if self.server_group:
+            self.server_group.stop()
+        if self.cal:
+            self.cal.close()
 
     @property
     def greenlet_settrace(self):

@@ -106,7 +106,7 @@ class ServerGroup(object):
             raise RuntimeError('attempting to run pre-forked on platform without fork')
         ctx = context.get_context()
         self.arbiter = ufork.Arbiter(
-            post_fork=self._post_fork, child_pre_exit=self.stop, parent_pre_stop=self.stop,
+            post_fork=self._post_fork, child_pre_exit=self.stop, parent_pre_stop=ctx.stop,
             size=self.num_workers, sleep=async.sleep, fork=gevent.fork, child_memlimit=ctx.worker_memlimit)
         if self.daemonize:
             pidfile = os.path.join(ctx.pid_file_path,
