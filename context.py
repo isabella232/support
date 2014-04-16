@@ -248,6 +248,7 @@ class Context(object):
     def store_network_data(self, name, direction, data):
         q = self.recent['network'][name]
         q.appendleft((direction, time.time(), summarize(data, 4096)))
+        ml.ld2("{{{0}}}: {{{1}}} {{{2}}}", name, direction, data)
 
     def get_feel(self):
         if not hasattr(self, "_feel"):
