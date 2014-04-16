@@ -245,10 +245,14 @@ class Context(object):
 
     # empirically tested to take ~ 2 microseconds;
     # keep an eye to make sure this can't blow up
-    def store_network_data(self, name, direction, data):
+    def store_network_data(self, name, fd, direction, data):
         q = self.recent['network'][name]
-        q.appendleft((direction, time.time(), summarize(data, 4096)))
-        ml.ld2("{{{0}}}: {{{1}}} {{{2}}}", name, direction, data)
+        q.appendleft((fd, direction, time.time(), summarize(data, 4096)))
+        if ll.get_log_level() >= ll.LOG_LEVELS['DEBUG2']:
+            if hasattr(data, 'tobytes'):
+                data = data.tobytes()
+            ml.ld2("{{{0}}}({{{1}}}): {{{2}}} {{{3}}}", 
+                name, fd, direction, data)
 
     def get_feel(self):
         if not hasattr(self, "_feel"):

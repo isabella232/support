@@ -325,19 +325,19 @@ class MonitoredSocket(object):
         ret = self._msock.send(data, flags)
         context.get_context().store_network_data(
             (self.name, self._msock.getpeername()),
-            "OUT", data)
+            self.fileno(), "OUT", data)
 
     def sendall(self, data, flags=0):
         ret = self._msock.sendall(data, flags)
         context.get_context().store_network_data(
             (self.name, self._msock.getpeername()),
-            "OUT", data)
+            self.fileno(), "OUT", data)
 
     def recv(self, bufsize, flags=0):
         data = self._msock.recv(bufsize, flags)
         context.get_context().store_network_data(
             (self.name, self._msock.getpeername()),
-            "IN", data)
+            self.fileno(), "IN", data)
         return data
 
     def close(self):
