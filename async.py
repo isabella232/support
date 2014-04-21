@@ -8,8 +8,7 @@ import platform
 import threading
 import collections
 
-from asf.asf_context import ASFError
-#TODO: migrate ASFError out of ASF to a more root location
+from exceptions import ASFError
 import gevent.pool
 import gevent.socket
 import gevent.threadpool
