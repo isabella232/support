@@ -70,8 +70,8 @@ class ServerGroup(object):
                 protected = None
             if protected:
                 # TODO: maybe this determination belongs centralized in context?
-                if dev or env.pp_host_env() in ("STAGE2", "HYPER"):
-                    if ctx.ssl_client_cert_optional_in_dev:
+                if dev or env.pp_host_env() in ("STAGE2", "HYPER") or kw.get['no_client_auth_required']:
+                    if ctx.ssl_client_cert_optional_in_dev or kw.get['no_client_auth_required']:
                         sslcontext = getattr(protected, 'ssl_dev_server_context')
                     else:
                         sslcontext = getattr(protected, 'ssl_server_context')
