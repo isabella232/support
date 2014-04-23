@@ -33,7 +33,7 @@ ml = ll.LLogger()
 
 
 class ServerGroup(object):
-    def __init__(self, wsgi_apps=(), stream_handlers=(), prefork=False, daemonize=False, dev=False, **kw):
+    def __init__(self, wsgi_apps=(), stream_handlers=(), prefork=None, daemonize=None, dev=None, **kw):
         '''Create a new ServerGroup which will can be started / stopped / forked as a group.
 
         *wsgi_apps* should be of the form  [ (wsgi_app, address, ssl), ...  ]
@@ -47,13 +47,14 @@ class ServerGroup(object):
         handler_func should have the following signature: f(socket, address), following
         the `convention of gevent <http://www.gevent.org/servers.html>`_.
         '''
-        self.prefork = prefork
-        self.daemonize = daemonize
+        ctx = context.get_context()
+        self.prefork = prefork if prefork is not None else ctx.serve_ufork
+        self.daemonize = daemonize if daemonize is not None else ctx.serve_daemon
+        dev = dev if dev is not None else ctx.dev
         self.post_fork = kw.get('post_fork')  # callback to be executed post fork
         self.server_log = kw.get('gevent_log')
         self.wsgi_apps = wsgi_apps
         self.stream_handlers = list(stream_handlers)
-        ctx = context.get_context()
         if ctx.backdoor_port is not None:
             self.stream_handlers.append((console_sock_handle, ("0.0.0.0", ctx.backdoor_port)))
         self.num_workers = ctx.num_workers
@@ -93,9 +94,12 @@ class ServerGroup(object):
             self.servers.append(server)
 
     def run(self):
+        ctx = context.get_context()
         if not self.prefork:
             self.start()
             ml.ld("Now really running-init over")
+            if ctx.dev and ctx.dev_service_repl_enabled and os.isatty(0):
+                async.start_repl({'server': ctx.server_group})
             try:
                 while 1:
                     async.sleep(1.0)
@@ -104,7 +108,6 @@ class ServerGroup(object):
             return
         if not ufork:
             raise RuntimeError('attempting to run pre-forked on platform without fork')
-        ctx = context.get_context()
         self.arbiter = ufork.Arbiter(
             post_fork=self._post_fork, child_pre_exit=self.stop, parent_pre_stop=ctx.stop,
             size=self.num_workers, sleep=async.sleep, fork=gevent.fork, child_memlimit=ctx.worker_memlimit)
