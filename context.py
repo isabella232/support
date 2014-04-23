@@ -163,6 +163,7 @@ class Context(object):
         self.stats = defaultdict(faststat.Stats)
         self.durations = defaultdict(faststat.Duration)
         self.intervals = defaultdict(faststat.Interval)
+        self.markov_stats = defaultdict(faststat.Markov)
         self.profiler = None  # sampling profiler
 
         self.stopping = False
@@ -271,7 +272,9 @@ class Context(object):
         if self._port is not None:
             return self._port
         if self.topos and self.topos.get(self.appname):
-            return int(self.topos.get(self.appname)['bind_port'])
+            app = self.topos.get(self.appname)
+            if 'bind_port' in app.addresses:
+                return int(app['bind_port'])
         if self.dev:
             return 8888
         return None
