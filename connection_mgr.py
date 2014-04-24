@@ -166,22 +166,27 @@ class ConnectionManager(object):
                     raise MarkedDownError()
 
             failed = 0
+            sock_state = None
             while True:
                 try:
                     ml.ld("CONNECTING...")
-                    with context.get_context().cal.atrans('CONNECT_TCP',
-                                                          str(address[0]) + ":" + str(address[1])):
+                    sock_state = ctx.markov_stats[str(address)].make_transitor('connecting')
+                    with ctx.cal.atrans('CONNECT_TCP', str(address[0]) + ":" + str(address[1])):
                         sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000.0)
+                        sock_state.transition('connected')
                         ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
                     if ssl:  # TODO: how should SSL failures interact with markdown & connect count?
-                         with context.get_context().cal.atrans('CONNECT_SSL',
-                                                              str(address[0]) + ":" + str(address[1])):
+                        sock_state.transition('ssl_handshaking')
+                        with ctx.cal.atrans('CONNECT_SSL', str(address[0]) + ":" + str(address[1])):
                             if ssl == PLAIN_SSL:
                                 sock = gevent.ssl.wrap_socket(sock)
                             else:
                                 sock = async.wrap_socket_context(sock, protected.ssl_client_context)
+                        sock_state.transition('ssl_established')
                     break
                 except socket.error as err:
+                    if sock_state:
+                        sock_state.transition('closed_error')
                     if False:  # TODO: how to tell if this is an unrecoverable error
                         raise
                     if failed >= sock_config.max_connect_retry:
@@ -196,25 +201,29 @@ class ConnectionManager(object):
                         raise
                     failed += 1
 
-            sock = MonitoredSocket(sock, server_model.active_connections, protected, name, sock_type)
-            server_model.sock_in_use(sock)
+            msock = MonitoredSocket(sock, server_model.active_connections, protected, 
+                name, sock_type, sock_state)
+            server_model.sock_in_use(msock)
 
             if sock_type:
-                msock = sock
                 if getattr(sock_type, "wants_protected", False):
                     sock = sock_type(sock, protected)
                 else:
                     sock = sock_type(sock)
+            else:
+                sock = msock
 
         sock.settimeout(sock_config.response_timeout_ms / 1000.0)
         if msock and sock is not msock:  # if sock == msock, collection will not work
             self.user_socket_map[sock] = weakref.proxy(msock)
+        self.user_socket_map.get(sock, sock).state.transition('in_use')
         return sock
 
     def release_connection(self, sock):
         # fetch MonitoredSocket
         msock = self.user_socket_map.get(sock, sock)
         # check the connection for updating of SSL cert (?)
+        msock.state.transition('pooled')
         if context.get_context().sockpool_enabled:
             self.sockpools[msock._protected][msock._type].release(sock)
         else:
@@ -308,7 +317,7 @@ class MonitoredSocket(object):
     '''
     A socket proxy which allows socket lifetime to be monitored.
     '''
-    def __init__(self, sock, registry, protected, name=None, type=None):
+    def __init__(self, sock, registry, protected, name=None, type=None, state=None):
         self._msock = sock
         self._registry = registry  # TODO: better name for this
         self._spawned = time.time()
@@ -320,6 +329,7 @@ class MonitoredSocket(object):
         #self.recv = sock.recv
         self.sendall = sock.sendall
         self.name = name
+        self.state = state
 
     def send(self, data, flags=0):
         ret = self._msock.send(data, flags)
@@ -343,6 +353,8 @@ class MonitoredSocket(object):
     def close(self):
         if self in self._registry:
             del self._registry[self]
+        if self.state:
+            self.state.transition('closed')
         return self._msock.close()
 
     def shutdown(self, how):  # not going to bother tracking half-open sockets
