@@ -207,9 +207,9 @@ class ConnectionManager(object):
 
             if sock_type:
                 if getattr(sock_type, "wants_protected", False):
-                    sock = sock_type(sock, protected)
+                    sock = sock_type(msock, protected)
                 else:
-                    sock = sock_type(sock)
+                    sock = sock_type(msock)
             else:
                 sock = msock
 
