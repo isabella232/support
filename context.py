@@ -168,7 +168,7 @@ class Context(object):
 
         self.stopping = False
         self.sys_stats_greenlet = None
-        self.monitor_interval = 0.01  # ~100x per second
+        self.monitor_interval = 0.1  # ~10x per second
         self.set_greenlet_trace(True)  # histogram of CPU runs
         self.set_monitoring_greenlet(True)  # monitor queue depths
 
