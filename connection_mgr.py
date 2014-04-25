@@ -170,7 +170,7 @@ class ConnectionManager(object):
             while True:
                 try:
                     ml.ld("CONNECTING...")
-                    sock_state = ctx.markov_stats[str(address)].make_transitor('connecting')
+                    sock_state = ctx.markov_stats['socket.state.' + str(address)].make_transitor('connecting')
                     with ctx.cal.atrans('CONNECT_TCP', str(address[0]) + ":" + str(address[1])):
                         sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000.0)
                         sock_state.transition('connected')
