@@ -252,8 +252,8 @@ class Context(object):
         if ll.get_log_level() >= ll.LOG_LEVELS['DEBUG2']:
             if hasattr(data, 'tobytes'):
                 data = data.tobytes()
-            ml.ld2("{{{0}}}({{{1}}}): {{{2}}} {{{3}}}", 
-                name, fd, direction, data)
+            ml.ld2("Network: Endpoint: {0} FD: ({1}) {2}: {{{3}}}",
+                   name, fd, direction, data)
 
     def get_feel(self):
         if not hasattr(self, "_feel"):
