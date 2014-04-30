@@ -83,7 +83,7 @@ class Context(object):
 
         #CAL RELATED STUFF
         import cal
-        self.cal = cal.DefaultClient()
+        self.cal = cal.DefaultClient('python-default')
         self.greenlet_trans_stack = WeakKeyDictionary()
 
         # recent stuff
