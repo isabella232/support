@@ -767,6 +767,8 @@ class GreenConsole(code.InteractiveConsole):
             inp = self._green_stdin.readline()
         else:
             inp = gevent.os.tp_read(0, 1024*1024)
+        if isinstance(inp, str):
+            inp = unicode(inp, errors='replace')
         if inp == "":
             raise OSError("standard in was closed while running REPL")
         inp = inp[:-1]
