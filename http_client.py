@@ -16,6 +16,7 @@ import httplib
 from urlparse import urlparse, urlunparse
 import functools
 import urllib2
+import os
 
 import context
 
@@ -46,6 +47,24 @@ class _GHTTPConnection(httplib.HTTPConnection):
         if self._HTTPConnection__state == "Idle" and self.sock:
             context.get_context().connection_mgr.release_connection(self.sock)
             self.sock = None
+
+    def _set_content_length(self, body):
+        # Set the content-length based on the body.
+        thelen = None
+        try:
+            thelen = str(len(body))
+        except TypeError:
+            # If this is a file-like object, try to
+            # fstat its file descriptor
+            try:
+                thelen = str(os.fstat(body.fileno()).st_size)
+            except (AttributeError, OSError):
+                # Don't send a length if this failed
+                if self.debuglevel > 0:
+                    print "Cannot stat!!"
+
+        if thelen is not None:
+            self.putheader('Content-Length', thelen)
 
     def __del__(self):
         self.release_sock()
