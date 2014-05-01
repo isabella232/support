@@ -138,11 +138,12 @@ class Context(object):
         except EnvironmentError:
             self.topos = None
         self.set_stage_host(stage_host)
-        #self.address_book = AddressBook([])
         self.address_groups = {}
         self.service_server_map = topos.ServiceServerMap()
         self.address_aliases = dict(
-            [(k, v[0]) for k,v in self.service_server_map.items() if len(v) == 1])
+            [(k, v[0]) for k, v in self.service_server_map.items() if len(v) == 1])
+
+        self.amqs = {}
 
         import opscfg
         self.ops_config = opscfg.DefaultConfig()
