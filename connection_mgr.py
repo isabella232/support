@@ -325,9 +325,6 @@ class MonitoredSocket(object):
         self._type = type
         # alias some functions through for improved performance
         #  (__getattr__ is pretty slow compared to normal attribute access)
-        #self.send = sock.send
-        #self.recv = sock.recv
-        self.sendall = sock.sendall
         self.name = name
         self.state = state
 
