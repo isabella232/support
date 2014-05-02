@@ -167,12 +167,19 @@ class ConnectionManager(object):
 
             failed = 0
             sock_state = None
+            # is the connection within the data-center?
+            # use tighter timeouts if so; using the presence of a
+            # protected connection as a rough heuristic for now
+            internal = ssl and ssl != PLAIN_SSL
             while True:
                 try:
                     ml.ld("CONNECTING...")
                     sock_state = ctx.markov_stats['socket.state.' + str(address)].make_transitor('connecting')
                     with ctx.cal.atrans('CONNECT_TCP', str(address[0]) + ":" + str(address[1])):
-                        sock = gevent.socket.create_connection(address, sock_config.connect_timeout_ms / 1000.0)
+                        timeout = sock_config.connect_timeout_ms / 1000.0
+                        if internal:  # connect timeout of 50ms inside the data center
+                            timeout = min(timeout, ctx.datacenter_connect_timeout)
+                        sock = gevent.socket.create_connection(address, timeout)
                         sock_state.transition('connected')
                         ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
                     if ssl:  # TODO: how should SSL failures interact with markdown & connect count?

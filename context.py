@@ -37,30 +37,35 @@ class Context(object):
     There are many configuration attributes.  They ALL go to a sane default,
     it is not necessary to touch them but they are available for advanced users.
 
-    ========================= ===================================== ==============================
-    attribute                 description                           default
-    ========================= ===================================== ==============================
-    num_workers               number of pre-forked worker processes cpu_count-1, minimum 2
+    ========================== ===================================== ==============================
+    attribute                  description                           default
+    ========================== ===================================== ==============================
+    num_workers                number of pre-forked worker processes cpu_count-1, minimum 2
 
-    worker_memlimit           maximum amount of RAM used by process 1 GiB
-                              before worker suicide
+    worker_memlimit            maximum amount of RAM used by process 1 GiB
+                               before worker suicide
 
-    max_concurrent_clients    maximum number of client connections  1000
-                              to spawn greenlets for before pausing 
-                              socket accept
+    max_concurrent_clients     maximum number of client connections  1000
+                               to spawn greenlets for before pausing 
+                               socket accept
 
-    pid_file_path             pid file location (used for server    [appname].pid 
-                              shutdown)
+    datacenter_connect_timeout max timeout for connecting to         0.05 (=50ms)
+                               internal servers (that is servers
+                               inside the EBay/PayPal data center)
+                               in seconds
 
-    bakdoor_port              the port for the TCP REPL server      port + 2 in dev, None in live
-                              (None means no REPL server)
+    pid_file_path              pid file location (used for server    [appname].pid 
+                               shutdown)
 
-    port                      the port that infra.serve() will use  topo[appname]["bind_port"], or
+    bakdoor_port               the port for the TCP REPL server      port + 2 in dev, None in live
+                               (None means no REPL server)
+
+    port                       the port that infra.serve() will use  topo[appname]["bind_port"], or
                                                                     8888 if in dev and no topo
                                                                     entry found
 
-    cal                       the current infra.cal.Client() object (appname, '127.0.0.1', 1118)
-    ========================= ===================================== ==============================
+    cal                        the current infra.cal.Client() object (appname, '127.0.0.1', 1118)
+    ========================== ===================================== ==============================
     '''
     def __init__(self, dev=False, stage_host=None):
         import topos
@@ -113,6 +118,7 @@ class Context(object):
 
         #NETWORK RELATED STUFF
         self.max_concurrent_clients = 1000
+        self.datacenter_connect_timeout = 0.05
         self.client_sockets = WeakKeyDictionary()
         self.server_group = None
         self.port = None
