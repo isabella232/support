@@ -21,6 +21,7 @@ import gevent
 from gevent import pywsgi
 import gevent.server
 import gevent.socket
+import gevent.pool
 
 import async
 from protected import Protected
@@ -60,6 +61,7 @@ class ServerGroup(object):
         self.num_workers = ctx.num_workers
         self.servers = []
         self.socks = {}
+        self.client_pool = gevent.pool.Pool(ctx.max_concurrent_clients)
         for app, address, ssl in wsgi_apps:
             sock = _make_server_sock(address)
             if isinstance(ssl, Protected):
@@ -76,10 +78,10 @@ class ServerGroup(object):
                     else:
                         sslcontext = getattr(protected, 'ssl_server_context')
                     server = MultiProtocolWSGIServer(
-                        sock, app, spawn=10000, context=sslcontext)
+                        sock, app, spawn=self.client_pool, context=sslcontext)
                 else:
                     server = SslContextWSGIServer(
-                        sock, app, spawn=10000, context=protected.ssl_server_context)
+                        sock, app, spawn=self.client_pool, context=protected.ssl_server_context)
             else:
                 server = pywsgi.WSGIServer(sock, app)
             server.log = self.server_log or RotatingGeventLog()
@@ -90,7 +92,7 @@ class ServerGroup(object):
             server.set_environ({'SERVER_NAME': socket.getfqdn(address[0])})
         for handler, address in self.stream_handlers:
             sock = _make_server_sock(address)
-            server = gevent.server.StreamServer(sock, handler, spawn=10000)
+            server = gevent.server.StreamServer(sock, handler, spawn=self.client_pool)
             self.servers.append(server)
 
     def run(self):

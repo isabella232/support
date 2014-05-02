@@ -45,6 +45,10 @@ class Context(object):
     worker_memlimit           maximum amount of RAM used by process 1 GiB
                               before worker suicide
 
+    max_concurrent_clients    maximum number of client connections  1000
+                              to spawn greenlets for before pausing 
+                              socket accept
+
     pid_file_path             pid file location (used for server    [appname].pid 
                               shutdown)
 
@@ -108,6 +112,7 @@ class Context(object):
         # whether to start a browser pointed at meta on server startup
 
         #NETWORK RELATED STUFF
+        self.max_concurrent_clients = 1000
         self.client_sockets = WeakKeyDictionary()
         self.server_group = None
         self.port = None
