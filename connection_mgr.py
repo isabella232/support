@@ -196,8 +196,8 @@ class ConnectionManager(object):
                         raise
                     failed += 1
 
-            msock = MonitoredSocket(sock, server_model.active_connections, protected, 
-                name, sock_type, sock_state)
+            msock = MonitoredSocket(sock, server_model.active_connections, protected,
+                                    name, sock_type, sock_state)
             server_model.sock_in_use(msock)
 
             if sock_type:
