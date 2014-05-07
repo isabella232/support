@@ -299,9 +299,10 @@ class Context(object):
     def admin_port(self):
         if self._admin_port is not None:
             return self._admin_port
-        if (self.topos and self.topos.get(self.appname) and
-                'admin_ssl_connector_port' in self.topos.get(self.appname)):
-            return int(self.topos.get(self.appname)['admin_ssl_connector_port'])
+        for topo_key in ['admin_ssl_connector_port', 'admin_connector_port']:
+            if (self.topos and self.topos.get(self.appname) and
+                    topo_key in self.topos.get(self.appname)):
+                return int(self.topos.get(self.appname)[topo_key])
         if self.dev:
             if self._port is not None:
                 return self._port + 1
