@@ -99,6 +99,11 @@ class ConnectionManager(object):
         if name is None:  # default to a string-ification of ip for the name
             name = address_list[0][0].replace('.', '-')
 
+        #ensure all DNS resolution is completed; past this point everything is in terms of
+        # ips
+        address_list = [gevent.socket.getaddrinfo(*e, family=gevent.socket.AF_INET)[0][4]
+                        for e in address_list]
+
         self._compact(address_list, name)
 
         errors = []
@@ -114,7 +119,6 @@ class ConnectionManager(object):
         raise MultiConnectFailure(errors)
 
     def _connect_to_address(self, name, ssl, sock_config, address, sock_type=None):
-        address = gevent.socket.getaddrinfo(*address, family=gevent.socket.AF_INET)[0][4]
         ctx = context.get_context()
         if address not in self.server_models:
             self.server_models[address] = ServerModel(address)
@@ -241,6 +245,8 @@ class ConnectionManager(object):
                                 for model in self.server_models.values()])
 
         if total_num_in_use >= GLOBAL_MAX_CONNECTIONS:
+            ctx.cal.event('NET.SOCKET', 'GLOBAL_MAX', 0, 
+                {'limit': GLOBAL_MAX_CONNECTIONS, 'in_use': total_num_in_use})
             # try to cull sockets to make room
             made_room = False
             for pool in all_pools:
@@ -256,6 +262,8 @@ class ConnectionManager(object):
                           for address in address_list])
 
         if num_in_use >= MAX_CONNECTIONS:
+            ctx.cal.event('NET.SOCK', 'ADDR_MAX', 0,
+                {'limit': MAX_CONNECTIONS, 'in_use': num_in_use, 'addr': repr(address_list)})
             # try to cull sockets
             made_room = False
             for pool in all_pools:
