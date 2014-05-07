@@ -232,7 +232,6 @@ class ConnectionManager(object):
         raises OutOfSockets() if unable to make room
         '''
         ctx = context.get_context()
-        print "111111"
         all_pools = sum([e.values() for e in self.sockpools.values()], [])
         for pool in all_pools:
             pool.cull()
@@ -241,13 +240,12 @@ class ConnectionManager(object):
                                 for model in self.server_models.values()])
 
         if total_num_in_use >= GLOBAL_MAX_CONNECTIONS:
-            print "AAAAA"
             # try to cull sockets to make room
             made_room = False
             for pool in all_pools:
                 if pool.total_sockets:
                     made_room = True
-                    pool.reduce_size(pool.total_sockets / 2)
+                    gevent.joinall(pool.reduce_size(pool.total_sockets / 2))
             if not made_room:
                 ctx.intervals['net.out_of_sockets'].tick()
                 raise OutOfSockets("maximum global socket limit {0} hit: {1}".format(
@@ -257,18 +255,19 @@ class ConnectionManager(object):
                           for address in address_list])
 
         if num_in_use >= MAX_CONNECTIONS:
-            print "BBBBB"
             # try to cull sockets
             made_room = False
             for pool in all_pools:
                 for address in address_list:
                     num_pooled = pool.socks_pooled_for_addr(address)
                     if num_pooled:
-                        pool.reduce_addr_size(address, num_pooled / 2)
+                        gevent.joinall(pool.reduce_addr_size(address, num_pooled / 2))
                         made_room = True
-            ctx.intervals['net.out_of_sockets'].tick()
-            ctx.intervals['net.out_of_sockets.' + str(name)].tick()
-            raise OutOfSockets("maximum sockets for {0} already in use: {1}".format(name, num_in_use))
+            if not made_room:
+                ctx.intervals['net.out_of_sockets'].tick()
+                ctx.intervals['net.out_of_sockets.' + str(name)].tick()
+                raise OutOfSockets("maximum sockets for {0} already in use: {1}".format(
+                    name, num_in_use))
 
 
 
@@ -287,8 +286,8 @@ try:
     MAX_CONNECTIONS = int(0.8 * resource.getrlimit(resource.RLIMIT_NOFILE))
     GLOBAL_MAX_CONNECTIONS = MAX_CONNECTIONS
 except:
-    MAX_CONNECTIONS = 10
-    GLOBAL_MAX_CONNECTIONS = 20
+    MAX_CONNECTIONS = 800
+    GLOBAL_MAX_CONNECTIONS = 800
 # At least, move these to context object for now
 
 

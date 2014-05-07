@@ -83,30 +83,32 @@ class SockPool(object):
     def reduce_size(self, size):
         '''
         reduce to the specified size by killing the oldest sockets
+        returns a greenlet that can be joined on to wait for all sockets to close
         '''
         if self.total_sockets <= size:
             return
         num_culling = self.total_sockets - size
-        culled = sorted([(v, k) for k,v in self.sock_idle_times.itemitems()])[-num_culling:]
+        culled = sorted([(v, k) for k,v in self.sock_idle_times.iteritems()])[-num_culling:]
         self.total_sockets -= num_culling
-        for sock in [e[1] for e in culled]:
-            self.free_socks_by_addr[sock.getpeername()].remove(culled)
-            del self.sock_idle_times[sock]
-            gevent.spawn(self.killsock, sock)
+        return [self._remove_sock(e[1]) for e in culled]
 
     def reduce_addr_size(self, addr, size):
         '''
         reduce the number of sockets pooled on the specified address to size
+        returns a greenlet that can be joined on to wait for all sockets to close
         '''
         addr_socks = self.free_socks_by_addr.get(addr, [])
         if len(addr_socks) <= size:
             return
         num_culling = len(addr_socks) - size
         culled = sorted([(self.sock_idle_times[e], e) for e in addr_socks])[-num_culling:]
-        for sock in [e[1] for e in culled]:
-            self.free_socks_by_addr[sock.getpeername()].remove(culled)
-            del self.sock_idle_times[sock]
-            gevent.spawn(self.killsock, sock)
+        self.total_sockets -= num_culling
+        return [self._remove_sock(e[1]) for e in culled]
+
+    def _remove_sock(self, sock):
+        self.free_socks_by_addr[sock.getpeername()].remove(sock)
+        del self.sock_idle_times[sock]
+        return gevent.spawn(self.killsock, sock)
 
     def socks_pooled_for_addr(self, addr):
         return len(self.free_socks_by_addr.get(addr, ()))
