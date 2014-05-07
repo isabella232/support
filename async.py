@@ -751,8 +751,8 @@ import gevent.fileobject
 
 
 class GreenConsole(code.InteractiveConsole):
-    def __init__(self):
-        code.InteractiveConsole.__init__(self)
+    def __init__(self, locals=None):
+        code.InteractiveConsole.__init__(self, locals)
         # Windows and POSIX have so many subtle differences in their
         # handling of stdin that we need to vary the method based on platform
         if os.name == 'nt':
@@ -777,3 +777,7 @@ class GreenConsole(code.InteractiveConsole):
 
 def start_repl(local=None, banner="infra REPL (exit with Ctrl+C)"):
     gevent.spawn(GreenConsole().interact, banner)
+
+def greenify(banner="REPL is now greenlet friendly (exit with Ctrl+C)"):
+    import __main__
+    GreenConsole(__main__.__dict__).interact(banner)
