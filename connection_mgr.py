@@ -99,24 +99,7 @@ class ConnectionManager(object):
         if name is None:  # default to a string-ification of ip for the name
             name = address_list[0][0].replace('.', '-')
 
-        for pool in sum([e.values() for e in self.sockpools.values()], []):
-            pool.cull()
-
-        total_num_in_use = sum([len(model.active_connections)
-                                for model in self.server_models.values()])
-
-        if total_num_in_use >= GLOBAL_MAX_CONNECTIONS:
-            ctx.intervals['net.out_of_sockets'].tick()
-            raise OutOfSockets("maximum global socket limit {0} hit: {1}".format(
-                GLOBAL_MAX_CONNECTIONS, total_num_in_use))
-
-        num_in_use = sum([len(self.server_models[address].active_connections)
-                          for address in address_list])
-
-        if num_in_use >= MAX_CONNECTIONS:
-            ctx.intervals['net.out_of_sockets'].tick()
-            ctx.intervals['net.out_of_sockets.' + str(name)].tick()
-            raise OutOfSockets("maximum sockets for {0} already in use: {1}".format(name, num_in_use))
+        self._compact(address_list, name)
 
         errors = []
         for address in address_list:
@@ -243,6 +226,51 @@ class ConnectionManager(object):
                 pool.cull()
             async.sleep(CULL_INTERVAL)
 
+    def _compact(self, address_list, name):
+        '''
+        try to compact and make room for a new socket connection to one of address_list
+        raises OutOfSockets() if unable to make room
+        '''
+        ctx = context.get_context()
+        print "111111"
+        all_pools = sum([e.values() for e in self.sockpools.values()], [])
+        for pool in all_pools:
+            pool.cull()
+
+        total_num_in_use = sum([len(model.active_connections)
+                                for model in self.server_models.values()])
+
+        if total_num_in_use >= GLOBAL_MAX_CONNECTIONS:
+            print "AAAAA"
+            # try to cull sockets to make room
+            made_room = False
+            for pool in all_pools:
+                if pool.total_sockets:
+                    made_room = True
+                    pool.reduce_size(pool.total_sockets / 2)
+            if not made_room:
+                ctx.intervals['net.out_of_sockets'].tick()
+                raise OutOfSockets("maximum global socket limit {0} hit: {1}".format(
+                    GLOBAL_MAX_CONNECTIONS, total_num_in_use))
+
+        num_in_use = sum([len(self.server_models[address].active_connections)
+                          for address in address_list])
+
+        if num_in_use >= MAX_CONNECTIONS:
+            print "BBBBB"
+            # try to cull sockets
+            made_room = False
+            for pool in all_pools:
+                for address in address_list:
+                    num_pooled = pool.socks_pooled_for_addr(address)
+                    if num_pooled:
+                        pool.reduce_addr_size(address, num_pooled / 2)
+                        made_room = True
+            ctx.intervals['net.out_of_sockets'].tick()
+            ctx.intervals['net.out_of_sockets.' + str(name)].tick()
+            raise OutOfSockets("maximum sockets for {0} already in use: {1}".format(name, num_in_use))
+
+
 
 CULL_INTERVAL = 1.0
 
@@ -259,8 +287,8 @@ try:
     MAX_CONNECTIONS = int(0.8 * resource.getrlimit(resource.RLIMIT_NOFILE))
     GLOBAL_MAX_CONNECTIONS = MAX_CONNECTIONS
 except:
-    MAX_CONNECTIONS = 800
-    GLOBAL_MAX_CONNECTIONS = 800
+    MAX_CONNECTIONS = 10
+    GLOBAL_MAX_CONNECTIONS = 20
 # At least, move these to context object for now
 
 
@@ -312,8 +340,12 @@ class ServerModel(object):
         self.active_connections[sock] = time.time()
 
     def __repr__(self):
-        return ("<ServerModel " + repr(self.address) + " last_error=" +
-            datetime.datetime.fromtimestamp(int(self.last_error)).strftime('%Y-%m-%d %H:%M:%S') + ">")
+        if self.last_error:
+            last_error = datetime.datetime.fromtimestamp(int(self.last_error)).strftime('%Y-%m-%d %H:%M:%S')
+        else:
+            last_error = "(None)"
+        return "<ServerModel {0} last_error={1} nconns={2}>".format(
+            repr(self.address), last_error, len(self.active_connections))
 
 
 ConnectionConfig = collections.namedtuple("connect_timeout", ("response_timeout", "retries",

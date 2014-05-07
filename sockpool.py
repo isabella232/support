@@ -77,19 +77,39 @@ class SockPool(object):
         self.total_sockets += 1
         addr_socks.append(sock)
         self.sock_idle_times[sock] = time.time()
-        # check if there are too many sockets and one needs to be removed
-        culled = None  # socket pushed out
-        # handle case of too many sockets for this address
-        if len(addr_socks) >= self.max_socks_by_addr.get(addr, self.default_max_socks_per_addr):
-            culled = max([(self.sock_idle_times[a], a) for a in addr_socks])[1]
-        # handle case of too many sockets total
-        elif self.total_sockets >= self.max_sockets:
-            culled = max([(v, k) for k, v in self.sock_idle_times.iteritems()])[1]
-        if culled:
-            self.total_sockets -= 1
-            self.free_socks_by_addr[culled.getpeername()].remove(culled)
-            del self.sock_idle_times[culled]
+        self.reduce_addr_size(addr, self.max_socks_by_addr.get(addr, self.default_max_socks_per_addr))
+        self.reduce_size(self.max_sockets)
 
+    def reduce_size(self, size):
+        '''
+        reduce to the specified size by killing the oldest sockets
+        '''
+        if self.total_sockets <= size:
+            return
+        num_culling = self.total_sockets - size
+        culled = sorted([(v, k) for k,v in self.sock_idle_times.itemitems()])[-num_culling:]
+        self.total_sockets -= num_culling
+        for sock in [e[1] for e in culled]:
+            self.free_socks_by_addr[sock.getpeername()].remove(culled)
+            del self.sock_idle_times[sock]
+            gevent.spawn(self.killsock, sock)
+
+    def reduce_addr_size(self, addr, size):
+        '''
+        reduce the number of sockets pooled on the specified address to size
+        '''
+        addr_socks = self.free_socks_by_addr.get(addr, [])
+        if len(addr_socks) <= size:
+            return
+        num_culling = len(addr_socks) - size
+        culled = sorted([(self.sock_idle_times[e], e) for e in addr_socks])[-num_culling:]
+        for sock in [e[1] for e in culled]:
+            self.free_socks_by_addr[sock.getpeername()].remove(culled)
+            del self.sock_idle_times[sock]
+            gevent.spawn(self.killsock, sock)
+
+    def socks_pooled_for_addr(self, addr):
+        return len(self.free_socks_by_addr.get(addr, ()))
 
     def cull(self):
         #cull sockets which are in a bad state
