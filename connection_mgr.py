@@ -131,6 +131,7 @@ class ConnectionManager(object):
         raise MultiConnectFailure(errors)
 
     def _connect_to_address(self, name, ssl, sock_config, address, sock_type=None):
+        address = gevent.socket.getaddrinfo(*address)[0][4]
         ctx = context.get_context()
         if address not in self.server_models:
             self.server_models[address] = ServerModel(address)
