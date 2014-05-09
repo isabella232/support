@@ -310,7 +310,7 @@ class _Resolver(gevent.resolver_thread.Resolver):
     def getaddrinfo(self, *args, **kwargs):
         '''
         only short-cut for one very specific case which is extremely
-        common in our code; don't worry about short-cutting the thread
+        common in our code; don\'t worry about short-cutting the thread
         dispatch for all possible cases
         '''
         if len(args) == 2 and isinstance(args[1], (int, long)):
@@ -506,7 +506,18 @@ class MultiConnectFailure(socket.error):
 
 
 def get_topos(name):
-    return context.get_context().get_topos(name)
+    return context.get_context().topos(name)
 
-def get_opscfg(name):
-    return context.get_context().get_opscfg(name)
+
+def get_opscfg(name, **kw):
+    return context.get_context().ops_config.get(name, **kw)
+
+
+def get_cfg_from_address(addr, **kw):
+    try:
+        name = context.get_context().opscfg_revmap.get(addr)
+        cfg = get_opscfg(name, **kw)
+        return cfg
+    except Exception as e:
+        ml.ld("Opscfg got exception: {0!r}", e)
+    return None
