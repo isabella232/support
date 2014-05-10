@@ -101,8 +101,7 @@ class ServerGroup(object):
             self.start()
             ml.ld("Now really running-init over")
             if ctx.dev and ctx.dev_service_repl_enabled and os.isatty(0):
-                pass
-                # async.start_repl({'server': ctx.server_group})
+                async.start_repl({'server': ctx.server_group})
             try:
                 while 1:
                     async.sleep(1.0)
