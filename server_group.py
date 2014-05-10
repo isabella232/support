@@ -101,7 +101,8 @@ class ServerGroup(object):
             self.start()
             ml.ld("Now really running-init over")
             if ctx.dev and ctx.dev_service_repl_enabled and os.isatty(0):
-                async.start_repl({'server': ctx.server_group})
+                pass
+                # async.start_repl({'server': ctx.server_group})
             try:
                 while 1:
                     async.sleep(1.0)
@@ -182,7 +183,7 @@ class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
 
 
 class SslContextWSGIServer(pywsgi.WSGIServer):
-    handler_class = MakeFileCloseWSGIHandler    
+    handler_class = MakeFileCloseWSGIHandler
 
     def wrap_socket_and_handle(self, client_socket, address):
         context.get_context().client_sockets[client_socket] = 1
@@ -291,7 +292,7 @@ class SockConsole(code.InteractiveConsole):
         if obj is None:
             return
         self.locals['_'] = None
-        # clean up output by adding \n here; so you don't see "hello world!">>> 
+        # clean up output by adding \n here; so you don't see "hello world!">>>
         # TODO: is there a better way to handle this?
         self._last = repr(obj) + "\n"
         self.locals['_'] = obj
