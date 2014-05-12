@@ -77,7 +77,7 @@ def join(reqs, raise_exc=False, timeout=None):
 def _exception_catcher(f, *a, **kw):
     ctx = context.get_context()
     try:
-        with ctx.cal.trans('API', 'ASYNC-SPAWN'):  # .' + f.__name__.upper()):
+        with ctx.cal.trans('API', 'ASYNC-SPAWN.' + f.__name__.upper()):
             return f(*a, **kw)
     except Exception as e:  # NOTE: would rather do this with weakrefs,
         if not hasattr(e, '__greenlet_traces'):  # but Exceptions are not weakref-able
