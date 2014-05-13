@@ -9,6 +9,8 @@ from threading import local
 from collections import defaultdict, deque
 import socket
 import os.path
+import sys
+
 import time
 
 import faststat
@@ -446,7 +448,6 @@ class Context(object):
 
         def trace(why, gs):
             if why:
-                ml.ld4(why)
                 ct = curtime()
                 the_time = (ct - last_time[0]) * 1000.0
                 last_time[0] = ct
@@ -454,6 +455,13 @@ class Context(object):
                     self.stats['greenlet_idle(ms)'].add(the_time)
                 else:
                     self.stats['greenlet_switch(ms)'].add(the_time)
+                    if the_time > 100:
+                        ml.la("Long spin {0}", the_time)
+                        if self.cal:
+                            self.cal.event("GEVENT", "LONG_SPIN", '1',
+                                           "time={0}".format(the_time))
+
+                ml.ld4("{1} {0}", why, the_time)
         try:
             greenlet.settrace(trace)
         except AttributeError:
