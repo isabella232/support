@@ -778,6 +778,7 @@ class GreenConsole(code.InteractiveConsole):
 def start_repl(local=None, banner="infra REPL (exit with Ctrl+C)"):
     gevent.spawn(GreenConsole().interact, banner)
 
+
 def greenify(banner="REPL is now greenlet friendly (exit with Ctrl+C)"):
     import __main__
     GreenConsole(__main__.__dict__).interact(banner)
