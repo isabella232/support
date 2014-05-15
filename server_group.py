@@ -99,7 +99,7 @@ class ServerGroup(object):
         ctx = context.get_context()
         if not self.prefork:
             self.start()
-            ml.ld("Now really running-init over")
+            ml.la("The server is now really running and listening to requests-init over!")
             if ctx.dev and ctx.dev_service_repl_enabled and os.isatty(0):
                 async.start_repl({'server': ctx.server_group})
             try:
