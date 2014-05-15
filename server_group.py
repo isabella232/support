@@ -180,6 +180,14 @@ class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
             socket._makefile_refs -= 1
         super(MakeFileCloseWSGIHandler, self).__init__(socket, address, server, rfile)
 
+    def handle_one_request(self):
+        addr = repr(self.socket.getsockname()).replace(' ', '')
+        s = async.nanotime()
+        r = super(MakeFileCloseWSGIHandler, self).handle_one_request()
+        context.get_context().stats['handle_one_request.' + addr].add(
+            (async.nanotime() - s)/1e6)
+        return r
+
 
 class SslContextWSGIServer(pywsgi.WSGIServer):
     handler_class = MakeFileCloseWSGIHandler
