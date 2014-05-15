@@ -184,6 +184,7 @@ class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
 class SslContextWSGIServer(pywsgi.WSGIServer):
     handler_class = MakeFileCloseWSGIHandler
 
+    @async.timed
     def wrap_socket_and_handle(self, client_socket, address):
         context.get_context().client_sockets[client_socket] = 1
 
@@ -202,6 +203,7 @@ class SslContextWSGIServer(pywsgi.WSGIServer):
 
 
 class MultiProtocolWSGIServer(SslContextWSGIServer):
+    @async.timed
     def wrap_socket_and_handle(self, client_socket, address):
         context.get_context().client_sockets[client_socket] = 1
 

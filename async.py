@@ -1,4 +1,5 @@
 import os
+import os.path
 import copy
 import functools
 import time
@@ -86,6 +87,22 @@ def _exception_catcher(f, *a, **kw):
         traces.append(traceback.format_exc())
         traces.append(repr(gevent.getcurrent()))
         raise
+
+
+def timed(f):
+    '''
+    wrap a function and time all of its execution calls in milliseconds
+    '''
+    fname = os.path.basename(f.__code__.co_filename) or '_'
+    line_no = repr(f.__code__.co_firstlineno)
+    name = 'timed.{0}[{1}:{2}](ms)'.format(f.__name__, fname, line_no)
+    @functools.wraps(f)
+    def g(*a, **kw):
+        s = nanotime()
+        r = f(*a, **kw)
+        context.get_context().stats[name].add((nanotime() - s)/1e6)
+        return r
+    return g
 
 
 def get_parent(greenlet=None):
