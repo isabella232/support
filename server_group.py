@@ -12,6 +12,7 @@ import collections
 import socket
 import os
 import threading
+import weakref
 
 if hasattr(os, "fork"):
     import ufork
@@ -178,15 +179,24 @@ class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
             # keep the socket alive in CLOSE_WAIT state after client is gone
             # to work with async.SSLSocket
             socket._makefile_refs -= 1
+        self.state = context.get_context().markov_stats['wsgi_handler'].make_transitor('new')
         super(MakeFileCloseWSGIHandler, self).__init__(socket, address, server, rfile)
 
     def handle_one_request(self):
-        addr = repr(self.socket.getsockname()).replace(' ', '')
-        s = async.nanotime()
-        r = super(MakeFileCloseWSGIHandler, self).handle_one_request()
-        context.get_context().stats['handle_one_request.' + addr].add(
-            (async.nanotime() - s)/1e6)
-        return r
+        self.state.transition('handling_request')
+        ret = super(MakeFileCloseWSGIHandler, self).handle_one_request()
+        if not ret:
+            self.state.transition('done')
+
+    def run_application(self):
+        self.state.transition('running_application')
+        return super(MakeFileCloseWSGIHandler, self).run_application()
+
+    def process_result(self):
+        self.state.transition('writing_response')
+        ret = super(MakeFileCloseWSGIHandler, self).process_result()
+        self.state.transition('done')
+        return ret
 
 
 class SslContextWSGIServer(pywsgi.WSGIServer):
