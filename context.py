@@ -73,7 +73,7 @@ class Context(object):
         import topos
         import gevent
 
-        ml.ld("Allocating Context {0}",  id(self))
+        ml.ld("Initing Context {0}",  id(self))
 
         self.config = None
 
