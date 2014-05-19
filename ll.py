@@ -65,6 +65,8 @@ def get_log_level():
 def set_log_level(level):
     """Set global low lovel log level"""
     global _log_level
+    if level is None:
+        level = 0
     level = max(level, LOG_LEVELS['NEVER'])
     level = min(level, LOG_LEVELS['DEBUG4'])
     _log_level = level
