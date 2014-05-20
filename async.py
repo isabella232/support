@@ -71,16 +71,12 @@ def staggered_retries(*a, **kw):
 
 
 @functools.wraps(gevent.spawn)
-def spawn(*a, **kw):
-    if 'run' in kw:
-        f = kw.pop('run')
-    else:
-        f, a = a[0], a[1:]
-    gr = gevent.spawn(_exception_catcher, f, *a, **kw)
+def spawn(run, *a, **kw):
+    gr = gevent.spawn(_exception_catcher, run, *a, **kw)
     ctx = context.get_context()
     ctx.greenlet_ancestors[gr] = gevent.getcurrent()
-    ctx.cal.event('ASYNC', 'spawn.' + f.__name__, '0', {'id': hex(id(gr))[-5:]})
-    gr.spawn_code = f.__code__
+    ctx.cal.event('ASYNC', 'spawn.' + run.__name__, '0', {'id': hex(id(gr))[-5:]})
+    gr.spawn_code = run.__code__
     return gr
 
 
