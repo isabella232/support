@@ -17,7 +17,6 @@ import gevent.greenlet
 import faststat
 
 import context
-import errno
 
 import ll
 
@@ -28,6 +27,53 @@ sleep = gevent.sleep  # alias gevent.sleep here so user doesn't have to know/wor
 Timeout = gevent.Timeout  # alias Timeout here as well since this is a darn useful class
 with_timeout = gevent.with_timeout
 nanotime = faststat.nanotime
+
+
+def staggered_retries(*a, **kw):
+    ready = None
+    ready = gevent.event.Event()
+    ml.la("ready is {0!r}", ready)
+    ready.clear()
+
+    def call_back(source):
+        if source.successful():
+            ml.la("call back with {0!r} {1!r}", source, ready)
+            ready.set()
+        else:
+            ml.la("Source not successful")
+
+    if 'timeouts' in kw:
+        timeouts = kw.pop('timeouts')
+    else:
+        timeouts = [0.05, 0.1, 0.15, 0.2]
+    if 'run' in kw:
+        f = kw.pop('run')
+    else:
+        f, a = a[0], a[1:]
+    if timeouts[0] > 0:
+        timeouts.insert(0, 0)
+    ml.la("About to spawn {0!r}, {1!r}, {2!r}", f, a, kw)
+    gs = spawn(f, *a, **kw)
+    gs.link_value(call_back)
+    running = [gs]
+    val = None
+    for i in range(1, len(timeouts)):
+        this_timeout = timeouts[i] - timeouts[i - 1]
+        ml.ld2("Using timeout {0}", this_timeout)
+        try:
+            with Timeout(this_timeout):
+                ready.wait()
+                break
+        except Timeout:
+            ml.ld2("Timed out!")
+            ctx = context.get_context()
+            ctx.cal.event('ASYNC-STAGGER', f.__name__, '0', {'timeout': this_timeout})
+            gs = spawn(f, *a, **kw)
+            gs.link_value(call_back)
+            running.append(gs)
+    vals = [l.value for l in running if l.successful()]
+    val = vals[0] if vals else None
+    return val
 
 
 @functools.wraps(gevent.spawn)
@@ -621,6 +667,14 @@ class SSLSocket(gevent.socket.socket):
         self.do_handshake()
 
     def send(self, data, flags=0, timeout=timeout_default):
+        if ll.get_log_level() >= ll.LOG_LEVELS['DEBUG2']:
+            if hasattr(data, 'tobytes'):
+                ml.ld2("SSL: {{{0}}}/FD {1}: OUTDATA: {{{2}}}",
+                       id(self), self._sock.fileno(), data.tobytes())
+            else:
+                ml.ld2("SSL: {{{0}}}/FD {1}: OUTDATA: {{{2}}}",
+                       id(self), self._sock.fileno(), data)
+
         # tobytes() fails on strings -- how did this ever work?
         # data is buffer on many platforms - thought it was only 2.6
         return self._do_ssl(lambda: self._sock.send(data, flags), timeout)
@@ -631,6 +685,8 @@ class SSLSocket(gevent.socket.socket):
             retval = self._sock.recv(min(pending, buflen))
         else:
             retval = self._do_ssl(lambda: self._sock.recv(buflen))
+        ml.ld2("SSL: {{{0}}}/FD {1}: INDATA: {{{2}}}",
+               id(self), self._sock.fileno(), retval)
         return retval
 
     def read(self, buflen=1024):
