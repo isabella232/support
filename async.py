@@ -30,17 +30,12 @@ nanotime = faststat.nanotime
 
 
 def staggered_retries(*a, **kw):
-    ready = None
     ready = gevent.event.Event()
-    ml.la("ready is {0!r}", ready)
     ready.clear()
 
     def call_back(source):
         if source.successful():
-            ml.la("call back with {0!r} {1!r}", source, ready)
             ready.set()
-        else:
-            ml.la("Source not successful")
 
     if 'timeouts' in kw:
         timeouts = kw.pop('timeouts')
@@ -52,7 +47,6 @@ def staggered_retries(*a, **kw):
         f, a = a[0], a[1:]
     if timeouts[0] > 0:
         timeouts.insert(0, 0)
-    ml.la("About to spawn {0!r}, {1!r}, {2!r}", f, a, kw)
     gs = spawn(f, *a, **kw)
     gs.link_value(call_back)
     running = [gs]
