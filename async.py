@@ -29,7 +29,22 @@ with_timeout = gevent.with_timeout
 nanotime = faststat.nanotime
 
 
-def staggered_retries(*a, **kw):
+def staggered_retries(run, *a, **kw):
+    """
+        A version of spawn that will block will it is done
+        running the function, and which will call the function
+        repeatedly as time progresses through the timeouts list.
+
+        Best used for idempotent network calls (e.g. UserRead).
+
+        e.g.
+        user_data = infra.async.staggered_retries(get_data, max_results,
+                                                  latent_data_ok, public_credential_load,
+                                                  timeouts_secs=[0.1, 0.5, 1, 2])
+
+        returns None on timeout.
+
+    """
     ready = gevent.event.Event()
     ready.clear()
 
@@ -37,22 +52,18 @@ def staggered_retries(*a, **kw):
         if source.successful():
             ready.set()
 
-    if 'timeouts' in kw:
-        timeouts = kw.pop('timeouts')
+    if 'timeouts_secs' in kw:
+        timeouts_secs = kw.pop('timeouts_secs')
     else:
-        timeouts = [0.05, 0.1, 0.15, 0.2]
-    if 'run' in kw:
-        f = kw.pop('run')
-    else:
-        f, a = a[0], a[1:]
-    if timeouts[0] > 0:
-        timeouts.insert(0, 0)
-    gs = spawn(f, *a, **kw)
+        timeouts_secs = [0.05, 0.1, 0.15, 0.2]
+    if timeouts_secs[0] > 0:
+        timeouts_secs.insert(0, 0)
+    gs = spawn(run, *a, **kw)
     gs.link_value(call_back)
     running = [gs]
     val = None
-    for i in range(1, len(timeouts)):
-        this_timeout = timeouts[i] - timeouts[i - 1]
+    for i in range(1, len(timeouts_secs)):
+        this_timeout = timeouts_secs[i] - timeouts_secs[i - 1]
         ml.ld2("Using timeout {0}", this_timeout)
         try:
             with Timeout(this_timeout):
@@ -61,8 +72,8 @@ def staggered_retries(*a, **kw):
         except Timeout:
             ml.ld2("Timed out!")
             ctx = context.get_context()
-            ctx.cal.event('ASYNC-STAGGER', f.__name__, '0', {'timeout': this_timeout})
-            gs = spawn(f, *a, **kw)
+            ctx.cal.event('ASYNC-STAGGER', run.__name__, '0', {'timeout': this_timeout})
+            gs = spawn(run, *a, **kw)
             gs.link_value(call_back)
             running.append(gs)
     vals = [l.value for l in running if l.successful()]
