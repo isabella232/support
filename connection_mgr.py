@@ -245,7 +245,7 @@ class ConnectionManager(object):
                                 for model in self.server_models.values()])
 
         if total_num_in_use >= GLOBAL_MAX_CONNECTIONS:
-            ctx.cal.event('NET.SOCKET', 'GLOBAL_MAX', 0, 
+            ctx.cal.event('NET.SOCKET', 'GLOBAL_MAX', 0,
                 {'limit': GLOBAL_MAX_CONNECTIONS, 'in_use': total_num_in_use})
             # try to cull sockets to make room
             made_room = False
@@ -292,7 +292,7 @@ PLAIN_SSL_PROTECTED = type("PlainSslProtected", (object,), {})()
 TRANSIENT_MARKDOWN_DURATION = 10.0  # seconds
 try:
     import resource
-    MAX_CONNECTIONS = int(0.8 * resource.getrlimit(resource.RLIMIT_NOFILE))
+    MAX_CONNECTIONS = int(0.8 * resource.getrlimit(resource.RLIMIT_NOFILE)[0])
     GLOBAL_MAX_CONNECTIONS = MAX_CONNECTIONS
 except:
     MAX_CONNECTIONS = 800
