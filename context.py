@@ -11,6 +11,7 @@ import socket
 import os.path
 import sys
 
+import traceback
 import time
 
 import faststat
@@ -460,7 +461,10 @@ class Context(object):
                         ml.ld("Long spin {0}", the_time)
                         if self.cal:
                             self.cal.event("GEVENT", "LONG_SPIN", '1',
-                                           "time={0}".format(the_time))
+                                           "time={0}&"  # note continues
+                                           "slow_green={1}".format(the_time,
+                                                                   traceback.format_stack(gs[0].gr_frame)))
+
                 ml.ld4("{1} {0}", why, the_time)
         try:
             greenlet.settrace(trace)
