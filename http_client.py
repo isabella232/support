@@ -43,7 +43,12 @@ class _GHTTPConnection(httplib.HTTPConnection):
         if self._tunnel_host:
             self._tunnel()
 
+    def close(self):
+        self.release_sock()
+        httplib.HTTPConnection.close(self)
+
     def release_sock(self):
+        # print self._HTTPConnection__state, self.sock
         if self._HTTPConnection__state == "Idle" and self.sock:
             context.get_context().connection_mgr.release_connection(self.sock)
             self.sock = None
@@ -271,7 +276,7 @@ class Response(object):
       provided for `X-First-Header` (`First, Value` and `Second,
       Value`) with a comma.  Unfortunately both of these values
       contain a comma.  That means a simple :py:meth:`str.split` can't
-      recover the original values:
+      Recover the original values:
 
       >>> msg['X-First-Header'].split(', ')
       ['First', 'Value', 'Second', 'Value']
@@ -301,6 +306,18 @@ class Response(object):
         self.http_response = http_response
         self._body = None
 
+    def close(self):
+        if hasattr(self.http_response, '_connection'):
+            self.http_response._connection.release_sock()
+            del self.http_response._connection
+        self.http_response.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self.close()
+
     @property
     def body(self):
         """the body of the request, if applicable.
@@ -312,7 +329,8 @@ class Response(object):
         """
 
         if self._body is None:
-            self._body = self.http_response.read()
+            with self:
+                self._body = self.http_response.read()
         return self._body
 
     def __repr__(self):
