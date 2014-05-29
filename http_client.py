@@ -1,5 +1,4 @@
-'''
-A simple HTTP client which mixes httplib with gevent and PayPal protecteds.
+'''A simple HTTP client which mixes httplib with gevent and PayPal protecteds.
 
 It provides convenience functions for the standard set of `HTTP methods`_:
 
@@ -11,6 +10,14 @@ which are just shortcuts for the corresponding :py:func:`request` call:
 
 .. _HTTP Methods: http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol\
 #Request_methods
+
+If you don't intend to read the response's body, you should use a
+context manager:
+
+>>> with http_client.get('http://www.example.com') as response: # doctest: +SKIP
+...    assert response.status == 200
+
+This will release the underlying socket back to the socket pool.
 '''
 import httplib
 from urlparse import urlparse, urlunparse
@@ -42,10 +49,6 @@ class _GHTTPConnection(httplib.HTTPConnection):
                                                       self.protected)
         if self._tunnel_host:
             self._tunnel()
-
-    def close(self):
-        self.release_sock()
-        httplib.HTTPConnection.close(self)
 
     def release_sock(self):
         # print self._HTTPConnection__state, self.sock
@@ -307,6 +310,11 @@ class Response(object):
         self._body = None
 
     def close(self):
+        """Release the underlying socket back to the connection pool.  This
+        will be automatically called by :attribute:`~Response.body`
+        after the body has been read.  You should arrange to have this called (
+
+        """
         if hasattr(self.http_response, '_connection'):
             self.http_response._connection.release_sock()
             del self.http_response._connection
