@@ -2,6 +2,8 @@
 This module holds root exception types, as well as mix-ins
 that can be subclassed for user code or used in try/except blocks
 '''
+import sys
+
 
 class ASFError(Exception):
     """
