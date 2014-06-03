@@ -87,7 +87,10 @@ def spawn(run, *a, **kw):
     ctx = context.get_context()
     ctx.greenlet_ancestors[gr] = gevent.getcurrent()
     ctx.cal.event('ASYNC', 'spawn.' + run.__name__, '0', {'id': hex(id(gr))[-5:]})
-    gr.spawn_code = run.__code__
+    if hasattr(run, '__code__'):
+        gr.spawn_code = run.__code__
+    else:
+        gr.spawn_code = None
     return gr
 
 
