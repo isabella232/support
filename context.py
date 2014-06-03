@@ -466,10 +466,8 @@ class Context(object):
                                                                    traceback.format_stack(gs[0].gr_frame)))
 
                 ml.ld4("{1} {0}", why, the_time)
-        try:
-            greenlet.settrace(trace)
-        except AttributeError:
-            pass  # oh well
+
+        self._trace = trace
 
     def get_connection(self, *a, **kw):
         return self.connection_mgr.get_connection(*a, **kw)
