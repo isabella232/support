@@ -121,7 +121,10 @@ class Context(object):
 
         #NETWORK RELATED STUFF
         self.max_concurrent_clients = 1000
-        self.datacenter_connect_timeout = 0.05
+        if dev:
+            self.datacenter_connect_timeout = 1.0  # for stages
+        else:
+            self.datacenter_connect_timeout = 0.05
         self.client_sockets = WeakKeyDictionary()
         self.server_group = None
         self.port = None
