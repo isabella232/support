@@ -78,6 +78,8 @@ def staggered_retries(run, *a, **kw):
             running.append(gs)
     vals = [l.value for l in running if l.successful()]
     val = vals[0] if vals else None
+    for g in running:
+        g.kill()
     return val
 
 
