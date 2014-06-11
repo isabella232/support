@@ -109,8 +109,10 @@ class ConnectionManager(object):
         errors = []
         for address in address_list:
             try:
-                with ctx.cal.trans('CONNECT', name + ':' + address[0], msg={"lport": address[1]}):
-                    return self._connect_to_address(name, ssl, sock_config, address, sock_type)
+                with ctx.cal.trans('CONNECT', name + ':' + address[0], ) as cal_t:
+                    s = self._connect_to_address(name, ssl, sock_config, address, sock_type)
+                    cal_t.msg["lport"] = s.getsockname()[1]
+                    return s
             except socket.error as err:
                 if len(address_list) == 1:
                     raise
