@@ -111,7 +111,10 @@ class ConnectionManager(object):
             try:
                 with ctx.cal.trans('CONNECT', name + ':' + address[0], ) as cal_t:
                     s = self._connect_to_address(name, ssl, sock_config, address, sock_type)
-                    cal_t.msg["lport"] = s.getsockname()[1]
+                    if hasattr(s, 'getsockname'):
+                        cal_t.msg["lport"] = s.getsockname()[1]
+                    elif hasattr(s, '_sock'):
+                        cal_t.msg["lport"] = s._sock.getsockname()[1]
                     return s
             except socket.error as err:
                 if len(address_list) == 1:

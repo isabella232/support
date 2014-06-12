@@ -447,6 +447,7 @@ class Context(object):
                 pass  # oh well
         import greenlet
         import gevent
+        import threading
         from async import curtime
 
         last_time = [curtime()]
