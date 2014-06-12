@@ -45,6 +45,7 @@ def staggered_retries(run, *a, **kw):
         returns None on timeout.
 
     """
+    ctx = context.get_context()
     ready = gevent.event.Event()
     ready.clear()
 
@@ -61,9 +62,10 @@ def staggered_retries(run, *a, **kw):
     gs = spawn(run, *a, **kw)
     gs.link_value(call_back)
     running = [gs]
-    val = None
     for i in range(1, len(timeouts_secs)):
         this_timeout = timeouts_secs[i] - timeouts_secs[i - 1]
+        if ctx.dev:
+            this_timeout = this_timeout * 5.0
         ml.ld2("Using timeout {0}", this_timeout)
         try:
             with Timeout(this_timeout):
@@ -71,16 +73,17 @@ def staggered_retries(run, *a, **kw):
                 break
         except Timeout:
             ml.ld2("Timed out!")
-            ctx = context.get_context()
             ctx.cal.event('ASYNC-STAGGER', run.__name__, '0', {'timeout': this_timeout})
             gs = spawn(run, *a, **kw)
             gs.link_value(call_back)
             running.append(gs)
     vals = [l.value for l in running if l.successful()]
-    val = vals[0] if vals else None
     for g in running:
         g.kill()
-    return val
+    if vals:
+        return vals[0]
+    else:
+        return None
 
 
 @functools.wraps(gevent.spawn)
@@ -132,7 +135,7 @@ def _exception_catcher(f, *a, **kw):
     try:
         with ctx.cal.trans('API', 'ASYNC-SPAWN.' + f.__name__.upper()):
             return f(*a, **kw)
-    except GreenletExit as ge:  # NOTE: would rather do this with weakrefs,
+    except gevent.greenlet.GreenletExit:
         ml.ld("Exited by majeur")
     except Exception as e:  # NOTE: would rather do this with weakrefs,
         if not hasattr(e, '__greenlet_traces'):  # but Exceptions are not weakref-able
