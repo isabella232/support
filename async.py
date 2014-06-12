@@ -132,6 +132,8 @@ def _exception_catcher(f, *a, **kw):
     try:
         with ctx.cal.trans('API', 'ASYNC-SPAWN.' + f.__name__.upper()):
             return f(*a, **kw)
+    except GreenletExit as ge:  # NOTE: would rather do this with weakrefs,
+        ml.ld("Exited by majeur")
     except Exception as e:  # NOTE: would rather do this with weakrefs,
         if not hasattr(e, '__greenlet_traces'):  # but Exceptions are not weakref-able
             e.__greenlet_traces = []
