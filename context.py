@@ -194,6 +194,9 @@ class Context(object):
         # CLIENT BEHAVIORS
         self.mayfly_client_retries = 3
 
+        # Are we up yet as a server?
+        self.running = False
+
     def set_stage_host(self, stage_host, stage_ip=None):
         from contrib import net
 
@@ -438,6 +441,11 @@ class Context(object):
 
     def set_greenlet_trace(self, value):
         'turn on tracking of greenlet switches'
+        import greenlet
+        import gevent
+        from async import curtime
+        import context
+
         if value not in (True, False):
             raise ValueError("value must be True or False")
         if value is False:
@@ -445,18 +453,16 @@ class Context(object):
                 greenlet.settrace(None)
             except AttributeError:
                 pass  # oh well
-        import greenlet
-        import gevent
-        import threading
-        from async import curtime
 
-        last_time = [curtime()]
+        last_time = [0]
 
         def trace(why, gs):
-            if why:
+            if context.get_context().running and why:
                 ct = curtime()
                 the_time = (ct - last_time[0]) * 1000.0
                 last_time[0] = ct
+                if the_time > 1e6:  # inited to 0 so several billion
+                    return
                 if gs[0] is gevent.hub.get_hub():
                     self.stats['greenlet_idle(ms)'].add(the_time)
                 else:

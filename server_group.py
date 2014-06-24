@@ -99,6 +99,7 @@ class ServerGroup(object):
 
     def run(self):
         ctx = context.get_context()
+        ctx.running = True
         try:
             import greenlet
             greenlet.settrace(ctx._trace)
