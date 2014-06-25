@@ -49,7 +49,7 @@ class Context(object):
                                before worker suicide
 
     max_concurrent_clients     maximum number of client connections  1000
-                               to spawn greenlets for before pausing 
+                               to spawn greenlets for before pausing
                                socket accept
 
     datacenter_connect_timeout max timeout for connecting to         0.05 (=50ms)
@@ -57,7 +57,7 @@ class Context(object):
                                inside the EBay/PayPal data center)
                                in seconds
 
-    pid_file_path              pid file location (used for server    [appname].pid 
+    pid_file_path              pid file location (used for server    [appname].pid
                                shutdown)
 
     bakdoor_port               the port for the TCP REPL server      port + 2 in dev, None in live
@@ -101,7 +101,7 @@ class Context(object):
         # recent stuff
         self.recent = defaultdict(lambda: deque(maxlen=1024))
         self.recent['network'] = defaultdict(lambda: deque(maxlen=100))
-        
+
         #ASF RELATED STUFF
         from asf import asf_context
         self.asf_context = asf_context.ASFContext()
@@ -173,6 +173,7 @@ class Context(object):
         # whether or not dev mode servers should make client certs optional
         self.dev_service_repl_enabled = True
         self.dev_cal_print_logs = True
+        self.dev_use_reloader = False
         # whether a greenlet REPL should be started when a server is run in dev mode
         self.asf_server = None
         self.cryptoclient_ping_time_secs = 180
