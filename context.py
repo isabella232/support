@@ -105,6 +105,7 @@ class Context(object):
         #ASF RELATED STUFF
         from asf import asf_context
         self.asf_context = asf_context.ASFContext()
+        self.cal_client_info_event_enabled = True
 
         #PROTECTED RELATED STUFF
         self.protected = None
