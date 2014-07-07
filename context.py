@@ -73,6 +73,7 @@ class Context(object):
     def __init__(self, dev=False, stage_host=None):
         import topos
         import gevent
+        import cache
 
         ml.ld("Initing Context {0}",  id(self))
 
@@ -99,8 +100,8 @@ class Context(object):
         self.greenlet_trans_stack = WeakKeyDictionary()
 
         # recent stuff
-        self.recent = defaultdict(lambda: deque(maxlen=1024))
-        self.recent['network'] = defaultdict(lambda: deque(maxlen=100))
+        self.recent = cache.DefaultLRU(4096, lambda: deque(maxlen=1024))
+        self.recent['network'] = cache.DefaultLRU(512, lambda: deque(maxlen=100))
 
         #ASF RELATED STUFF
         from asf import asf_context
