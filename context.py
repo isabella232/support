@@ -200,6 +200,15 @@ class Context(object):
         # Are we up yet as a server?
         self.running = False
 
+    def disable_recent_cache(self):
+        '''
+        Disable caching of recent outgoing network requests.
+        This will help to keep memory footprint small in applications where
+        that is important.
+        '''
+        self.recent = cache.DefaultEmptyCache(lambda: deque(maxlen=1))
+        self.recent['network'] = cache.DefaultEmptyCache(lambda: deque(maxlen=1))
+
     def set_stage_host(self, stage_host, stage_ip=None):
         from contrib import net
 

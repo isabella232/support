@@ -48,6 +48,32 @@ class DefaultLRU(LRU):
             return value
 
 
+class EmptyCache(object):
+    '''
+    Provides the same API as a cache, but doesn't actually store anything.
+    Can be substituted for a real cache for applications where memory is critical.
+    '''
+    def __setitem__(self, key, value):
+        pass
+
+    def __getitem__(self, key):
+        raise KeyError("EmptyCache stores no data")
+
+    def __contains__(self, key):
+        return False
+
+    def __len__(self):
+        return 0
+
+
+class DefaultEmptyCache(EmptyCache):
+    def __init__(self, default):
+        self.default = default
+
+    def __getitem__(self, key):
+        return self.default()
+
+
 if __name__ == "__main__":
     c = LRU(3)
     for i in range(10):
