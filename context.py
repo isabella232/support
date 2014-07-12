@@ -229,6 +229,13 @@ class Context(object):
             import opscfg
             self.ops_config = opscfg.OpsCfg(self.appname)
 
+    def set_topos(self, topo_or_path):
+        import topos
+        if isinstance(topo_or_path, basestring):
+            topo_or_path = topos.TopoFile(path=topo_or_path, ip=self.ip)
+        self.topos = topo_or_path
+        self._update_addresses()
+
     def _update_addresses(self):
         stage_path = '/x/web/' + self.hostname.upper() + '/topo/STAGE2.default.topo'
         if self.stage_host:
