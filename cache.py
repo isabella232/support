@@ -1,6 +1,10 @@
 import itertools
 
-class LRU(object):
+class Cache(object):
+    'empty base class to enable isinstance(foo, cache.Cache)'
+
+
+class LRU(Cache):
     '''
     Extremely simple Leat Recently Used (LRU) eviction cache which ensures 
     that the most recently accessed _size_ items are kept.
@@ -30,6 +34,15 @@ class LRU(object):
     def __len__(self): 
         return len(self.data)
 
+    def items(self):
+        return [(k, self.data[k][1]) for k in self.data]
+
+    def keys(self):
+        return self.data.keys()
+
+    def values(self):
+        return [e[1] for e in self.data.values()]
+
 
 class DefaultLRU(LRU):
     '''
@@ -48,7 +61,7 @@ class DefaultLRU(LRU):
             return value
 
 
-class EmptyCache(object):
+class EmptyCache(Cache):
     '''
     Provides the same API as a cache, but doesn't actually store anything.
     Can be substituted for a real cache for applications where memory is critical.
@@ -64,6 +77,15 @@ class EmptyCache(object):
 
     def __len__(self):
         return 0
+
+    def items(self):
+        return []
+
+    def keys(self):
+        return []
+
+    def values(self):
+        return []
 
 
 class DefaultEmptyCache(EmptyCache):
