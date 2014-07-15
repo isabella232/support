@@ -68,7 +68,6 @@ class ConnectionManager(object):
                probably be a class)
         '''
         ctx = context.get_context()
-        address_groups = self.address_groups or ctx.address_groups
         address_aliases = self.address_aliases or ctx.address_aliases
         ops_config = self.ops_config or ctx.ops_config
         #### POTENTIAL ISSUE: OPS CONFIG IS MORE SPECIFIC THAN ADDRESS (owch)
@@ -80,13 +79,7 @@ class ConnectionManager(object):
 
         if isinstance(name_or_addr, basestring):  # string means a name
             name = name_or_addr
-            try:
-                address_list = list(address_groups[name])
-            except KeyError:
-                err_str = "no address found for name {0}".format(name)
-                if ctx.stage_ip is None:
-                    err_str += " (no stage communication configured; did you forget?)"
-                raise NameNotFound(err_str)
+            address_list = self.get_all_addrs(name)
         else:
             address_list = [name_or_addr]
             name = ctx.opscfg_revmap.get(name_or_addr)
@@ -122,6 +115,29 @@ class ConnectionManager(object):
                 ml.ld("Connection err {0!r}, {1}, {2!r}", address, name, err)
                 errors.append((address, err))
         raise MultiConnectFailure(errors)
+
+    def get_all_addrs(self, name):
+        '''
+        returns the all addresses which the logical name would resolve to,
+        or raises NameNotFound if there is no known address for the given name
+        '''
+        ctx = context.get_context()
+        address_groups = self.address_groups or ctx.address_groups
+        try:
+            address_list = list(address_groups[name])
+        except KeyError:
+            err_str = "no address found for name {0}".format(name)
+            if ctx.stage_ip is None:
+                err_str += " (no stage communication configured; did you forget?)"
+            raise NameNotFound(err_str)
+        return address_list
+
+    def get_addr(self, name):
+        '''
+        returns the first address which the logical name would resolve to,
+        equivalent to get_all_addrs(name)[0]
+        '''
+        return self.get_all_addrs(name)[0]
 
     def _connect_to_address(self, name, ssl, sock_config, address, sock_type=None):
         ctx = context.get_context()
