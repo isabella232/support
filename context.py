@@ -232,7 +232,7 @@ class Context(object):
     def set_topos(self, topo_or_path):
         import topos
         if isinstance(topo_or_path, basestring):
-            topo_or_path = topos.TopoFile(path=topo_or_path, ip=self.ip)
+            topo_or_path = topos.TopoFile(topo_dir=topo_or_path, ip=self.ip)
         self.topos = topo_or_path
         self._update_addresses()
 
