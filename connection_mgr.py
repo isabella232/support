@@ -526,10 +526,6 @@ class MultiConnectFailure(socket.error):
     pass
 
 
-def get_topos(name):
-    return context.get_context().topos(name)
-
-
 def get_opscfg(name, **kw):
     return context.get_context().ops_config.get(name, **kw)
 
