@@ -244,10 +244,12 @@ def _make_threadpool_dispatch_decorator(name, size):
             duration = curtime() - start
             queued = start - enqueued
             if hasattr(ret, '__len__') and callable(ret.__len__):
-                ret_size = ret.__len__()
+                prsize = ret.__len__()  # parameter-or-return size
+            elif a and hasattr(a[0], '__len__') and callable(a[0].__len__):
+                prsize = a[0].__len__()
             else:
-                ret_size = None
-            _queue_stats(name, f.__name__, queued, duration, ret_size)
+                prsize = None
+            _queue_stats(name, f.__name__, queued, duration, prsize)
             return ret
 
         g.no_defer = f
