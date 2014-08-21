@@ -847,18 +847,10 @@ class GreenConsole(code.InteractiveConsole):
             # so only do it in windows
             self._green_stdin = gevent.fileobject.FileObject(sys.stdin)
 
+    @io_bound
     def raw_input(self, prompt=""):
-        self.write(prompt)
-        if os.name == 'nt':
-            inp = self._green_stdin.readline()
-        else:
-            inp = gevent.os.tp_read(0, 1024*1024)
-        if isinstance(inp, str):
-            inp = unicode(inp, errors='replace')
-        if inp == "":
-            raise OSError("standard in was closed while running REPL")
-        inp = inp[:-1]
-        return inp
+        return code.InteractiveConsole.raw_input(self, prompt)
+
 
 
 def start_repl(local=None, banner="infra REPL (exit with Ctrl+C)"):
