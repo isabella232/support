@@ -837,16 +837,6 @@ import gevent.fileobject
 
 
 class GreenConsole(code.InteractiveConsole):
-    def __init__(self, locals=None):
-        code.InteractiveConsole.__init__(self, locals)
-        # Windows and POSIX have so many subtle differences in their
-        # handling of stdin that we need to vary the method based on platform
-        if os.name == 'nt':
-            # NOTE: just instantiating the fileobject will set FD 0 to
-            # non-blocking mode on POSIX platforms (which causes problems), 
-            # so only do it in windows
-            self._green_stdin = gevent.fileobject.FileObject(sys.stdin)
-
     @io_bound
     def raw_input(self, prompt=""):
         return code.InteractiveConsole.raw_input(self, prompt)
