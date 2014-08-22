@@ -108,7 +108,7 @@ class ServerGroup(object):
         if not self.prefork:
             self.start()
             ml.la("The server is now really running and listening to requests-init over!")
-            
+
             if ctx.dev and ctx.dev_service_repl_enabled and os.isatty(0):
                 async.start_repl({'server': ctx.server_group})
             try:
@@ -123,9 +123,9 @@ class ServerGroup(object):
             post_fork=self._post_fork, child_pre_exit=self.stop, parent_pre_stop=ctx.stop,
             size=self.num_workers, sleep=async.sleep, fork=gevent.fork, child_memlimit=ctx.worker_memlimit)
         if self.daemonize:
-            pidfile = os.path.join(ctx.pid_file_path,
-                                   '{0}.pid'.format(ctx.appname))
-            self.arbiter.spawn_daemon(pidfile=pidfile)
+            pgrpfile = os.path.join(ctx.process_group_file_path,
+                                   '{0}.pgrp'.format(ctx.appname))
+            self.arbiter.spawn_daemon(pgrpfile=pgrpfile)
         else:
             self.arbiter.run()
 

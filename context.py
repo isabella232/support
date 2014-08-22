@@ -10,7 +10,7 @@ from collections import defaultdict, deque
 import socket
 import os.path
 import sys
-
+import warnings
 import traceback
 import time
 
@@ -57,7 +57,7 @@ class Context(object):
                                inside the EBay/PayPal data center)
                                in seconds
 
-    pid_file_path              pid file location (used for server    [appname].pid
+    process_group_file_path    pid file location (used for server    [appname].pid
                                shutdown)
 
     bakdoor_port               the port for the TCP REPL server      port + 2 in dev, None in live
@@ -85,7 +85,7 @@ class Context(object):
         # used in python as num_children
         # read from opscfg as max_connections
         self.pid = None
-        self.pid_file_path = ''
+        self.process_group_file_path = ''
 
         #ASYNC RELATED STUFF
         self.greenlet_ancestors = WeakKeyDictionary()
@@ -303,6 +303,18 @@ class Context(object):
             feel_addr = self._feel.lar.conn.address
             self.cal.event("MSG", "INIT", '0', "server=%r" % feel_addr)
         return self._feel
+
+    @property
+    def pid_file_path(self):
+        warnings.warn('DEPRECATED: pid_file_path is deprecated'
+                      '\nplease use process_group_file_path instead')
+        return self.process_group_file_path
+
+    @pid_file_path.setter
+    def pid_file_path(self, value):
+        warnings.warn('DEPRECATED: pid_file_path is deprecated'
+                      '\nplease use process_group_file_path instead')
+        self.process_group_file_path = value
 
     @property
     def dev(self):
