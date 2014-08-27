@@ -16,6 +16,7 @@ import weakref
 
 if hasattr(os, "fork"):
     import ufork
+    import fcntl
 else:
     ufork = None
 import gevent
@@ -166,6 +167,10 @@ def _make_server_sock(address):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(address)
     sock.listen(128)  # Note: 128 is a "hint" to the OS than a strict rule about backlog size
+    if ufork is not None:
+        # we may fork, so protect ourselves
+        flags = fcntl.fcntl(sock.fileno(), fcntl.F_GETFD)
+        fcntl.fcntl(sock.fileno(), fcntl.F_SETFD, flags | fcntl.FD_CLOEXEC)
     ml.la("Listen to {0!r} gave this socket {1!r}", address, sock)
     return sock
 
