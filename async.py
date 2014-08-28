@@ -91,7 +91,8 @@ def spawn(run, *a, **kw):
     gr = gevent.spawn(_exception_catcher, run, *a, **kw)
     ctx = context.get_context()
     ctx.greenlet_ancestors[gr] = gevent.getcurrent()
-    ctx.cal.event('ASYNC', 'spawn.' + run.__name__, '0', {'id': hex(id(gr))[-5:]})
+    if '_pid' not in kw:
+        ctx.cal.event('ASYNC', 'spawn.' + run.__name__, '0', {'id': hex(id(gr))[-5:]})
     if hasattr(run, '__code__'):
         gr.spawn_code = run.__code__
     else:
@@ -130,12 +131,33 @@ def join(reqs, raise_exc=False, timeout=None):
         return results
 
 
+def parallel(reqs):
+    ctx = context.get_context()
+    glets = []
+    pid = id(gevent.getcurrent())
+    with ctx.cal.trans('EXECT', 'M') as tran:
+        tran.msg['PI'] = pid
+        for x in reqs:
+            glets.append(spawn(*x, _pid=pid))
+            ctx.cal.event('EXECP', 'P', '0', {'CI': id(glets[-1]), 'Name': str(x[0].__name__)})
+        results = join(glets)
+    return results
+
+
 def _exception_catcher(f, *a, **kw):
     ctx = context.get_context()
     try:
-        with ctx.cal.trans('API', 'ASYNC-SPAWN.' + f.__name__.upper()):
-            return f(*a, **kw)
-    except gevent.greenlet.GreenletExit:
+        my_name = 'ASYNC-SPAWN.' + f.__name__.upper()
+        if '_pid' in kw:
+            pid = kw.pop('_pid')
+            with ctx.cal.trans('EXECP', my_name) as trans:
+                trans.msg['CI'] = id(gevent.getcurrent())
+                trans.msg['PI'] = pid
+                return f(*a, **kw)
+        else:
+            with ctx.cal.trans('ASYNC', my_name):
+                return f(*a, **kw)
+    except gevent.greenlet.GreenletExit as ge:  # NOTE: would rather do this with weakrefs,
         ml.ld("Exited by majeur")
     except Exception as e:  # NOTE: would rather do this with weakrefs,
         if not hasattr(e, '__greenlet_traces'):  # but Exceptions are not weakref-able
