@@ -1,5 +1,5 @@
-from contextlib import contextmanager
 import urllib2
+from urllib2 import *
 import socket
 from . import context
 from .http_client import _GHTTPConnection, _GHTTPSConnection
@@ -20,7 +20,7 @@ class CALAwareHandler(urllib2.AbstractHTTPHandler):
 
     def do_open(self, req, conn_type):
         cal = context.get_context().cal
-        with cal.trans(*self.transaction_args(req)):
+        with cal.trans(**self.transaction_args(req)):
             self.before_request(cal, req)
             resp = urllib2.AbstractHTTPHandler.do_open(self, conn_type, req)
             self.after_request(cal, req, resp)

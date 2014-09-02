@@ -56,7 +56,9 @@ class _GHTTPConnection(httplib.HTTPConnection):
 
     def release_sock(self):
         # print self._HTTPConnection__state, self.sock
-        if self._HTTPConnection__state == "Idle" and self.sock:
+        if (self._HTTPConnection__state == httplib._CS_IDLE
+           and self._HTTPConnection__response is None
+           and self.sock):
             context.get_context().connection_mgr.release_connection(self.sock)
             self.sock = None
 
@@ -332,6 +334,7 @@ class Response(object):
         if hasattr(self.http_response, '_connection'):
             self.http_response._connection.release_sock()
             del self.http_response._connection
+
         self.http_response.close()
 
     def __enter__(self):
