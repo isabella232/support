@@ -43,7 +43,8 @@ class Connection(object):
     frames from the broker at any time.
     '''
     def __init__(self, address, login="", passcode="",
-            on_message=None, on_reciept=None, on_error=None):
+                 on_message=None, on_reciept=None, on_error=None, protected = True):
+        self.protected = protected
         self.address = address
         self.login = login
         self.passcode = passcode
@@ -63,6 +64,7 @@ class Connection(object):
         self.session = None
         self.server_info = None
         self.msg_id = 0
+        self.sub_id = 0
         self.no_receipt = set()  # send ids for which there was no receipt
         self.start()
     
@@ -80,8 +82,12 @@ class Connection(object):
             headers.update(extra_headers)
         self.send_q.put(Frame("SEND", headers, body))
 
-    def subscribe(self):
-        raise NotImplementedError("IOU subscriptions")
+    def subscribe(self, destination):
+        self.sub_id += 1
+        headers = {'subscription': destination,
+                   'id': self.sub_id,
+                   'ack': 'auto'}
+        self.send_q.put(Frame("SUBSCRIBE", headers))
 
     def unsubscribe(self):
         raise NotImplementedError("IOU subscriptions")
@@ -122,6 +128,7 @@ class Connection(object):
         self.recv_glet = gevent.spawn(_run_recv, weak)
         self.sock_glet = gevent.spawn(_run_socket_fixer, weak)
 
+
     def stop(self):
         self.stopping = True
 
@@ -138,7 +145,7 @@ class Connection(object):
     def _reconnect(self):
         if self.sock:
             async.killsock(self.sock)
-        self.sock = context.get_context().get_connection(self.address, True)
+        self.sock = context.get_context().get_connection(self.address, ssl = self.protected)
         self.sock_container[0] = self.sock
         headers = { "login": self.login, "passcode": self.passcode }
         self.sock.sendall(Frame("CONNECT", headers).serialize())
@@ -158,7 +165,9 @@ class Connection(object):
 def _run_send(self):
     while not self.stopping:
         try:
+            print "Running send"
             cur = self.send_q.peek()
+            print cur.serialize()
             self.sock.sendall(cur.serialize())
             self.send_q.get()
         except socket.error:
@@ -171,6 +180,7 @@ def _run_recv(self):
     while not self.stopping:
         try:
             cur = Frame.parse_from_socket(self.sock)
+            print cur
             if cur.command == 'HEARTBEAT':
                 # discard
                 pass
@@ -182,6 +192,8 @@ def _run_recv(self):
             if cur.command == 'RECEIPT':
                 if cur.headers.get('receipt-id') in self.no_receipt:
                     self.no_receipt.remove(cur.headers.get('receipt-id'))
+            if cur.command == 'ERROR':
+                pass
             if cur.command == 'ERROR':
                 pass
 
@@ -311,9 +323,11 @@ class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
 
     @classmethod
     def parse_from_socket(cls, sock):
+        print "Reading data"
         parser = cls._parse_iter()
         parser.next()
         cur_data = sock.recv(4096, socket.MSG_PEEK)
+        print "Reading data"
         frame, bytes_consumed = parser.send(cur_data)
         while frame is None:
             sock.recv(bytes_consumed)  # throw away consumed data
