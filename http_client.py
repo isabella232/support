@@ -26,6 +26,7 @@ import urllib2
 import os
 
 import context
+import connection_mgr
 
 from gevent import socket
 
@@ -38,8 +39,11 @@ from gevent import socket
 
 class _GHTTPConnection(httplib.HTTPConnection):
 
-    def __init__(self, host, port=None, protected=None, strict=None,
-                 timeout=socket._GLOBAL_DEFAULT_TIMEOUT):
+    default_port = httplib.HTTP_PORT
+
+    def __init__(self, host, port=None, strict=None,
+                 timeout=socket._GLOBAL_DEFAULT_TIMEOUT,
+                 protected=None):
         httplib.HTTPConnection.__init__(self, host, port, strict, timeout)
         self.protected = protected
 
@@ -76,6 +80,16 @@ class _GHTTPConnection(httplib.HTTPConnection):
 
     def __del__(self):
         self.release_sock()
+
+
+class _GHTTPSConnection(_GHTTPConnection):
+
+    default_port = httplib.HTTPS_PORT
+
+    def __init__(self, host, port=None, strict=None,
+                 timeout=socket._GLOBAL_DEFAULT_TIMEOUT):
+        _GHTTPConnection.__init__(self, host, port, strict, timeout,
+                                  protected=connection_mgr.PLAIN_SSL)
 
 
 def urllib2_request(u2req, timeout=None):
