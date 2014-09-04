@@ -58,8 +58,6 @@ class ServerGroup(object):
         self.server_log = kw.get('gevent_log')
         self.wsgi_apps = wsgi_apps
         self.stream_handlers = list(stream_handlers)
-        if ctx.backdoor_port is not None:
-            self.stream_handlers.append((console_sock_handle, ("0.0.0.0", ctx.backdoor_port)))
         self.num_workers = ctx.num_workers
         self.servers = []
         self.socks = {}
@@ -97,6 +95,14 @@ class ServerGroup(object):
             sock = _make_server_sock(address)
             server = gevent.server.StreamServer(sock, handler, spawn=self.client_pool)
             self.servers.append(server)
+        if ctx.backdoor_port is not None:
+            try:
+                sock = _make_server_sock(("0.0.0.0", ctx.backdoor_port))
+            except Exception as e:
+                print "WARNING: unable to start backdoor server on port", ctx.backdoor_port, repr(e)
+            else:
+                server = gevent.server.StreamServer(sock, console_sock_handle, spawn=self.client_pool)
+                self.servers.append(server)
 
     def run(self):
         ctx = context.get_context()
