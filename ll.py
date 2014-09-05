@@ -177,8 +177,3 @@ class LLogger(object):
             except:
                 log_failure(args[0])
 
-
-
-if __name__ == "__main__":
-    ll = LLogger()
-    ll.log_debug("{0}", "some stuff")
