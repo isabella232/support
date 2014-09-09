@@ -130,16 +130,20 @@ def join(reqs, raise_exc=False, timeout=None):
             trans.msg[name] += ",tid=" + str(aliases.get(gr, "(-)"))
         return results
 
+_CI = ((os.getpid() & 0xff) << 24)
 
 def parallel(reqs):
+    global _CI
     ctx = context.get_context()
     glets = []
     pid = id(gevent.getcurrent())
     with ctx.cal.trans('EXECT', 'M') as tran:
         tran.msg['PI'] = pid
         for x in reqs:
-            glets.append(spawn(*x, _pid=pid))
-            ctx.cal.event('EXECP', 'P', '0', {'CI': id(glets[-1]), 'Name': str(x[0].__name__)})
+            _CI += 1
+            glets.append(spawn(*x, _pid=pid, _ci = _CI))
+            ctx.cal.event('EXECP', 'P', '0', {'CI': _CI, 'Name': str(x[0].__name__)})
+            
         results = join(glets)
     return results
 
@@ -148,10 +152,11 @@ def _exception_catcher(f, *a, **kw):
     ctx = context.get_context()
     try:
         my_name = 'ASYNC-SPAWN.' + f.__name__.upper()
-        if '_pid' in kw:
+        if '_pid' in kw and '_ci' in kw:
             pid = kw.pop('_pid')
+            _ci = kw.pop('_pid')
             with ctx.cal.trans('EXECP', my_name) as trans:
-                trans.msg['CI'] = id(gevent.getcurrent())
+                trans.msg['CI'] = _ci
                 trans.msg['PI'] = pid
                 return f(*a, **kw)
         else:
