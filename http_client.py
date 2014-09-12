@@ -202,10 +202,10 @@ def request(method, url, body=None, headers=None,
     if not literal:
         headers.setdefault('User-Agent', 'python')
 
-    if isinstance(body, dict)
-       body = json.dumps(body)
-       if 'Content-Type' not in headers:
-           headers['Content-Type'] = 'application/json'
+    if isinstance(body, dict):
+        body = json.dumps(body)
+        if 'Content-Type' not in headers:
+            headers['Content-Type'] = 'application/json'
     conn.putrequest(method, selector, **skips)
     # OMD!
     if not literal and body is not None and 'Content-Length' not in headers:
