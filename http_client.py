@@ -24,6 +24,7 @@ from urlparse import urlparse, urlunparse
 import functools
 import urllib2
 import os
+import json
 
 import context
 import connection_mgr
@@ -143,7 +144,8 @@ def request(method, url, body=None, headers=None,
     :param body: the body of the request, if applicable
 
     :type body: a string or file-like object (i.e, an object that has
-      a ``read`` method).
+      a ``read`` method).  It could also be a dict, in which case
+      it is stringified, and the header set to application/json
 
     :param headers: A dictionary of request headers
 
@@ -200,6 +202,10 @@ def request(method, url, body=None, headers=None,
     if not literal:
         headers.setdefault('User-Agent', 'python')
 
+    if isinstance(body, dict)
+       body = json.dumps(body)
+       if 'Content-Type' not in headers:
+           headers['Content-Type'] = 'application/json'
     conn.putrequest(method, selector, **skips)
     # OMD!
     if not literal and body is not None and 'Content-Length' not in headers:
