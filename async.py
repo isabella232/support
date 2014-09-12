@@ -132,6 +132,7 @@ def join(reqs, raise_exc=False, timeout=None):
 
 _CI = ((os.getpid() & 0xff) << 24)
 
+
 def parallel(reqs):
     global _CI
     ctx = context.get_context()
@@ -140,10 +141,13 @@ def parallel(reqs):
     with ctx.cal.trans('EXECT', 'M') as tran:
         tran.msg['PI'] = pid
         for x in reqs:
+            if hasattr(x, '__call__'):
+                # allow list of functions as well as list of spawn args
+                x = [x]
             _CI += 1
-            glets.append(spawn(*x, _pid=pid, _ci = _CI))
+            glets.append(spawn(*x, _pid=pid, _ci=_CI))
             ctx.cal.event('EXECP', 'P', '0', {'CI': _CI, 'Name': str(x[0].__name__)})
-            
+
         results = join(glets)
     return results
 
@@ -162,7 +166,7 @@ def _exception_catcher(f, *a, **kw):
         else:
             with ctx.cal.trans('ASYNC', my_name):
                 return f(*a, **kw)
-    except gevent.greenlet.GreenletExit as ge:  # NOTE: would rather do this with weakrefs,
+    except gevent.greenlet.GreenletExit:  # NOTE: would rather do this with weakrefs,
         ml.ld("Exited by majeur")
     except Exception as e:  # NOTE: would rather do this with weakrefs,
         if not hasattr(e, '__greenlet_traces'):  # but Exceptions are not weakref-able
@@ -180,11 +184,12 @@ def timed(f):
     fname = os.path.basename(f.__code__.co_filename) or '_'
     line_no = repr(f.__code__.co_firstlineno)
     name = 'timed.{0}[{1}:{2}](ms)'.format(f.__name__, fname, line_no)
+
     @functools.wraps(f)
     def g(*a, **kw):
         s = nanotime()
         r = f(*a, **kw)
-        context.get_context().stats[name].add((nanotime() - s)/1e6)
+        context.get_context().stats[name].add((nanotime() - s) / 1e6)
         return r
     return g
 
@@ -210,7 +215,7 @@ def get_cur_correlation_id():
         corr_val = "{0}{1}{2}{3}".format(gevent.socket.gethostname(),
                                          os.getpid(), int(t), int(t % 1 * 10 ** 6))
         corr_id = "{0:x}{1:x}".format(
-            pp_crypt.fnv_hash(corr_val) & 0xFFFFFFFF, 
+            pp_crypt.fnv_hash(corr_val) & 0xFFFFFFFF,
             int(t % 1 * 10 ** 6) & 0xFFFFFFFF)
         ml.ld2("Generated corr_id {0}", corr_id)
         corr_ids[cur] = corr_id
@@ -416,6 +421,7 @@ io_bound = _make_threadpool_dispatch_decorator('io_bound', 10)  # TODO: make siz
 # N.B.  In many cases fcntl could be used as an alternative method of achieving non-blocking file
 # io on unix systems
 
+
 def cpu_bound(f, p=None):
     '''
     Cause the decorated function to have its execution deferred to a separate thread to avoid
@@ -431,7 +437,7 @@ def cpu_bound(f, p=None):
     def g(*a, **kw):
         ctx = context.get_context()
         # in_cpubound_thread is sentinel to prevent double-thread dispatch
-        if (not ctx.cpu_thread_enabled or imp.lock_held() 
+        if (not ctx.cpu_thread_enabled or imp.lock_held()
                 or getattr(ctx.thread_locals, 'in_cpubound_thread', False)):
             return f(*a, **kw)
         if not hasattr(ctx.thread_locals, 'cpu_bound_thread'):
@@ -636,6 +642,7 @@ def make_sock_close_wrapper():
         if k in ('__init__', '__module__', '__slots__', '__new__', '__getattribute__'):
             continue
         wrap_items[k] = _wrap(v) if callable(v) else v
+
     def __init__(self, sock):
         self._proxy = sock
     wrap_items['__init__'] = __init__
@@ -867,7 +874,6 @@ class GreenConsole(code.InteractiveConsole):
     @io_bound
     def raw_input(self, prompt=""):
         return code.InteractiveConsole.raw_input(self, prompt)
-
 
 
 def start_repl(local=None, banner="infra REPL (exit with Ctrl+C)"):
