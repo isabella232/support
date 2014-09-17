@@ -244,7 +244,7 @@ class Context(object):
             import topos
             for path in stage_path, dev_path, altus_path:
                 if os.path.exists(path):
-                    self.topos = topos.TopoFile(stage_path, ip=self.stage_ip)
+                    self.topos = topos.TopoFile(path, ip=self.stage_ip)
                     break
         if self.topos:
             addresses = self.topos.get(self.appname) or {}
