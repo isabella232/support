@@ -238,14 +238,14 @@ class Context(object):
 
     def _update_addresses(self):
         stage_path = '/x/web/' + self.hostname.upper() + '/topo/STAGE2.default.topo'
+        dev_path = os.path.expanduser('~/.pyinfra/topo/STAGE2.default.topo')
+        altus_path = '/x/web/LIVE/topo/STAGE2.default.topo'
         if self.stage_host:
             import topos
-            if os.path.exists(stage_path):
-                self.topos = topos.TopoFile(stage_path, ip=self.stage_ip)
-            else:
-                self.topos = topos.TopoFile(
-                    os.path.expanduser('~/.pyinfra/topo/STAGE2.default.topo'),
-                    ip=self.stage_ip)
+            for path in stage_path, dev_path, altus_path:
+                if os.path.exists(path):
+                    self.topos = topos.TopoFile(stage_path, ip=self.stage_ip)
+                    break
         if self.topos:
             addresses = self.topos.get(self.appname) or {}
         else:
