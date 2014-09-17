@@ -64,8 +64,10 @@ def build_opener(*args, **kwargs):
     for thing in [opener.handle_open,
                   opener.process_request,
                   opener.process_response]:
-        del thing['http']
-        del thing['https']
+        thing['http'] = [handler for handler in thing['http']
+                         if not isinstance(handler, urllib2.HTTPHandler)]
+        thing['https'] = [handler for handler in thing['https']
+                          if not isinstance(handler, urllib2.HTTPHandler)]
 
     http = NewHTTPHandler()
     https = NewHTTPSHandler()
