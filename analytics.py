@@ -55,10 +55,11 @@ def get_all_info():
 
     ret['python'] = get_python_info()
     ret['time'] = TIME_INFO
+    ret['infra'] = infra_info = {}
     try:
         import pkg_resources
         dist = pkg_resources.get_distribution('infra')
-        ret['infra_wheel_version'] = dist.version
+        infra_info['wheel_version'] = dist.version
     except:
         pass
 
