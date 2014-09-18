@@ -10,7 +10,6 @@ import datetime
 import platform
 import socklusion
 
-
 PPA_HOST = 'python.corp.ebay.com'
 PPA_PORT = 443
 PPA_URL_PATH = '/analytics/v1/on_import'
@@ -56,6 +55,13 @@ def get_all_info():
 
     ret['python'] = get_python_info()
     ret['time'] = TIME_INFO
+    try:
+        import pkg_resources
+        dist = pkg_resources.get_distribution('infra')
+        ret['infra_wheel_version'] = dist.version
+    except:
+        pass
+
     return ret
 
 
