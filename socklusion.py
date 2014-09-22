@@ -6,6 +6,7 @@ import sys
 import time
 import socket
 import optparse
+import platform
 import subprocess
 
 
@@ -85,6 +86,30 @@ def send_data_child(data,
     return
 
 
+if 'windows' in platform.system().lower():
+    def spawn_process(*args, **kwargs):
+        return subprocess.Popen(*args, **kwargs)
+else:
+    import signal
+
+    PROCS = []
+
+    def spawn_process(*args, **kwargs):
+        proc = subprocess.Popen(*args, **kwargs)
+        PROCS.append(proc)
+        return proc
+
+    def reap_processes(signo, frame):
+        global PROCS
+        PROCS = [proc for proc in PROCS if proc.poll() is not None]
+        if not PROCS:
+            signal.signal(signal.SIGCHLD, orig_disposition)
+        if callable(orig_disposition):
+            orig_disposition(signo, frame)
+
+    orig_disposition = signal.signal(signal.SIGCHLD, reap_processes)
+
+
 def send_data(data, host, port=None, wrap_ssl=None, timeout=None,
               socket_timeout=None, want_response=False):
     cmd_tokens = [PYTHON, CUR_FILE, '--child', '--host', host]
@@ -99,10 +124,10 @@ def send_data(data, host, port=None, wrap_ssl=None, timeout=None,
     if wrap_ssl:
         cmd_tokens += ['--wrap-ssl']
 
-    proc = subprocess.Popen(cmd_tokens,
-                            stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.PIPE)
+    proc = spawn_process(cmd_tokens,
+                         stdin=subprocess.PIPE,
+                         stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE)
     if want_response:
         return proc.communicate(input=data)
     else:
