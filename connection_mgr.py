@@ -401,6 +401,7 @@ class MonitoredSocket(object):
         context.get_context().store_network_data(
             (self.name, self._msock.getpeername()),
             self.fileno(), "OUT", data)
+        return ret
 
     def sendall(self, data, flags=0):
         ret = self._msock.sendall(data, flags)
