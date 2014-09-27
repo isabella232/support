@@ -103,6 +103,9 @@ class ServerGroup(object):
             else:
                 server = gevent.server.StreamServer(sock, console_sock_handle, spawn=self.client_pool)
                 self.servers.append(server)
+        # set all servers max_accept to 1 since we are in a pre-forked/multi-process enviornment
+        for server in self.servers:
+            server.max_accept = 1
 
     def run(self):
         ctx = context.get_context()
