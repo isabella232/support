@@ -199,8 +199,6 @@ def _run_recv(self):
                     self.no_receipt.remove(cur.headers.get('receipt-id'))
             if cur.command == 'ERROR':
                 pass
-            if cur.command == 'ERROR':
-                pass
 
         except socket.error:
             # wait for socket to be ready again
