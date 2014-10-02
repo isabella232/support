@@ -124,7 +124,8 @@ class Connection(object):
         if self.started:
             raise ValueError("called stomp.Connection.start() twice")
         self.started = True
-        self._reconnect()
+        self.sock_broken.set()
+        self.sock_ready.clear()
         weak = weakref.proxy(self, _killsock_later(self.sock_container))
         self.send_glet = gevent.spawn(_run_send, weak)
         self.recv_glet = gevent.spawn(_run_recv, weak)
@@ -165,6 +166,7 @@ class Connection(object):
 ### out to regular functions so that bound methods in greenlet call stacks
 ### do not interfere with garbage collection
 def _run_send(self):
+    self.sock_ready.wait()
     while not self.stopping:
         try:
             cur = self.send_q.peek()
@@ -179,6 +181,7 @@ def _run_send(self):
             self.sock_ready.wait()
 
 def _run_recv(self):
+    self.sock_ready.wait()
     while not self.stopping:
         try:
             cur = Frame.parse_from_socket(self.sock)
