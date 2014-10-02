@@ -12,7 +12,9 @@ import gevent.queue
 import context
 import async
 import asf.serdes
+import ll
 
+ml = ll.LLogger()
 
 class LARClient(object):
     def __init__(self):
@@ -165,10 +167,10 @@ class Connection(object):
 def _run_send(self):
     while not self.stopping:
         try:
-            print "Running send"
             cur = self.send_q.peek()
-            print cur.serialize()
-            self.sock.sendall(cur.serialize())
+            serial_cur = cur.serialize()
+            ml.ld("Lar sender dequed {{{0}}}", serial_cur)
+            self.sock.sendall(serial_cur)
             self.send_q.get()
         except socket.error:
             # wait for socket ready again
@@ -180,7 +182,7 @@ def _run_recv(self):
     while not self.stopping:
         try:
             cur = Frame.parse_from_socket(self.sock)
-            print cur
+            ml.ld("Lar recver got {0!r}", cur)
             if cur.command == 'HEARTBEAT':
                 # discard
                 pass
@@ -323,11 +325,9 @@ class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
 
     @classmethod
     def parse_from_socket(cls, sock):
-        print "Reading data"
         parser = cls._parse_iter()
         parser.next()
         cur_data = sock.recv(4096, socket.MSG_PEEK)
-        print "Reading data"
         frame, bytes_consumed = parser.send(cur_data)
         while frame is None:
             sock.recv(bytes_consumed)  # throw away consumed data
