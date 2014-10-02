@@ -343,7 +343,8 @@ class Context(object):
         for topo_key in ['admin_ssl_connector_port', 'admin_connector_port']:
             if (self.topos and self.topos.get(self.appname) and
                     topo_key in self.topos.get(self.appname)):
-                return int(self.topos.get(self.appname)[topo_key])
+                if int(self.topos.get(self.appname)[topo_key]) != self._port:
+                    return int(self.topos.get(self.appname)[topo_key])
         if self.dev:
             if self.port is not None:
                 return self.port + 1
