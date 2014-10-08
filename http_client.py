@@ -31,6 +31,9 @@ import connection_mgr
 
 from gevent import socket
 
+_CORR_ID_HEADERS = ['correlation-id',
+                    'x-pp-corrid',
+                    "x-paypal-correlation-id"]  # also in asf/server.py
 
 # TODO: make and use a better HTTP library instead of wrapping httplib.
 # hopefully this is at least a pretty stable abstraction that can migrate over
