@@ -373,7 +373,7 @@ class Response(object):
 
 
 #http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
-_HTTP_METHODS = ('GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'TRACE', 'OPTION',
+_HTTP_METHODS = ('GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'TRACE', 'OPTIONS',
                  'CONNECT', 'PATCH')
 
 
