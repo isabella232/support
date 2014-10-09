@@ -39,6 +39,7 @@ import ll
 
 ml = ll.LLogger()
 
+
 class ConnectionManager(object):
 
     def __init__(self, address_groups=None, address_aliases=None, ops_config=None, protected=None):
@@ -56,7 +57,8 @@ class ConnectionManager(object):
         # is not yet fully initialized
         self.culler = gevent.spawn(self.cull_loop)
 
-    def get_connection(self, name_or_addr, ssl=False, sock_type=None):
+    def get_connection(
+            self, name_or_addr, ssl=False, sock_type=None, read_timeout=None):
         '''
         name_or_addr - the logical name to connect to, e.g. "paymentreadserv" or "occ-ctoc"
         ssl - if set to True, wrap socket with context.protected;
@@ -103,7 +105,8 @@ class ConnectionManager(object):
         for address in address_list:
             try:
                 with ctx.cal.trans('CONNECT', name + ':' + address[0], ) as cal_t:
-                    s = self._connect_to_address(name, ssl, sock_config, address, sock_type)
+                    s = self._connect_to_address(
+                        name, ssl, sock_config, address, sock_type, read_timeout)
                     if hasattr(s, 'getsockname'):
                         cal_t.msg["lport"] = s.getsockname()[1]
                     elif hasattr(s, '_sock'):
@@ -139,7 +142,12 @@ class ConnectionManager(object):
         '''
         return self.get_all_addrs(name)[0]
 
-    def _connect_to_address(self, name, ssl, sock_config, address, sock_type=None):
+    def _connect_to_address(
+            self, name, ssl, sock_config, address, sock_type, read_timeout):
+        '''
+        internal helper function that does all the complex bits of establishing
+        a connection, keeping statistics on connections, handling markdowns
+        '''
         ctx = context.get_context()
         if address not in self.server_models:
             self.server_models[address] = ServerModel(address)
@@ -228,8 +236,10 @@ class ConnectionManager(object):
                     sock = sock_type(msock)
             else:
                 sock = msock
-
-        sock.settimeout(sock_config.response_timeout_ms / 1000.0)
+        if read_timeout is None:
+            sock.settimeout(sock_config.response_timeout_ms / 1000.0)
+        else:
+            sock.settimeout(read_timeout)
         if msock and sock is not msock:  # if sock == msock, collection will not work
             self.user_socket_map[sock] = weakref.proxy(msock)
         self.user_socket_map.get(sock, sock).state.transition('in_use')
