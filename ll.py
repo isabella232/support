@@ -86,11 +86,15 @@ def use_std_out():
 
 def log_failure(bad_str):
     """Stats on failed logs"""
-    import infra.context
-    infra.get_context().stats["log.failure"].add(1)
-    infra.get_context().stats["log.failure." + bad_str].add(1)
-    if infra.get_context().stats["log.failure"].n < 10:
-        print "log failure - " + bad_str
+    try:
+        import context
+        context.get_context().stats["log.failure"].add(1)
+        context.get_context().stats["log.failure." + bad_str].add(1)
+#        if get_context().stats["log.failure"].n < 10:
+#            print "log failure - " + bad_str
+    except:
+        pass
+
 
 class LLogger(object):
     """Instantiate this to get the logger object; it grabs module data"""
