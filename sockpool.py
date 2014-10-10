@@ -16,7 +16,6 @@ know what a retry entails.  (e.g. SSL handshake, reset protocol state)
 import socket
 import time
 import select
-import collections
 
 import gevent
 
@@ -75,8 +74,8 @@ class SockPool(object):
         addr = sock.getpeername()
         addr_socks = self.free_socks_by_addr.setdefault(addr, [])
         self.total_sockets += 1
-        addr_socks.append(sock)
         self.sock_idle_times[sock] = time.time()
+        addr_socks.append(sock)
         self.reduce_addr_size(addr, self.max_socks_by_addr.get(addr, self.default_max_socks_per_addr))
         self.reduce_size(self.max_sockets)
 
@@ -122,7 +121,9 @@ class SockPool(object):
             live = []
             # STEP 1 - CULL IDLE SOCKETS
             for sock in self.free_socks_by_addr[addr]:
-                if time.time() - self.sock_idle_times[sock] > self.timeout:
+                # in case the socket does not have an entry in sock_idle_times,
+                # assume the socket is very old and cull
+                if time.time() - self.sock_idle_times.get(sock, 0) > self.timeout:
                     try:
                         ml.ld("Going to Close sock {{{0}}}/FD {1}",
                               id(sock), sock.fileno())
