@@ -36,12 +36,17 @@ ml = ll.LLogger()
 
 
 class ServerGroup(object):
-    def __init__(self, wsgi_apps=(), stream_handlers=(), prefork=None, daemonize=None, dev=None, **kw):
+    def __init__(self, wsgi_apps=(), stream_handlers=(), custom_servers=(),
+                 prefork=None, daemonize=None, dev=None, **kw):
         '''Create a new ServerGroup which will can be started / stopped / forked as a group.
 
         *wsgi_apps* should be of the form  [ (wsgi_app, address, ssl), ...  ]
 
         *stream_handlers* should be of the form  [ (handler_func, address), ...  ]
+
+        *custom handlers* should be of the form [ (server_class, address), ... ]
+        where server_class refers to subclasses of gevent.server.StreamServer
+        which define their own handle function
 
         address here refers to a tuple (ip, port), or more generally anything which is
         acceptable as the address parameter to
@@ -58,6 +63,7 @@ class ServerGroup(object):
         self.server_log = kw.get('gevent_log')
         self.wsgi_apps = wsgi_apps
         self.stream_handlers = list(stream_handlers)
+        self.custom_servers = list(custom_servers)
         self.num_workers = ctx.num_workers
         self.servers = []
         self.socks = {}
@@ -94,6 +100,10 @@ class ServerGroup(object):
         for handler, address in self.stream_handlers:
             sock = _make_server_sock(address)
             server = gevent.server.StreamServer(sock, handler, spawn=self.client_pool)
+            self.servers.append(server)
+        for server_class, address in self.custom_servers:
+            sock = _make_server_sock(address)
+            server = server_class(sock, spawn=self.client_pool)
             self.servers.append(server)
         if ctx.backdoor_port is not None:
             try:
