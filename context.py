@@ -181,6 +181,11 @@ class Context(object):
         self.cryptoclient_ping_time_secs = 180
         self.sockpool_enabled = True
 
+        # print on bad log msgs or not
+        # (If bad due to load, sholdn't print
+        # if bad fmt string, should print
+        self.log_failure_print = True  # set to false in post fork
+
         #MONITORING DATA
         self.stats = defaultdict(faststat.Stats)
         self.durations = defaultdict(faststat.Duration)

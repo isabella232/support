@@ -148,6 +148,7 @@ class ServerGroup(object):
         # finally, eliminate our threadpools
         context.get_context().thread_locals = threading.local()
         import ll
+        context.get_context().log_failure_print = False  # do not print logs failures -- they are in stats
         if context.get_context().serve_daemon:
             ll.use_the_file()  # stdout was closed during daemonization.
                                # plus ufork stdout logging issue
