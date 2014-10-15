@@ -370,3 +370,37 @@ def console_sock_handle(sock, address):
     console = SockConsole(sock)
     console.interact("Connected to pid {0} from {1}...".format(
         os.getpid(), address))
+
+
+
+class CALTransactionMiddleware(clastic.Middleware):
+    provides = ['api_cal_trans']
+
+    def request(self, next, request, _route):
+        url = getattr(_route, 'pattern', '').encode('utf-8')
+        ctx = context.get_context()
+        with ctx.cal.trans('URL', url) as request_txn:
+            request_txn.msg = {}
+            return next(api_cal_trans=request_txn)
+
+class PayPalWsgiApplication(object):
+
+    def __init__(self, routes_handlers, middlewares=None):
+        mw = [CALTransactionMiddleware()]
+        if middlewares:
+            mw.extend(middlewares)
+        pp_app = clastic.Application(routes_handlers,
+                                     middlewares=mw)
+        meta_subapp = meta_service.MetaService(self)
+        routes = [('/meta', meta_subapp),
+                  ('/meta/', meta_subapp),
+                  ('/meta/stats', stats._get_stats_dict, clastic.render_basic),
+                  ('/favicon.ico', _favicon.create_app()),
+                  ('/admin/appInfo/', _app_info.create_app()),
+                  ('/admin/ecv/', _ecv.create_app()),
+                  Simple404Route('/admin/')]
+           routes.append(('/', pp_app))
+           self.app = clastic.Application(routes)
+
+    def __call__(self, *args, **kwargs):
+        return self.app(*args, **kwargs)
