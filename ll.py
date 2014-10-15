@@ -90,8 +90,8 @@ def log_failure(bad_str):
         import context
         context.get_context().stats["log.failure"].add(1)
         context.get_context().stats["log.failure." + bad_str].add(1)
-        if get_context().log_failure_print:
-            if get_context().stats["log.failure"].n < 10:
+        if context.get_context().log_failure_print:
+            if context.get_context().stats["log.failure"].n < 10:
                 print "log failure - " + bad_str
     except:
         pass
