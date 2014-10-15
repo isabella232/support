@@ -399,8 +399,8 @@ class PayPalWsgiApplication(object):
                   ('/admin/appInfo/', _app_info.create_app()),
                   ('/admin/ecv/', _ecv.create_app()),
                   Simple404Route('/admin/')]
-           routes.append(('/', pp_app))
-           self.app = clastic.Application(routes)
+        routes.append(('/', pp_app))
+        self.app = clastic.Application(routes)
 
     def __call__(self, *args, **kwargs):
         return self.app(*args, **kwargs)
