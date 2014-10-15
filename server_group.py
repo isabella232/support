@@ -25,12 +25,11 @@ import gevent.server
 import gevent.socket
 import gevent.pool
 
-import clastic
-
 import async
 from protected import Protected
 import context
 import env
+import clastic
 
 import ll
 
@@ -388,19 +387,23 @@ class CALTransactionMiddleware(clastic.Middleware):
 class PayPalWsgiApplication(object):
 
     def __init__(self, routes_handlers, middlewares=None):
+        from . import asf
+        from asf import meta_service
+        from asf import _ecv
+        from asf import _favicon
+        from asf import _app_info
+        
         mw = [CALTransactionMiddleware()]
         if middlewares:
             mw.extend(middlewares)
         pp_app = clastic.Application(routes_handlers,
                                      middlewares=mw)
-        meta_subapp = meta_service.MetaService(self)
+        meta_subapp = meta_service.create_meta_app()
         routes = [('/meta', meta_subapp),
                   ('/meta/', meta_subapp),
-                  ('/meta/stats', stats._get_stats_dict, clastic.render_basic),
                   ('/favicon.ico', _favicon.create_app()),
                   ('/admin/appInfo/', _app_info.create_app()),
-                  ('/admin/ecv/', _ecv.create_app()),
-                  Simple404Route('/admin/')]
+                  ('/admin/ecv/', _ecv.create_app())]
         routes.append(('/', pp_app))
         self.app = clastic.Application(routes)
 
