@@ -121,9 +121,12 @@ class LLogger(object):
             import gevent  # for getcurrent
             try:
                 msg = apply(args[0].format, tuple(args[1:]))
-                print >> the_file,  "%s %s (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
-                                                       self.caller_mod, id(gevent.getcurrent()),
-                                                       self.tag), msg
+                if "CAL-PRINT" in msg:
+                    print >> the_file, msg
+                else:
+                    print >> the_file,  "%s %s (%s):%s" % (datetime.now().strftime("%d/%H:%M:%S.%f"),
+                                                           self.caller_mod, id(gevent.getcurrent()),
+                                                           self.tag), msg
             except:
                 log_failure(args[0])
 
