@@ -25,6 +25,8 @@ import gevent.server
 import gevent.socket
 import gevent.pool
 
+import clastic
+
 import async
 from protected import Protected
 import context
