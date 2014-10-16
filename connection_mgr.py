@@ -96,8 +96,9 @@ class ConnectionManager(object):
 
         #ensure all DNS resolution is completed; past this point everything is in terms of
         # ips
-        address_list = [gevent.socket.getaddrinfo(*e, family=gevent.socket.AF_INET)[0][4]
-                        for e in address_list]
+        with ctx.cal.trans('DNS', name):
+            address_list = [gevent.socket.getaddrinfo(*e, family=gevent.socket.AF_INET)[0][4]
+                            for e in address_list]
 
         self._compact(address_list, name)
 
