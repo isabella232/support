@@ -670,6 +670,7 @@ class SSLSocket(gevent.socket.socket):
             sock = SockCloseWrapper(sock)
         socket.__init__(self, _sock=sock)
         self._makefile_refs = 0
+        self.peek_buf = ""  # buffer used to enable msg_peek
         if server_side:
             self._sock.set_accept_state()
         else:
@@ -727,6 +728,14 @@ class SSLSocket(gevent.socket.socket):
         return self._do_ssl(lambda: self._sock.send(data, flags), timeout)
 
     def recv(self, buflen, flags=0):
+        if self.peek_buf:
+            if len(self.peek_buf) >= buflen:
+                if flags & socket.MSG_PEEK:
+                    return self.peek_buf[:buflen]
+                retval, self.peek_buf = self.peek_buf[:buflen], self.peek_buf[buflen:]
+                return retval
+            else:
+                buflen -= len(self.peek_buf)
         pending = self._sock.pending()
         if pending:
             retval = self._sock.recv(min(pending, buflen))
@@ -734,6 +743,10 @@ class SSLSocket(gevent.socket.socket):
             retval = self._do_ssl(lambda: self._sock.recv(buflen))
         ml.ld2("SSL: {{{0}}}/FD {1}: INDATA: {{{2}}}",
                id(self), self._sock.fileno(), retval)
+        if self.peek_buf:
+            retval, self.peek_buf = self.peek_buf + retval, ""
+        if flags and flags & socket.MSG_PEEK:
+            self.peek_buf = retval
         return retval
 
     def read(self, buflen=1024):
