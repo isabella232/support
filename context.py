@@ -164,6 +164,7 @@ class Context(object):
             [(k, v[0]) for k, v in self.service_server_map.items() if len(v) == 1])
 
         self.amqs = {}
+        self.fpti_client = None  # set from contrib ? 
 
         import opscfg
         self.ops_config = opscfg.DefaultConfig()
