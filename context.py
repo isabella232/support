@@ -135,6 +135,7 @@ class Context(object):
         self.ip = "127.0.0.1"
         self.hostname = socket.gethostname()
         self.fqdn = socket.getfqdn()
+        self.name_cache = {}
         try:
             self.ip = socket.gethostbyname(self.hostname)
         except socket.error:

@@ -96,11 +96,26 @@ class ConnectionManager(object):
 
         #ensure all DNS resolution is completed; past this point everything is in terms of
         # ips
-        with ctx.cal.trans('DNS', name):
-            address_list = [gevent.socket.getaddrinfo(*e, family=gevent.socket.AF_INET)[0][4]
-                            for e in address_list]
+        def get_gai(e):
+            with ctx.cal.trans('DNS', str(e)):
+                gai = gevent.socket.getaddrinfo(*e, family=gevent.socket.AF_INET)[0][4]
+            context.get_context().name_cache[e] = (time.time(), gai)
+            return gai
 
-        self._compact(address_list, name)
+        def cache_gai(e):
+            if context.get_context().name_cache.has_key(e):
+                age, value = context.get_context().name_cache[e]
+                if time.time() - age > 600:
+                    async.spawn(get_gai, e)
+                return value
+            else:
+                return get_gai(e)
+            
+        with ctx.cal.trans('DNS-CACHE', name, msg = {'len': len(address_list)}):
+            address_list = [cache_gai(e) for e in address_list]
+
+        with ctx.cal.trans('COMPACT', name):
+            self._compact(address_list, name)
 
         errors = []
         for address in address_list:
@@ -270,8 +285,9 @@ class ConnectionManager(object):
         '''
         ctx = context.get_context()
         all_pools = sum([e.values() for e in self.sockpools.values()], [])
-        for pool in all_pools:
-            pool.cull()
+        with context.get_context().cal.trans('CULL', name, msg={'len': len(all_pools)}):
+            for pool in all_pools:
+                pool.cull()
 
         total_num_in_use = sum([len(model.active_connections)
                                 for model in self.server_models.values()])
