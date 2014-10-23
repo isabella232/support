@@ -207,11 +207,18 @@ def _run_recv(self):
             self.sock_ready.wait()
 
 def _run_socket_fixer(self):
+    last_time = 0.1
     while not self.stopping:
         self.sock_broken.wait()
         try:
             self._reconnect()
+            last_time = 0.1
         except:
+            gevent.sleep(last_time + random.random())
+            if last_time < 300 and self.send_q.qsize() == 0:
+                last_time = last_time * 2.0
+            else:
+                last_time = 0.1
             pass
 
 def _killsock_later(sock_container):
