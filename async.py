@@ -699,6 +699,11 @@ class SSLSocket(gevent.socket.socket):
         # wants to use this thing in a select() loop?
         # don't worry about for now, because you'd have to be crazy
         # to put a select loop when there are all these excellent greenlets available
+        peer_cert = self.get_peer_certificate()
+        print "peer cert", repr(peer_cert)
+        if peer_cert:  # may be None if no cert
+            peer_cert = peer_cert.get_subject().get_components()
+        context.get_context().recent['peer_certs'].append(peer_cert)
 
     def set_renegotiate(self, timeout=timeout_default):
         '''
