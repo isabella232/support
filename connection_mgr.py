@@ -203,7 +203,7 @@ class ConnectionManager(object):
             # is the connection within the data-center?
             # use tighter timeouts if so; using the presence of a
             # protected connection as a rough heuristic for now
-            internal = ssl and ssl != PLAIN_SSL
+            internal = (ssl and ssl != PLAIN_SSL) or 'mayfly' in name
             while True:
                 try:
                     ml.ld("CONNECTING...")
