@@ -238,35 +238,33 @@ class SslContextWSGIServer(pywsgi.WSGIServer):
 
     @async.timed
     def wrap_socket_and_handle(self, client_socket, address):
-        context.get_context().client_sockets[client_socket] = 1
+        ctx = context.get_context()
+        ctx.client_sockets[client_socket] = 1
 
         if not self.ssl_args:
             raise ValueError('https server requires server-side'
                              ' SSL certificate (protected)')
         protocol = _socket_protocol(client_socket)
         if protocol == "ssl":
-            ssl_socket = async.wrap_socket_context(client_socket, **self.ssl_args)
+            with ctx.cal.atrans('CONNECT_SSL',
+                                str(address[0]) + ":" + str(address[1])):
+                ssl_socket = async.wrap_socket_context(
+                    client_socket, **self.ssl_args)
             return self.handle(ssl_socket, address)
         elif protocol == "http":
-            client_socket.send(_NO_SSL_HTTP_RESPONSE)
-            async.killsock(client_socket)
+            self._no_ssl(client_socket, address)
         else:
             context.get_context().intervals["server.pings"].tick()
+
+    def _no_ssl(self, client_socket, address):
+        'externalizes no-SSL behavior so MultiProtocolWSGIServer can override'
+        client_socket.send(_NO_SSL_HTTP_RESPONSE)
+        async.killsock(client_socket)
 
 
 class MultiProtocolWSGIServer(SslContextWSGIServer):
-    @async.timed
-    def wrap_socket_and_handle(self, client_socket, address):
-        context.get_context().client_sockets[client_socket] = 1
-
-        protocol = _socket_protocol(client_socket)
-        if protocol == "http":
-            return self.handle(client_socket, address)
-        elif protocol == "ssl":
-            ssl_socket = async.wrap_socket_context(client_socket, **self.ssl_args)
-            return self.handle(ssl_socket, address)
-        else:
-            context.get_context().intervals["server.pings"].tick()
+    def _no_ssl(self, client_socket, address):
+        return self.handle(client_socket, address)
 
 
 #http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
