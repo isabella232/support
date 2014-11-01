@@ -15,6 +15,7 @@ import traceback
 import time
 
 import faststat
+import hyperloglog.hll
 
 import ll
 ml = ll.LLogger()
@@ -193,6 +194,7 @@ class Context(object):
         self.durations = defaultdict(faststat.Duration)
         self.intervals = defaultdict(faststat.Interval)
         self.markov_stats = defaultdict(faststat.Markov)
+        self.sketches = defaultdict(StreamSketch)
         self.profiler = None  # sampling profiler
 
         self.stopping = False
@@ -523,6 +525,23 @@ class Context(object):
 
     def __del__(self):
         self.stopping = True
+
+
+class StreamSketch(object):
+    '''
+    Tracking useful attributes of a data stream.
+    (e.g. cardinality, total count)
+    '''
+    def __init__(self):
+        self.hll = hyperloglog.hll.HyperLogLog(0.05)
+        self.n = 0
+
+    def add(self, data):
+        self.hll.add(data)
+        self.n += 1
+
+    def card(self):
+        return self.hll.card()
 
 
 def _sys_stats_monitor(context):

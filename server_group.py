@@ -250,8 +250,10 @@ class SslContextWSGIServer(pywsgi.WSGIServer):
                                 str(address[0]) + ":" + str(address[1])):
                 ssl_socket = async.wrap_socket_context(
                     client_socket, **self.ssl_args)
+            ctx.sketches['http.ssl.client_ips'].add(address[0])
             return self.handle(ssl_socket, address)
         elif protocol == "http":
+            ctx.sketches['http.client_ips'].add(address[0])
             self._no_ssl(client_socket, address)
         else:
             context.get_context().intervals["server.pings"].tick()
