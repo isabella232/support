@@ -5,6 +5,7 @@ Used at PayPal for YAM, LAR, and possibly other message systems.
 '''
 import collections
 import weakref
+import random
 
 from gevent import socket
 import gevent.queue
