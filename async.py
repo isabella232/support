@@ -158,7 +158,7 @@ def _exception_catcher(f, *a, **kw):
         my_name = 'ASYNC-SPAWN.' + f.__name__.upper()
         if '_pid' in kw and '_ci' in kw:
             pid = kw.pop('_pid')
-            _ci = kw.pop('_pid')
+            _ci = kw.pop('_ci')
             if ctx.async_cal_visible:
                 ctx.cal.event('ASYNC', "API", "1", {})
             with ctx.cal.trans('EXECP', my_name) as trans:
