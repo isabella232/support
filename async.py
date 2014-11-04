@@ -159,6 +159,8 @@ def _exception_catcher(f, *a, **kw):
         if '_pid' in kw and '_ci' in kw:
             pid = kw.pop('_pid')
             _ci = kw.pop('_pid')
+            if ctx.async_cal_visible:
+                ctx.cal.event('ASYNC', "API", "1", {})
             with ctx.cal.trans('EXECP', my_name) as trans:
                 trans.msg['CI'] = _ci
                 trans.msg['PI'] = pid
