@@ -109,6 +109,8 @@ class Context(object):
         from asf import asf_context
         self.asf_context = asf_context.ASFContext()
         self.cal_client_info_event_enabled = True
+        self.asf_default_live_format = 'binary'
+        self.asf_default_nonlive_format = 'xml'
 
         #PROTECTED RELATED STUFF
         self.protected = None
