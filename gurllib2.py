@@ -18,7 +18,7 @@ class CALAwareHandler(urllib2.AbstractHTTPHandler):
     def after_request(self, cal, req, resp):
         pass
 
-    def do_open(self, req, conn_type):
+    def do_open(self, conn_type, req):
         cal = context.get_context().cal
         with cal.trans(**self.transaction_args(req)):
             self.before_request(cal, req)
@@ -30,10 +30,15 @@ class CALAwareHandler(urllib2.AbstractHTTPHandler):
 # need to do this the hard way because of the dir based
 # metaprogramming inside urllib2.  unfortunately this returns a new
 # style class.  should be ok. . . . . . . . .
+
 def _make_handler(name, connection_class, base, protocol):
+    def _open(self, req):
+        return self.do_open(connection_class, req)
+
+    _open.__name__ = protocol + '_open'
+
     return type(name, (base, object),
-                {protocol + '_open': (lambda self, req:
-                                      self.do_open(req, connection_class)),
+                {_open.__name__: _open,
                  'http_request': urllib2.AbstractHTTPHandler.do_request_})
 
 
@@ -67,7 +72,7 @@ def build_opener(*args, **kwargs):
         thing['http'] = [handler for handler in thing['http']
                          if not isinstance(handler, urllib2.HTTPHandler)]
         thing['https'] = [handler for handler in thing['https']
-                          if not isinstance(handler, urllib2.HTTPHandler)]
+                          if not isinstance(handler, urllib2.HTTPSHandler)]
 
     http = NewHTTPHandler()
     https = NewHTTPSHandler()
