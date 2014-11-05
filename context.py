@@ -100,6 +100,7 @@ class Context(object):
         self.cal = cal.DefaultClient('python-default')
         self.greenlet_trans_stack = WeakKeyDictionary()
         self.async_cal_visible = False
+        self.max_cal_threadids = 30
 
         # recent stuff
         self.recent = cache.DefaultLRU(4096, lambda: deque(maxlen=1024))
