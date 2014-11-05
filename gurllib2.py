@@ -36,10 +36,11 @@ def _make_handler(name, connection_class, base, protocol):
         return self.do_open(connection_class, req)
 
     _open.__name__ = protocol + '_open'
+    request_method = protocol + '_request'
 
     return type(name, (base, object),
                 {_open.__name__: _open,
-                 'http_request': urllib2.AbstractHTTPHandler.do_request_})
+                 request_method: urllib2.AbstractHTTPHandler.do_request_})
 
 
 GHTTPHandler = _make_handler('GHTTPHandler', _GHTTPConnection,

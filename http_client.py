@@ -29,7 +29,10 @@ import json
 import context
 import connection_mgr
 
+import async
 from gevent import socket
+from gevent import ssl
+
 
 _CORR_ID_HEADERS = ['correlation-id',
                     'x-pp-corrid',
@@ -96,6 +99,30 @@ class _GHTTPSConnection(_GHTTPConnection):
                  timeout=socket._GLOBAL_DEFAULT_TIMEOUT):
         _GHTTPConnection.__init__(self, host, port, strict, timeout,
                                   protected=connection_mgr.PLAIN_SSL)
+
+    def connect(self):
+        ctx = context.get_context()
+        if self._tunnel_host:
+            # we need to issue CONNECT *prior* to doing any SSL.  so
+            # start off by asking for a plain socket...
+            self.sock = ctx.connection_mgr.get_connection((self.host,
+                                                           self.port),
+                                                          ssl=None)
+            # ...then issue the CONNECT...
+            self._tunnel()
+            # ...finally, replace the underlying socket on the
+            # monitored socket with an SSL wrapped socket that matches
+            # the kind specified by self.protected.  note that this is
+            # copy-pasted from connection_mgr.py
+            self.sock._msock = (ssl.wrap_socket(self.sock._msock)
+                                if self.protected == connection_mgr.PLAIN_SSL
+                                else
+                                async.wrap_socket_context(self.sock._msock,
+                                                          self.protected))
+        else:
+            # if we don't need to issue a connect, then the super
+            # class will do the right thing
+            _GHTTPConnection.connect(self)
 
 
 def urllib2_request(u2req, timeout=None):
