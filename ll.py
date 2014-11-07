@@ -73,9 +73,14 @@ def set_log_level(level):
 
 
 def use_the_file(name="lll.txt"):
-    """Use a file instead of stdout"""
+    """Use a file instead of stdout
+       Relative to cwd unless starts with /"""
     global the_file
-    the_file = open(os.getcwd() + "/./" + name, "a")
+    if name[0] == "/":
+        path = name
+    else:
+        path = os.getcwd() + "/./" + name
+    the_file = open(path, "a")
 
 
 def use_std_out():
