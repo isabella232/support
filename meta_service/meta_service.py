@@ -12,8 +12,8 @@ import clastic
 import clastic.render
 from werkzeug.wrappers import Response  # for iterable json thingy
 
-import context
-import cal
+from .. import context
+from .. import cal
 
 
 def create_meta_app(additional_routes=None):
@@ -56,6 +56,8 @@ def create_meta_app(additional_routes=None):
         ('/fd_info', get_fd_info, rt_json_render_basic),
         ('/fd_info/<fd:int>', get_one_fd_info, rt_json_render_basic),
         ('/live_checks/', get_live_checks, render),
+        ('/object', view_obj),
+        ('/object/<obj_id:int>', view_obj),
     ] + (additional_routes or [])
 
     app = clastic.Application(routes)
@@ -489,7 +491,7 @@ def get_connection_mgr():
 
 
 def get_logs():
-    from .. import ll
+    import ll
     return ll.log_msgs
 
 
@@ -521,7 +523,7 @@ def get_sampro_data():
 
 
 def get_recent(thing1=None, thing2=None):
-    from .. import cache
+    import cache
 
     if thing1 is None:
         return [k for k in context.get_context().recent.keys()]
@@ -547,7 +549,7 @@ def get_recent_cal():
 
 
 def get_warnings(path=None):
-    from .. import context
+    import context
     warns = context.get_context().get_warnings()
     if path:
         path_segs = path.split('.')
@@ -589,14 +591,14 @@ def _dict_map(data, transform, recurse=lambda k, v: isinstance(v, dict)):
 
 
 def set_level(level):
-    from .. import ll
+    import ll
     ll.set_log_level(int(level))
     return ll.get_log_level()
 
 
 def reset_stats():
     import faststat
-    from .. import context
+    import context
     context.get_context().stats = defaultdict(faststat.Stats)
     return "OK"
 
@@ -666,3 +668,25 @@ def get_live_checks():
     checks['imported_modules'] = imported_modules
 
     return checks
+
+
+def view_obj(request, obj_id=None):
+    import gc
+    import obj_browser
+
+    if obj_id is None:
+        return clastic.redirect(
+            request.path + '/{0}'.format(id(context.get_context())))
+
+    for obj in gc.get_objects():
+        if id(obj) == obj_id:
+            break
+    else:
+        raise ValueError("no Python object with id {0}".format(obj_id))
+
+    path, _, _ = request.path.rpartition('/')
+    return clastic.Response(
+        obj_browser.render_html(
+            obj, lambda id: path + '/{0}'.format(id)),
+        mimetype="text/html")
+

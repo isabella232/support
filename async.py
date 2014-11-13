@@ -19,7 +19,6 @@ import faststat
 from . import context
 
 from . import ll
-from . import cal
 
 ml = ll.LLogger()
 
@@ -154,9 +153,10 @@ def parallel(reqs):
 
 
 def _exception_catcher(f, *a, **kw):
+    from . import cal
     ctx = context.get_context()
     try:
-        if infra.cal.get_root_trans() is None:
+        if cal.get_root_trans() is None:
             return f(*a, **kw)
         my_name = 'ASYNC-SPAWN.' + f.__name__.upper()
         if '_pid' in kw and '_ci' in kw:
