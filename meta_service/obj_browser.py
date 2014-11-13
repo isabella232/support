@@ -9,18 +9,21 @@ def render_html(obj, id2url):
     where id2url is a callback to construct a path to another object
     from a URL.
     '''
+    def tolink(obj):
+        if not gc.is_tracked(obj):
+            return format('{0}', tolabel(obj))
+        return format('<a href="{0}">{1}</a>', id2url(id(obj)), tolabel(obj))
+
     header = format('<h1>{0}(@{1})</h1>', tolabel(obj), id(obj))
 
     from_col = '<table><tr><th>from</th><th>as</th></tr>'
     for key, ref in get_referrer_key_obj_list(obj):
-        from_col += format('<tr><td><a href="{0}">{1}</a></td>',
-                           id2url(id(ref)), tolabel(ref))
+        from_col += '<tr><td>{0}</td>'.format(tolink(ref))
         from_col += format('<td>{0}</td></tr>', key)
     from_col += '</table>'
 
     info_col = '<table>'
-    info_col += format('<tr><td>type</td><td><a href="{0}">{1}</a></td></tr>',
-                       id2url(id(type(obj))), tolabel(type(obj)))
+    info_col += '<tr><td>type</td><td>{0}</td></tr>'.format(tolink(type(obj)))
     info_col += format('<tr><td>refcount</td><td>{0}</td></tr>',
                        sys.getrefcount(obj))
     info_col += format('<tr><td>dir</td><td>{0}</td></tr>', repr(dir(obj)))
@@ -29,8 +32,7 @@ def render_html(obj, id2url):
     to_col = '<table><th>as</th><th>to</th></tr>'
     for key, ref in get_referree_key_obj_list(obj):
         to_col += '<tr><td>{0}</td>'.format(key)
-        to_col += format('<td><a href="{0}">{1}</a></td></tr>',
-                         id2url(id(ref)), tolabel(ref))
+        to_col += '<td>{0}></td></tr>'.format(tolink(ref))
     to_col += '</table>'
 
     return ('<!doctype html><html><head><link rel="stylesheet" type="text/css"'
