@@ -489,7 +489,7 @@ def get_connection_mgr():
 
 
 def get_logs():
-    from .. import ll
+    import ll
     return ll.log_msgs
 
 
@@ -521,7 +521,7 @@ def get_sampro_data():
 
 
 def get_recent(thing1=None, thing2=None):
-    from .. import cache
+    import cache
 
     if thing1 is None:
         return [k for k in context.get_context().recent.keys()]
@@ -547,7 +547,7 @@ def get_recent_cal():
 
 
 def get_warnings(path=None):
-    from .. import context
+    import context
     warns = context.get_context().get_warnings()
     if path:
         path_segs = path.split('.')
@@ -589,14 +589,14 @@ def _dict_map(data, transform, recurse=lambda k, v: isinstance(v, dict)):
 
 
 def set_level(level):
-    from .. import ll
+    import ll
     ll.set_log_level(int(level))
     return ll.get_log_level()
 
 
 def reset_stats():
     import faststat
-    from .. import context
+    import context
     context.get_context().stats = defaultdict(faststat.Stats)
     return "OK"
 
