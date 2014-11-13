@@ -12,8 +12,8 @@ import clastic
 import clastic.render
 from werkzeug.wrappers import Response  # for iterable json thingy
 
-import context
-import cal
+from .. import context
+from .. import cal
 
 
 def create_meta_app(additional_routes=None):
@@ -56,6 +56,8 @@ def create_meta_app(additional_routes=None):
         ('/fd_info', get_fd_info, rt_json_render_basic),
         ('/fd_info/<fd:int>', get_one_fd_info, rt_json_render_basic),
         ('/live_checks/', get_live_checks, render),
+        ('/object', view_obj),
+        ('/object/<obj_id:int>', view_obj),
     ] + (additional_routes or [])
 
     app = clastic.Application(routes)
@@ -666,3 +668,25 @@ def get_live_checks():
     checks['imported_modules'] = imported_modules
 
     return checks
+
+
+def view_obj(request, obj_id=None):
+    import gc
+    import obj_browser
+
+    if obj_id is None:
+        return clastic.redirect(
+            request.path + '/{0}'.format(id(context.get_context())))
+
+    for obj in gc.get_objects():
+        if id(obj) == obj_id:
+            break
+    else:
+        raise ValueError("no Python object with id {0}".format(obj_id))
+
+    path, _, _ = request.path.rpartition('/')
+    return clastic.Response(
+        obj_browser.render_html(
+            obj, lambda id: path + '/{0}'.format(id)),
+        mimetype="text/html")
+
