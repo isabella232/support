@@ -32,7 +32,7 @@ def render_html(obj, id2url):
     to_col = '<table><th>as</th><th>to</th></tr>'
     for key, ref in get_referree_key_obj_list(obj):
         to_col += '<tr><td>{0}</td>'.format(key)
-        to_col += '<td>{0}></td></tr>'.format(tolink(ref))
+        to_col += '<td>{0}</td></tr>'.format(tolink(ref))
     to_col += '</table>'
 
     return ('<!doctype html><html><head><link rel="stylesheet" type="text/css"'
