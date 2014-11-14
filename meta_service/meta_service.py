@@ -523,7 +523,7 @@ def get_sampro_data():
 
 
 def get_recent(thing1=None, thing2=None):
-    import cache
+    from .. import cache
 
     if thing1 is None:
         return [k for k in context.get_context().recent.keys()]
@@ -549,7 +549,7 @@ def get_recent_cal():
 
 
 def get_warnings(path=None):
-    import context
+    from .. import context
     warns = context.get_context().get_warnings()
     if path:
         path_segs = path.split('.')
@@ -591,14 +591,14 @@ def _dict_map(data, transform, recurse=lambda k, v: isinstance(v, dict)):
 
 
 def set_level(level):
-    import ll
+    from .. import ll
     ll.set_log_level(int(level))
     return ll.get_log_level()
 
 
 def reset_stats():
     import faststat
-    import context
+    from .. import context
     context.get_context().stats = defaultdict(faststat.Stats)
     return "OK"
 
