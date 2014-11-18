@@ -692,7 +692,7 @@ class SSLSocket(gevent.socket.socket):
         return socket._formatinfo(self) + ' state_string=%r' % self._sock.state_string()
 
     def accept(self):
-        sock, addr = socket.accept(self)
+        sock, addr = gevent.socket.accept(self)
         ml.ld2("Accepted {0!r} {1!r}", sock, addr)
         client = SSLSocket(sock._sock, server_side=True)
         client.do_handshake()
@@ -740,7 +740,7 @@ class SSLSocket(gevent.socket.socket):
     def recv(self, buflen, flags=0):
         if self.peek_buf:
             if len(self.peek_buf) >= buflen:
-                if flags & socket.MSG_PEEK:
+                if flags & gevent.socket.MSG_PEEK:
                     return self.peek_buf[:buflen]
                 retval, self.peek_buf = self.peek_buf[:buflen], self.peek_buf[buflen:]
                 return retval
@@ -755,7 +755,7 @@ class SSLSocket(gevent.socket.socket):
                id(self), self._sock.fileno(), retval)
         if self.peek_buf:
             retval, self.peek_buf = self.peek_buf + retval, ""
-        if flags and flags & socket.MSG_PEEK:
+        if flags and flags & gevent.socket.MSG_PEEK:
             self.peek_buf = retval
         return retval
 
@@ -786,7 +786,7 @@ class SSLSocket(gevent.socket.socket):
     def close(self):
         if self._makefile_refs < 1:
             self.shutdown(gevent.socket.SHUT_RDWR)
-            socket.close(self)
+            gevent.socket.close(self)
         else:
             self._makefile_refs -= 1
 
