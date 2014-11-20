@@ -7,6 +7,7 @@ _UNSET = object()
 class BufferedSocket(object):
     def __init__(self, sock, timeout=10, maxbytes=32 * 1024):
         self.sock = sock
+        self.sock.settimeout(None)
         self.rbuf = ""
         self.sbuf = []
         self.timeout = timeout
