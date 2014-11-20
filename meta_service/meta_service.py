@@ -14,6 +14,7 @@ from .. import context
 from .. import cal
 
 import stats
+import eval_server
 
 
 def create_meta_app(additional_routes=None):
@@ -57,6 +58,7 @@ def create_meta_app(additional_routes=None):
         ('/live_checks/', get_live_checks, render),
         ('/object', view_obj),
         ('/object/<obj_id:int>', view_obj),
+        # ('/console', eval_server.make_eval_app()),
     ] + (additional_routes or [])
 
     app = clastic.Application(routes)
