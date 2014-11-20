@@ -217,6 +217,10 @@ def _run_recv(self):
             if cur.command == 'ERROR':
                 pass
 
+        except socket.timeout as e:
+            ml.ld2("Got exception {0!r}", e)
+            pass
+
         except socket.error as e:
             ml.ld2("Got exception {0!r}", e)
             context.get_context().cal.event("STOMP", "EXCEPTION", '1', {'msg':repr(e), 'green':'recv'})
