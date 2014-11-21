@@ -692,7 +692,7 @@ class SSLSocket(gevent.socket.socket):
         return socket._formatinfo(self) + ' state_string=%r' % self._sock.state_string()
 
     def accept(self):
-        sock, addr = gevent.socket.accept(self)
+        sock, addr = gevent.socket.socket.accept(self)
         ml.ld2("Accepted {0!r} {1!r}", sock, addr)
         client = SSLSocket(sock._sock, server_side=True)
         client.do_handshake()
