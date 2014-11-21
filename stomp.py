@@ -219,8 +219,8 @@ def _run_recv(self):
 
         except socket.timeout as e:
             ml.ld2("Got exception {0!r}", e)
-            pass
-
+            pass  # expected if no traffic
+        
         except socket.error as e:
             ml.ld2("Got exception {0!r}", e)
             context.get_context().cal.event("STOMP", "EXCEPTION", '1', {'msg':repr(e), 'green':'recv'})
