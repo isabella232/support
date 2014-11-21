@@ -2,6 +2,7 @@ import code
 import traceback
 import cgi
 import sys
+from StringIO import StringIO
 
 import clastic
 
@@ -28,42 +29,35 @@ def get_console_html(request, global_contexts, eval_context=None):
 
 
 def eval_command(request, eval_context, global_contexts):
-    _last = []
-
-    def _display_hook(self, obj):
-        print "_display_hook", repr(obj)
-        if obj is not None:
-            ctx['locals']['_'] = obj
-            _last.append(obj)
-
-    ctx = global_contexts.setdefault(
-        eval_context, {'locals': {}, 'sofar': []})
-    line = request.values['command']
     try:
-        cmd = code.compile_command("\n".join(ctx['sofar'] + [line]))
-        if cmd:  # complete command
+        ctx = global_contexts.setdefault(
+            eval_context, {'locals': {}, 'sofar': []})
+        line = request.values['command']
+        try:
+            cmd = code.compile_command("\n".join(ctx['sofar'] + [line]))
+            if cmd:  # complete command
+                ctx['sofar'] = []
+                buff = StringIO()
+                sys.stdout = buff
+                try:
+                    exec cmd in ctx['locals']
+                except Exception:
+                    resp = traceback.format_exc()
+                sys.stdout = sys.__stdout__
+                resp = buff.getvalue()
+            else:  # incomplete command
+                ctx['sofar'].append(line)
+                resp = "..."
+        except SyntaxError as e:
+            resp = repr(e)
             ctx['sofar'] = []
-            prev = sys.displayhook
-            sys.displayhook = _display_hook
-            try:
-                exec cmd in ctx['locals']
-            except Exception:
-                resp = traceback.format_exc()
-            sys.displayhook = prev
-            if _last:
-                resp = repr(_last[0])
-            else:
-                resp = ""
-        else:  # incomplete command
-            ctx['sofar'].append(line)
-            resp = "..."
-    except SyntaxError as e:
-        resp = repr(e)
-        ctx['sofar'] = []
-    except (OverflowError, ValueError) as e:
-        resp = repr(e)
-        ctx['sofar'] = []
-    return clastic.Response(cgi.escape(resp))
+        except (OverflowError, ValueError) as e:
+            resp = repr(e)
+            ctx['sofar'] = []
+        return clastic.Response(cgi.escape(resp))
+    finally:
+        # try to really ensure stdout isn't left broken
+        sys.stdout = sys.__stdout__
 
 
 # TODO: use a two column table for better cut + paste
