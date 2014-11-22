@@ -78,6 +78,8 @@ CONSOLE_HTML = '''
     <meta charset="utf-8" />
     <title>Console</title>
     <script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.4/styles/default.min.css">
+    <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.4/highlight.min.js"></script>
     <style>
         .cli_output {
             bottom: 0;
@@ -117,7 +119,11 @@ function console_append(prompt, val) {
     var rowclass = EVEN_ODD ? 'tr-even' : 'tr-odd';
     $('#console').append(
         '<tr class="' + rowclass + '"><td style="width: 3em">' + prompt +
-        '</td><td>' + val + '</td></tr>');
+        '</td><td><code>' + val + '</code></td></tr>');
+    $('#console tr:last td:last code').each(
+        function(i, block) {
+            hljs.highlightBlock(block);
+        });
     $('#console').scrollTop($('#console')[0].scrollHeight);
     EVEN_ODD = !EVEN_ODD;
 }
@@ -138,9 +144,7 @@ function process_input() {
                 }
                 $("#prompt").text(prompt);
                 if(data.data != '') {
-                    console_append(
-                        '',
-                        data.data.replace(/ /g, '&nbsp;').replace(/\\n/g, '<br/>'));
+                    console_append('', data.data);
                 }
             }
         });
