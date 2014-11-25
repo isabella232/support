@@ -5,6 +5,7 @@ import hashlib
 import os
 import os.path
 from collections import defaultdict
+import gc
 
 import clastic
 import clastic.render
@@ -18,7 +19,7 @@ import eval_server
 
 
 def create_meta_app(additional_routes=None):
-    render = clastic.render.render_basic
+    render = clastic.render.BasicRender(table_type=MetaTable)
     ma = clastic.meta.MetaApplication()
     routes = [
         ('/', ma),
@@ -72,6 +73,15 @@ def rt_json_render_basic(request, context, _route):
     return clastic.render_basic(request=request,
                                 context=new_context,
                                 _route=_route)
+
+
+class MetaTable(clastic.render.Table):
+    def get_cell_html(self, value):
+        print "HELLO WORLD!"
+        inner = super(MetaTable, self).get_cell_html(value)
+        if not gc.is_tracked(value):
+            return inner
+        return '<a href="/object/{0}">{1}</a>'.format(id(value), inner)
 
 
 def get_config_dict():
