@@ -84,15 +84,16 @@ CONSOLE_HTML = '''
         .cli_output {
             bottom: 0;
         }
-        #cli_input, #console, #prompt {
+        #cli_input, #console, #prompt, code {
             font-size: 15px;
             font-family: "Lucida Console", Monaco, "Bitstream Vera Sans Mono", monospace;
+            white-space: pre;
         }
-        .tr-even {
-            background: #FFFFFF;
+        .error {
+            background: #FEE;
         }
-        .tr-odd {
-            background: #E0F8F7;
+        .output {
+            background: #EFF;
         }
     </style>
 </head>
@@ -113,20 +114,30 @@ $('#cli_input').keyup(function(event) {
     }
 });
 
-EVEN_ODD = true;
 
 function console_append(prompt, val) {
-    var rowclass = EVEN_ODD ? 'tr-even' : 'tr-odd';
-    $('#console').append(
-        '<tr class="' + rowclass + '"><td style="width: 3em">' + prompt +
-        '</td><td><code>' + val + '</code></td></tr>');
-    $('#console tr:last td:last code').each(
+    if(prompt == '') {
+        if(val.indexOf("Traceback") === 0) {
+            var code_class = "error";
+        } else {
+            var code_class = "output";
+        }
+        var newrow = '<td colspan=2 class="' + code_class + '"><code>' +
+                     val + '</code></td>';
+    } else {
+        var newrow = '<td style="width: 3em">' + prompt + '</td>' +
+                     '<td><code class="python">' + val + '</code></td>';
+    }
+    newrow = '<tr>' + newrow + '</tr>';
+    $('#console').append(newrow);
+
+    $('#console tr:last td:last code.python').each(
         function(i, block) {
             hljs.highlightBlock(block);
         });
     $('#console').scrollTop($('#console')[0].scrollHeight);
-    EVEN_ODD = !EVEN_ODD;
 }
+
 
 function process_input() {
     var val = $('#cli_input').val();
