@@ -369,6 +369,7 @@ class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
             sock.recv(bytes_consumed)  # throw away consumed data
             cur_data = sock.recv(4096, socket.MSG_PEEK)
             frame, bytes_consumed = parser.send(cur_data)
+        sock.recv(bytes_consumed)  # throw away consumed data
         ml.ld2("returning {0} from  parse from socket", bytes_consumed)
         return frame
 
