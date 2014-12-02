@@ -31,63 +31,66 @@ def get_console_html(request, global_contexts, eval_context=None):
 
 
 def eval_command(request, eval_context, global_contexts):
-    try:
-        ctx = global_contexts.setdefault(
-            eval_context, {'locals': {}, 'sofar': []})
-        line = request.values['command']
-        complete = True
+    if eval_context not in global_contexts:
+        global_contexts[eval_context] = EvalContext()
+    ctx = global_contexts[eval_context]
+    resp = ctx.eval_line(request.values['command'])
+    complete = resp is not None
+    if complete:
+        resp = {
+            'complete': True,
+            'data': cgi.escape(resp),
+            'href': '/meta/object/' + str(id(ctx.last_object))
+        }
+    else:
+        resp = {'complete': False, 'data': '', 'href': ''}
+    return clastic.Response(json.dumps(resp), mimetype="application/json")
+
+
+_sys_displayhook = sys.displayhook
+
+
+class EvalContext(object):
+    def __init__(self):
+        self.last_object = None
+        self.locals = {}
+        self.sofar = []
+        self._sys_displayhook = sys.displayhook
+        self.last_cmd = 0
+
+    def _displayhook(self, value):
+        self.last_object = value
+        return _sys_displayhook(value)
+
+    def eval_line(self, line):
+        '''
+        evaluate a single line of code; returns None if more lines required to compile,
+        a string if input is complete
+        '''
         try:
-            cmd = code.compile_command("\n".join(ctx['sofar'] + [line]))
+            cmd = code.compile_command("\n".join(self.sofar + [line]))
             if cmd:  # complete command
-                ctx['sofar'] = []
+                self.sofar = []
                 buff = StringIO()
                 sys.stdout = buff
                 sys.stderr = buff
                 try:
-                    exec cmd in ctx['locals']
-                    resp = buff.getvalue()
-                except Exception:
-                    resp = traceback.format_exc()
-                sys.stdout = sys.__stdout__
-                sys.stderr = sys.__stderr__
+                    exec cmd in self.locals
+                    return buff.getvalue()
+                except:
+                    return traceback.format_exc()
             else:  # incomplete command
-                ctx['sofar'].append(line)
-                complete = False
-                resp = "..."
-        except SyntaxError as e:
-            resp = repr(e)
-            ctx['sofar'] = []
-        except (OverflowError, ValueError) as e:
-            resp = repr(e)
-            ctx['sofar'] = []
-        if complete:
-            resp = {
-                'complete': True,
-                'data': cgi.escape(resp),
-                'href': '/meta/object/' + str(id(_LAST_OBJECT))
-            }
-        else:
-            resp = {'complete': False, 'data': '', 'href': ''}
-        return clastic.Response(json.dumps(resp), mimetype="application/json")
-    finally:
-        # try to really ensure stdout isn't left broken
-        sys.stdout = sys.__stdout__
-        sys.stderr = sys.__stderr__
+                self.sofar.append(line)
+                return
+        except (OverflowError, ValueError, SyntaxError) as e:
+            self.sofar = []
+            return repr(e)
+        finally:  # ensure sys.stdout / sys.stderr back to normal
+            sys.stdout = sys.__stdout__
+            sys.stderr = sys.__stderr__
 
 
-def _setup_displayhook():
-    displayhook = sys.displayhook
 
-    def _displayhook(value):
-        global _LAST_OBJECT
-        _LAST_OBJECT = value
-        return displayhook(value)
-
-    sys.displayhook = _displayhook
-
-
-_LAST_OBJECT = None
-_setup_displayhook()
 
 
 # TODO: use a two column table for better cut + paste
