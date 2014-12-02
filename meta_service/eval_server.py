@@ -36,12 +36,12 @@ def eval_command(request, eval_context, global_contexts):
     ctx = global_contexts[eval_context]
     resp = ctx.eval_line(request.values['command'])
     complete = resp is not None
+    if gc.is_tracked:
+        href = '/meta/object/' + str(id(ctx.last_object))
+    else:
+        href = ''
     if complete:
-        resp = {
-            'complete': True,
-            'data': cgi.escape(resp),
-            'href': '/meta/object/' + str(id(ctx.last_object))
-        }
+        resp = {'complete': True, 'data': cgi.escape(resp), 'href': href}
     else:
         resp = {'complete': False, 'data': '', 'href': ''}
     return clastic.Response(json.dumps(resp), mimetype="application/json")
@@ -75,7 +75,9 @@ class EvalContext(object):
                 sys.stdout = buff
                 sys.stderr = buff
                 try:
+                    sys.displayhook = self._displayhook
                     exec cmd in self.locals
+                    sys.displayhook = _sys_displayhook
                     return buff.getvalue()
                 except:
                     return traceback.format_exc()
@@ -88,6 +90,7 @@ class EvalContext(object):
         finally:  # ensure sys.stdout / sys.stderr back to normal
             sys.stdout = sys.__stdout__
             sys.stderr = sys.__stderr__
+            sys.displayhook = _sys_displayhook
 
 
 
