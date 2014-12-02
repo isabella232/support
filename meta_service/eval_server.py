@@ -3,6 +3,7 @@ import traceback
 import cgi
 import sys
 import json
+import gc
 from StringIO import StringIO
 
 import clastic
@@ -34,6 +35,7 @@ def eval_command(request, eval_context, global_contexts):
         ctx = global_contexts.setdefault(
             eval_context, {'locals': {}, 'sofar': []})
         line = request.values['command']
+        complete = True
         try:
             cmd = code.compile_command("\n".join(ctx['sofar'] + [line]))
             if cmd:  # complete command
@@ -50,6 +52,7 @@ def eval_command(request, eval_context, global_contexts):
                 sys.stderr = sys.__stderr__
             else:  # incomplete command
                 ctx['sofar'].append(line)
+                complete = False
                 resp = "..."
         except SyntaxError as e:
             resp = repr(e)
@@ -57,15 +60,34 @@ def eval_command(request, eval_context, global_contexts):
         except (OverflowError, ValueError) as e:
             resp = repr(e)
             ctx['sofar'] = []
-        resp = {
-            'complete': resp != '...',
-            'data': cgi.escape(resp) if resp != '...' else '',
-        }
+        if complete:
+            resp = {
+                'complete': True,
+                'data': cgi.escape(resp),
+                'href': '/meta/object/' + str(id(_LAST_OBJECT))
+            }
+        else:
+            resp = {'complete': False, 'data': '', 'href': ''}
         return clastic.Response(json.dumps(resp), mimetype="application/json")
     finally:
         # try to really ensure stdout isn't left broken
         sys.stdout = sys.__stdout__
         sys.stderr = sys.__stderr__
+
+
+def _setup_displayhook():
+    displayhook = sys.displayhook
+
+    def _displayhook(value):
+        global _LAST_OBJECT
+        _LAST_OBJECT = value
+        return displayhook(value)
+
+    sys.displayhook = _displayhook
+
+
+_LAST_OBJECT = None
+_setup_displayhook()
 
 
 # TODO: use a two column table for better cut + paste
@@ -115,7 +137,10 @@ $('#cli_input').keyup(function(event) {
 });
 
 
-function console_append(prompt, val) {
+function console_append(prompt, val, href) {
+    if(href) {
+        val = '<a href="' + href +'">' + val + '</a>';
+    }
     if(prompt == '') {
         if(val.indexOf("Traceback") === 0) {
             var code_class = "error";
@@ -155,7 +180,7 @@ function process_input() {
                 }
                 $("#prompt").text(prompt);
                 if(data.data != '') {
-                    console_append('', data.data);
+                    console_append('', data.data, data.href);
                 }
             }
         });
