@@ -246,8 +246,7 @@ class SslContextWSGIServer(pywsgi.WSGIServer):
                              ' SSL certificate (protected)')
         protocol = _socket_protocol(client_socket)
         if protocol == "ssl":
-            with ctx.cal.atrans('CONNECT_SSL',
-                                str(address[0]) + ":" + str(address[1])):
+            with ctx.cal.atrans('CONNECT_SSL', str(address[0])):
                 ssl_socket = async.wrap_socket_context(
                     client_socket, **self.ssl_args)
             ctx.sketches['http.ssl.client_ips'].add(address[0])
