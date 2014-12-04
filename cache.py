@@ -1,4 +1,3 @@
-
 class Cache(object):
     'empty base class to enable isinstance(foo, cache.Cache)'
 
@@ -96,10 +95,25 @@ class SegmentedCache(Cache):
 
     __setitem__ = add
 
+    def __contains__(self, key):
+        return key in self.protected or key in self.probationary
 
-class DefaultLRU(LRUCache):
+    def __len__(self):
+        return len(self.protected) + len(self.probationary)
+
+    def items(self):
+        return self.protected.items() + self.probationary.items()
+
+    def keys(self):
+        return self.protected.keys() + self.probationary.keys()
+
+    def values(self):
+        return self.protected.values() + self.probationary.values()
+
+
+class DefaultLRU(SegmentedCache):
     '''
-    An LRU which behaves like a collections.defaultdict on missing keys.
+    A Segmented LRU Cache which behaves like a collections.defaultdict on missing keys.
     '''
     def __init__(self, size, default):
         super(DefaultLRU, self).__init__(size)
@@ -150,18 +164,21 @@ class DefaultEmptyCache(EmptyCache):
 
 
 if __name__ == "__main__":
-    c = LRUCache(3)
+    c = LRUCache(4)
     for i in range(10):
         c[i] = i
         c[0]  # keep 0 in top 3 most recent
     assert 0 in c
+    assert 7 in c
     assert 8 in c
     assert 9 in c
 
-    dc = DefaultLRU(3, int)
+    dc = DefaultLRU(4, int)
     for i in range(10):
         dc[i]
+        dc[i]  # let items get into protected segment
         dc[0]  # keep 0 in top 3 most recent
     assert 0 in dc
+    assert 7 in dc
     assert 8 in dc
     assert 9 in dc
