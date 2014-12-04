@@ -51,7 +51,6 @@ LOG_LEVELS = {'NEVER': -1,
 
 _log_level = LOG_LEVELS['NONE']
 
-
 def print_log_summary():
     """Prints out the hash map of format strings and counts of usage."""
     return ["%s: %d\n".format(k, v) for k, v in log_msgs.items()]
@@ -105,12 +104,13 @@ def log_failure(bad_str):
 class LLogger(object):
     """Instantiate this to get the logger object; it grabs module data"""
 
-    def __init__(self, tag=""):
+    def __init__(self, tag="", trace_mod=False):
         mod = inspect.getmodule(inspect.stack()[1][0])
         if mod:
             self.caller_mod = mod.__file__.split(".")[-2].upper()
         else:
             self.caller_mod = "UNKNOWN"
+        self.trace_mod = trace_mod
         self.la = self.log_always
         self.ld = self.log_debug
         self.ld2 = self.log_debug2
@@ -122,7 +122,7 @@ class LLogger(object):
         """Log unless never"""
         global log_msgs
         log_msgs[self.caller_mod + "--" + args[0]] += 1
-        if _log_level >= 0:
+        if self.trace_mod or _log_level >= 0:
             import gevent  # for getcurrent
             try:
                 msg = apply(args[0].format, tuple(args[1:]))
@@ -138,7 +138,7 @@ class LLogger(object):
     def log_debug(self, *args, **kw):
         """Log only with -d"""
         log_msgs[self.caller_mod + "--" + args[0]] += 1
-        if _log_level >= 1:
+        if self.trace_mod or _log_level >= 1:
             import gevent  # for getcurrent
             try:
                 msg = apply(args[0].format, tuple(args[1:]))
@@ -151,7 +151,7 @@ class LLogger(object):
     def log_debug2(self, *args, **kw):
         """Log only with -dd"""
         log_msgs[self.caller_mod + "--" + args[0]] += 1
-        if _log_level >= 2:
+        if self.trace_mod or _log_level >= 2:
             import gevent  # for getcurrent
             try:
                 msg = apply(args[0].format, tuple(args[1:]))
@@ -166,7 +166,7 @@ class LLogger(object):
         """Log only with -ddd"""
 
         log_msgs[self.caller_mod + "--" + args[0]] += 1
-        if _log_level >= 3:
+        if self.trace_mod or _log_level >= 3:
             import gevent  # for getcurrent
             try:
                 msg = apply(args[0].format, tuple(args[1:]))
@@ -180,7 +180,7 @@ class LLogger(object):
         """Log only with -dddd"""
         global log_msgs
         log_msgs[self.caller_mod + "--" + args[0]] += 1
-        if _log_level >= 4:
+        if self.trace_mod or _log_level >= 4:
             import gevent  # for getcurrent
             try:
                 msg = apply(args[0].format, tuple(args[1:]))
