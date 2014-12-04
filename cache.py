@@ -47,9 +47,15 @@ class LRUCache(Cache):
 
     __setitem__ = add
 
-    def pop(self, key):
+    _unset = object()
+    
+    def pop(self, key=_unset):
         # remove from map and list
-        link = self.map.pop(key)
+        if key is LRUCache._unset:
+            link = self.root[0]
+            self.map.pop(link[2])
+        else:
+            link = self.map.pop(key)
         link[0][1], link[1][0] = link[1], link[0]
         return link[3]
 
@@ -74,8 +80,9 @@ class SegmentedCache(Cache):
     Implements a Segmented LRU cache based on an LRU cache.
     '''
     def __init__(self, maxlen=10000):
-        self.probationary = LRUCache(maxlen / 2)
+        self.probationary = LRUCache(maxlen)
         self.protected = LRUCache(maxlen / 2)
+        self.maxlen = maxlen
 
     def __getitem__(self, key):
         if key in self.protected.map:
@@ -91,7 +98,17 @@ class SegmentedCache(Cache):
         raise KeyError(key)
 
     def add(self, key, val):
-        return self.probationary.add(key, val)
+        if key in self.protected:
+            self.protected[key] = val
+        elif key in self.probationary:
+            self.probationary.pop(key)
+            discard = self.protected.add(key, val)
+            if discard:
+                self.probationary.add(discard[0], discard[1])
+        else:  # totally brand new key being added
+            self.probationary.add(key, val)
+            if len(self.probationary.map) + len(self.protected.map) > self.maxlen:
+                self.probationary.pop()
 
     __setitem__ = add
 
@@ -182,3 +199,21 @@ if __name__ == "__main__":
     assert 7 in dc
     assert 8 in dc
     assert 9 in dc
+
+    cache_size = 7
+    sg = SegmentedCache(cache_size)
+    r = range(10000)
+    for i in r:
+        sg[i] = i
+    for i in r[-cache_size:]:
+        assert i in sg
+
+    import time
+
+    r = range(int(5e5))
+    s = time.time()
+    for i in r:
+        sg[i] = i
+        sg[i] = i
+    print "{0:.2f}us".format(time.time() - s)
+
