@@ -9,7 +9,8 @@ def get_stats(the_stat=None):
     out = {}
     ctx = context.get_context()
     # pick up numerical stats
-    stat_dict_names = ("stats", "durations", "intervals", "markov_stats")
+    stat_dict_names = (
+        "stats", "durations", "intervals", "volatile_stats", "markov_stats")
     for stat_dict_name in stat_dict_names:
         stats = getattr(ctx, stat_dict_name)
         all_stats = stats.keys()

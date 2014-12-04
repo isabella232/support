@@ -198,6 +198,7 @@ class Context(object):
         self.durations = defaultdict(faststat.Duration)
         self.intervals = defaultdict(faststat.Interval)
         self.markov_stats = defaultdict(faststat.Markov)
+        self.volatile_stats = cache.DefaultLRU(2048, faststat.Stats)
         self.sketches = defaultdict(StreamSketch)
         self.profiler = None  # sampling profiler
 
