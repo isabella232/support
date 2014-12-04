@@ -9,6 +9,8 @@ from clastic.render import default_response
 
 import faststat
 
+from .. import cache
+
 # TODO: what are some sane-default intervals?
 
 
@@ -16,7 +18,7 @@ class StatsMiddleware(Middleware):
     def __init__(self):
         self.hits = defaultdict(lambda: defaultdict(faststat.Stats))
         self.route_hits = defaultdict(faststat.Stats)
-        self.url_hits = defaultdict(faststat.Stats)
+        self.url_hits = cache.DefaultLRU(1024, faststat.Stats)
 
     def request(self, next, request, _route):
         start_time = time.time()
@@ -32,11 +34,6 @@ class StatsMiddleware(Middleware):
             end_time = time.time()
             elapsed_time = end_time - start_time
             self.hits[_route][resp_status].add(elapsed_time)
-            if len(self.url_hits) > 2 * MAX_URLS:
-                items = [(k, v) for k,v in self.url_hits.items()]
-                items.sort(key=lambda e: e[1].n, reverse=True)
-                # save most commonly used URLs
-                self.url_hits = defaultdict(faststat.Stats, items[:MAX_URLS])
             self.url_hits[request.path].add(elapsed_time)
         return resp
 
