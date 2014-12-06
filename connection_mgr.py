@@ -97,7 +97,8 @@ class ConnectionManager(object):
         #ensure all DNS resolution is completed; past this point everything is in terms of
         # ips
         def get_gai(e):
-            with ctx.cal.trans('DNS', str(e)):
+            name = e[0].replace(".","-")
+            with ctx.cal.trans('DNS', name):
                 gai = gevent.socket.getaddrinfo(*e, family=gevent.socket.AF_INET)[0][4]
             context.get_context().name_cache[e] = (time.time(), gai)
             return gai
