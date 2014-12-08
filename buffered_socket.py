@@ -141,8 +141,11 @@ class ConnectionClosed(Error):
 
 class Timeout(Error):
     def __init__(self, timeout, extra=""):
-        super(Timeout, self).__init__(
-            'timed out after {0}ms '.format(timeout * 1e3) + extra)
+        if timeout is None:
+            super(Timeout, self).__init__('timed out ' + extra)
+        else:
+            super(Timeout, self).__init__(
+                'timed out after {0}ms '.format(timeout * 1e3) + extra)
 
 
 class NotFound(Error):
