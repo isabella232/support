@@ -193,6 +193,7 @@ class ConnectionManager(object):
 
         sock = self.sockpools[protected][sock_type].acquire(address)
         msock = None
+        new_sock = False
         if not sock:
             if sock_config.transient_markdown_enabled:
                 last_error = server_model.last_error
@@ -205,6 +206,7 @@ class ConnectionManager(object):
             # use tighter timeouts if so; using the presence of a
             # protected connection as a rough heuristic for now
             internal = (ssl and ssl != PLAIN_SSL) or 'mayfly' in name
+            new_sock = False
             while True:
                 try:
                     ml.ld("CONNECTING...")
@@ -215,6 +217,7 @@ class ConnectionManager(object):
                             timeout = min(timeout, ctx.datacenter_connect_timeout)
                         sock = gevent.socket.create_connection(address, timeout)
                         sock_state.transition('connected')
+                        new_sock = True
                         ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
                     if ssl:  # TODO: how should SSL failures interact with markdown & connect count?
                         sock_state.transition('ssl_handshaking')
@@ -260,6 +263,7 @@ class ConnectionManager(object):
         if msock and sock is not msock:  # if sock == msock, collection will not work
             self.user_socket_map[sock] = weakref.proxy(msock)
         self.user_socket_map.get(sock, sock).state.transition('in_use')
+        sock.new_sock = new_sock
         return sock
 
     def release_connection(self, sock):
