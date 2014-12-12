@@ -10,9 +10,12 @@ from collections import defaultdict, deque
 import socket
 import os.path
 import sys
+import gevent
+import greenlet
 import warnings
-import traceback
+import linecache
 import time
+import threading
 
 import faststat
 import hyperloglog.hll
@@ -73,7 +76,6 @@ class Context(object):
     '''
     def __init__(self, dev=False, stage_host=None):
         import topos
-        import gevent
         import cache
 
         ml.ld("Initing Context {0}",  id(self))
@@ -453,7 +455,6 @@ class Context(object):
         return self.sys_stats_greenlet is not None
 
     def set_monitoring_greenlet(self, val):
-        import gevent
         if val not in (True, False):
             raise ValueError("sampling may only be set to True or False")
         if val and not self.sys_stats_greenlet:
@@ -472,6 +473,7 @@ class Context(object):
         (e.g. sampling profiler thread, system monitor greenlet)
         '''
         self.stopping = True
+        self.tracing = False
         if self.profiler:
             self.profiler.stop()
         if self.server_group:
@@ -482,54 +484,108 @@ class Context(object):
     @property
     def greenlet_settrace(self):
         'check if any greenlet trace function is registered'
-        import greenlet
         return bool(greenlet.gettrace())
 
     def set_greenlet_trace(self, value):
         'turn on tracking of greenlet switches'
-        import greenlet
-        import gevent
-        from async import curtime
-        import context
-
         if value not in (True, False):
             raise ValueError("value must be True or False")
+        if value and not getattr(self, "tracing", False):
+            self.tracing = True
+            self.thread_spin_monitor = _ThreadSpinMonitor(self)
         if value is False:
+            self.tracing = False
+            self.thread_spin_monitor = None
             try:
                 greenlet.settrace(None)
             except AttributeError:
                 pass  # oh well
-
-        last_time = [0]
-
-        def trace(why, gs):
-            if context.get_context().running and why:
-                ct = curtime()
-                the_time = (ct - last_time[0]) * 1000.0
-                last_time[0] = ct
-                if the_time > 1e6:  # inited to 0 so several billion
-                    return
-                if gs[0] is gevent.hub.get_hub():
-                    self.stats['greenlet_idle(ms)'].add(the_time)
-                else:
-                    self.stats['greenlet_switch(ms)'].add(the_time)
-                    if the_time > 150:
-                        ml.ld("Long spin {0}", the_time)
-                        if self.cal:
-                            self.cal.event("GEVENT", "LONG_SPIN", '1',
-                                           "time={0}&"  # note continues
-                                           "slow_green={1}".format(the_time,
-                                                                   traceback.format_stack(gs[0].gr_frame)))
-
-                ml.ld4("{1} {0}", why, the_time)
-
-        self._trace = trace
 
     def get_connection(self, *a, **kw):
         return self.connection_mgr.get_connection(*a, **kw)
 
     def __del__(self):
         self.stopping = True
+
+
+class _ThreadSpinMonitor(object):
+    # just a little thingie to prevent multiple instances leaking threads;
+    # note this is inherently a global class since it uses greenlet.settrace()
+    MAIN_INSTANCE = None
+
+    def __init__(self, ctx):
+        _ThreadSpinMonitor.MAIN_INSTANCE = self
+        self.main_thread_id = threading.current_thread().ident
+        self.cur_pid = os.getpid()
+        self.last_spin = 0
+        self.ctx = ctx
+        self.spin_count = 0
+        self.last_cal_log = 0  # limit how often CAL logs
+        self.stopping = False
+        greenlet.settrace(self._greenlet_spin_trace)
+        self._start_thread()
+
+    def _start_thread(self):
+        self.long_spin_thread = threading.Thread(
+            target=self._thread_spin_monitor)
+        self.long_spin_thread.daemon = True
+        self.long_spin_thread.start()
+
+    def _greenlet_spin_trace(self, why, gs):
+        self.spin_count += 1
+        if self.ctx.running and why:
+            if self.cur_pid != os.getpid():
+                self._start_thread()
+                self.cur_pid = os.getpid()
+            lt = self.last_spin
+            ct = faststat.nanotime()
+            self.last_spin = ct
+            if not lt:
+                return
+            the_time = (ct - lt) * 1e6
+            if gs[0] is gevent.hub.get_hub():
+                self.ctx.stats['greenlet_idle(ms)'].add(the_time)
+            else:
+                self.ctx.stats['greenlet_switch(ms)'].add(the_time)
+            ml.ld4("{1} {0}", why, the_time)
+
+    def _thread_spin_monitor(self):
+        while 1:
+            gevent.sleep(0.05)
+            if not self.ctx.tracing or self is not self.MAIN_INSTANCE:
+                return
+            if not self.last_spin:
+                continue
+            ct = faststat.nanotime()
+            dur = ct - self.last_spin
+            # if time is greater than 150 ms
+            if dur > 150e6 and time.time() - self.last_cal_log > 1:
+                tid = self.main_thread_id
+                stack = _format_stack(sys._current_frames()[tid])
+                self.ctx.cal.event(
+                    'GEVENT', 'LONG_SPIN', '1',
+                    'time={0}ms&slow_green={1}'.format(dur / 1e6, stack))
+                self.last_cal_log = time.time()
+
+
+# work around traceback.format_stack() linecache KeyError
+def _format_stack(frame):
+    stack = []
+    while frame:
+        filename = frame.f_code.co_filename
+        lineno = frame.f_lineno
+        name = frame.f_code.co_name
+        stack.append('  File "{0}", line {1}, in {2}\n'.format(
+            filename, lineno, name))
+        try:
+            linecache.checkcache(filename)
+            line = linecache.getline(filename, lineno, frame.f_globals)
+        except KeyError:
+            pass
+        else:
+            stack.append('    {0}\n'.format(line.strip()))
+        frame = frame.f_back
+    return ''.join(stack)
 
 
 class StreamSketch(object):
