@@ -551,7 +551,7 @@ class _ThreadSpinMonitor(object):
 
     def _thread_spin_monitor(self):
         while 1:
-            gevent.sleep(0.05)
+            time.sleep(0.05)
             if not self.ctx.tracing or self is not self.MAIN_INSTANCE:
                 return
             if not self.last_spin:
@@ -569,7 +569,7 @@ class _ThreadSpinMonitor(object):
 
 
 # work around traceback.format_stack() linecache KeyError
-def _format_stack(frame):
+def _format_stack(frame, maxlen=1024 * 3):
     stack = []
     while frame:
         filename = frame.f_code.co_filename
@@ -585,7 +585,11 @@ def _format_stack(frame):
         else:
             stack.append('    {0}\n'.format(line.strip()))
         frame = frame.f_back
-    return ''.join(stack)
+    trace = ''.join(stack)
+    if trace < maxlen:
+        return trace
+    short = "({0} truncated bytes)".format(len(trace) - maxlen)
+    return short + trace[:maxlen]
 
 
 class StreamSketch(object):
