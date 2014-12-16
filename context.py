@@ -570,8 +570,13 @@ class _ThreadSpinMonitor(object):
 
 # work around traceback.format_stack() linecache KeyError
 def _format_stack(frame, maxlen=1024 * 3):
-    stack = []
+    frames = []
     while frame:
+        frames.append(frame)
+        frame = frame.f_back
+    frames.reverse()
+    stack = []
+    for frame in frames:
         filename = frame.f_code.co_filename
         lineno = frame.f_lineno
         name = frame.f_code.co_name
@@ -584,7 +589,6 @@ def _format_stack(frame, maxlen=1024 * 3):
             pass
         else:
             stack.append('    {0}\n'.format(line.strip()))
-        frame = frame.f_back
     trace = ''.join(stack)
     if trace < maxlen:
         return trace

@@ -140,6 +140,11 @@ class ServerGroup(object):
             return
         if not ufork:
             raise RuntimeError('attempting to run pre-forked on platform without fork')
+        if ctx.tracing:  # a little bit hackey, disable tracing in aribter
+            self.trace_in_child = True
+            ctx.set_greenlet_trace(False)
+        else:
+            self.trace_in_child = False
         self.arbiter = ufork.Arbiter(
             post_fork=self._post_fork, child_pre_exit=self.stop, parent_pre_stop=ctx.stop,
             size=self.num_workers, sleep=async.sleep, fork=gevent.fork, child_memlimit=ctx.worker_memlimit)
@@ -157,15 +162,18 @@ class ServerGroup(object):
         hub._threadpool = None  # eliminate gevent's internal threadpools
         gevent.sleep(0)  # let greenlets run
         # finally, eliminate our threadpools
-        context.get_context().thread_locals = threading.local()
+        ctx = context.get_context()
+        ctx.thread_locals = threading.local()
         import ll
-        context.get_context().log_failure_print = False  # do not print logs failures -- they are in stats
-        if context.get_context().serve_daemon:
+        ctx.log_failure_print = False  # do not print logs failures -- they are in stats
+        if ctx.serve_daemon:
             ll.use_the_file()  # stdout was closed during daemonization.
                                # plus ufork stdout logging issue
         if self.post_fork:
             self.post_fork()
-        context.get_context().cal.event('WORKER', 'STARTED', '0', {'pid': os.getpid()})
+        ctx.cal.event('WORKER', 'STARTED', '0', {'pid': os.getpid()})
+        if self.trace_in_child:  # re-enable tracing LONG SPIN detection
+            ctx.set_greenlet_trace(True)  # if it was enabled before forking
         self.start()
 
     def start(self):
