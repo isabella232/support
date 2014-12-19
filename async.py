@@ -173,7 +173,7 @@ def _exception_catcher(f, *a, **kw):
                 return f(*a, **kw)
     except gevent.greenlet.GreenletExit:  # NOTE: would rather do this with weakrefs,
         ml.ld("Exited by majeur")
-    except Exception as e:  # NOTE: would rather do this with weakrefs,
+    except (Timeout, Exception) as e:  # NOTE: would rather do this with weakrefs,
         if not hasattr(e, '__greenlet_traces'):  # but Exceptions are not weakref-able
             e.__greenlet_traces = []
         traces = e.__greenlet_traces
