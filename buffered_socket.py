@@ -130,6 +130,13 @@ class BufferedSocket(object):
     def buffer(self, data):
         self.sbuf.append(data)
 
+    def close(self):
+        self.sock.close()
+
+    def shutdown(self, how):
+        self.sock.shutdown(how)
+    
+
 
 class Error(Exception):
     pass
@@ -151,5 +158,5 @@ class Timeout(Error):
 class NotFound(Error):
     def __init__(self, symbol, bytes_read):
         super(NotFound, self).__init__(
-            'read {0} bytes without finding symbol {1}'.format(
+            'read {1} bytes without finding symbol {0}'.format(
                 symbol, bytes_read))
