@@ -89,6 +89,7 @@ def staggered_retries(run, *a, **kw):
 @functools.wraps(gevent.spawn)
 def spawn(run, *a, **kw):
     gr = gevent.spawn(_exception_catcher, run, *a, **kw)
+    gr.calling_frame = sys._getframe()
     ctx = context.get_context()
     ctx.greenlet_ancestors[gr] = gevent.getcurrent()
     if '_pid' not in kw:
