@@ -13,6 +13,7 @@ import socket
 import os
 import threading
 import weakref
+import traceback
 
 if hasattr(os, "fork"):
     import ufork
@@ -69,8 +70,14 @@ class ServerGroup(object):
         self.servers = []
         self.socks = {}
         self.client_pool = gevent.pool.Pool(ctx.max_concurrent_clients)
+
+        # we do NOT want a gevent socket if we're going to use a
+        # thread to manage our accepts; it's critical that the
+        # accept() call *blocks*
+        socket_type = gevent.socket.socket if not ufork else socket.socket
+
         for app, address, ssl in wsgi_apps:
-            sock = _make_server_sock(address)
+            sock = _make_server_sock(address, socket_type)
             if isinstance(ssl, Protected):
                 protected = ssl
             elif ssl:
@@ -90,7 +97,7 @@ class ServerGroup(object):
                     server = SslContextWSGIServer(
                         sock, app, spawn=self.client_pool, context=protected.ssl_server_context)
             else:
-                server = pywsgi.WSGIServer(sock, app)
+                server = ThreadQueueWSGIServer(sock, app)
             server.log = self.server_log or RotatingGeventLog()
             self.servers.append(server)
             self.socks[server] = sock
@@ -99,16 +106,21 @@ class ServerGroup(object):
             server.set_environ({'SERVER_NAME': socket.getfqdn(address[0]),
                                 'wsgi.multiprocess': True})
         for handler, address in self.stream_handlers:
-            sock = _make_server_sock(address)
+            sock = _make_server_sock(address, socket_type)
             server = gevent.server.StreamServer(sock, handler, spawn=self.client_pool)
             self.servers.append(server)
         for server_class, address in self.custom_servers:
-            sock = _make_server_sock(address)
+            # our stated requirement is that users provide a subclass
+            # of StreamServer, which would *not* know about our thread
+            # queue.  consequently we can't give it a blocking socket
+            sock = _make_server_sock(address, socket_type=gevent.socket.socket)
             server = server_class(sock, spawn=self.client_pool)
             self.servers.append(server)
         if ctx.backdoor_port is not None:
             try:
-                sock = _make_server_sock(("0.0.0.0", ctx.backdoor_port))
+                sock = _make_server_sock(("0.0.0.0",
+                                          ctx.backdoor_port),
+                                         socket_type=gevent.socket.socket)
             except Exception as e:
                 print "WARNING: unable to start backdoor server on port", ctx.backdoor_port, repr(e)
             else:
@@ -182,6 +194,7 @@ class ServerGroup(object):
             try:
                 server.start()
             except Exception as e:
+                traceback.print_exc()
                 errs[server] = e
         if errs:
             raise RuntimeError(errs)
@@ -190,9 +203,9 @@ class ServerGroup(object):
         gevent.joinall([gevent.spawn(server.stop, timeout) for server in self.servers], raise_error=True)
 
 
-def _make_server_sock(address):
+def _make_server_sock(address, socket_type):
     ml.ld("about to bind to {0!r}", address)
-    sock = gevent.socket.socket()
+    sock = socket_type()
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(address)
     sock.listen(128)  # Note: 128 is a "hint" to the OS than a strict rule about backlog size
@@ -241,7 +254,90 @@ class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
         return ret
 
 
-class SslContextWSGIServer(pywsgi.WSGIServer):
+class ThreadWatcher(threading.Thread):
+    # assumptions: there is one thread in which accept() is called,
+    # and one thread waiting for incoming connections.  this is
+    # reasonable because the wsgi handler should never be called
+    # except in the main thread (because it's not decorated with
+    # @cpu_bound or @io_bound or the like)
+
+    def __init__(self, listener, loop, maxlen=128):
+        super(ThreadWatcher, self).__init__()
+        # TODO: explicit join!!
+        self.daemon = True
+        self.maxlen = maxlen
+        self.queue = collections.deque(maxlen=maxlen)
+
+        self.listener = listener
+        self.async = loop.async()
+        self.event = gevent.event.Event()
+        self.running = False
+
+    def _make_waiter(self, callback):
+        def waiter():
+            while self.running:
+                self.event.clear()
+                print 'going to wait on', self.event
+                self.event.wait()
+                print 'woke up on', self.event
+                if not self.queue:
+                    print "EXPECTED SOMETHING!"
+                callback()
+        return waiter
+
+    def start(self, callback):
+        self.running = True
+        self.async.start(self.event.set)
+        self.waiter = gevent.spawn(self._make_waiter(callback))
+        super(ThreadWatcher, self).start()
+
+    def stop(self):
+        self.running = False
+
+    def run(self):
+        while self.running:
+            sock, addr, exc = None, None, None
+            try:
+                sock, addr = self.listener.accept()
+            except Exception as exc:
+                traceback.print_exc()
+            if len(self.queue) > self.maxlen:
+                sock.close()
+                print "CLOSED %r BECAUSE QUEUE IS FULL" % ((sock, addr),)
+            else:
+                self.queue.appendleft((sock, addr, exc))
+                self.async.send()
+
+
+if ufork:
+    class ThreadQueueServer(gevent.server.StreamServer):
+
+        def start_accepting(self):
+            if self._watcher is None:
+                accept_maxlen = context.get_context().accept_queue_maxlen
+                self._watcher = ThreadWatcher(self.socket, self.loop,
+                                              accept_maxlen)
+                self._watcher.start(self._do_read)
+
+        def do_read(self):
+            if not self._watcher.queue:
+                raise RuntimeError('QUEUE DISAPPEARED')
+            client_socket, address, exc = self._watcher.queue.pop()
+            if exc is not None:
+                raise
+
+            return gevent.socket.socket(_sock=client_socket), address
+
+
+else:
+    ThreadQueueServer = gevent.server.StreamServer
+
+
+class ThreadQueueWSGIServer(pywsgi.WSGIServer, ThreadQueueServer):
+    pass
+
+
+class SslContextWSGIServer(ThreadQueueWSGIServer):
     handler_class = MakeFileCloseWSGIHandler
 
     @async.timed
@@ -399,7 +495,7 @@ class PayPalWsgiApplication(object):
         from asf import _ecv
         from asf import _favicon
         from asf import _app_info
-        
+
         mw = [CALTransactionMiddleware()]
         if middlewares:
             mw.extend(middlewares)
