@@ -22,6 +22,7 @@ else:
     ufork = None
 import gevent
 from gevent import pywsgi
+import gevent.coros
 import gevent.server
 import gevent.socket
 import gevent.pool
@@ -203,7 +204,7 @@ class ServerGroup(object):
         gevent.joinall([gevent.spawn(server.stop, timeout) for server in self.servers], raise_error=True)
 
 
-def _make_server_sock(address, socket_type):
+def _make_server_sock(address, socket_type=gevent.socket.socket):
     ml.ld("about to bind to {0!r}", address)
     sock = socket_type()
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -254,12 +255,165 @@ class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
         return ret
 
 
+# Threaded accept queue implementation
+#
+# poll(2) and its relatives require that all processes monitoring a
+# file descriptor be informed when it becomes readable or writable.
+# Consequently, sharing a socket across multiple processes that call
+# accept(2) after poll(2) says that socket is readable results in an
+# inefficient distribution of connections; *all* processes are woken
+# up when a new connection comes in, and which one actually *gets* the
+# connection is hard to predict.
+#
+# Nginx, Apache and uwsgi all attempt to use shared memory mutexes to
+# ensure only a single process wakes up when a new connection comes
+# in.  Only the process holding the mutex at the time a new
+# connections arrives can call accept, and it must release the mutex
+# after the accept call concludes.  This also results in a better
+# distribution of connections, because the kernel's scheduler
+# coordinates fair mutex acquisition.
+#
+# The downside to this approach is that it requires a reliable shared
+# memory mutex, which is unportable and somewhat difficult to manage.
+#
+# A second approach is have a thread that sleeps on accept(2) that
+# pushes accepted connections out to the main event loop.  One reason
+# we favor this approach to avoid the difficulties associated with
+# shared memory mutexes.
+#
+# Another is it allows us to immediately accept all incoming
+# connections, removing them from the kernel's listen queue and
+# placing them instead on in queue we can inspect.  This allows us to
+# close connections if we detect our queue has filled up.
+#
+# This allows us to immediately put back pressure on clients, which
+# would not otherwise be able to do.  The reason: on Linux, the listen
+# queue holds *completely established* connections -- meaning the
+# kernel will complete the three-way handshake prior to our calling
+# accept (man 2 listen).  Under very high loads, when no worker is
+# able to call accept, connections will languish in the queue until
+# they timeout.  By accepting each connection as soon as possible and
+# closing it if the queue is full, we're able to communicate capacity
+# limitations to clients and log these events.  (Thanks Chris!)
+#
+# NB: no process synchronizes its user-space queue with any other, so
+# it's possible that one slow process will cause dropped connections,
+# even though other processes are ready.  Kurt points out that
+# determining the likelihood of this is a well understood application
+# of queuing theory; it would be good to derive some expression that
+# lets us determine probability of dropping connections when at least
+# one worker process' queue can accept a new connection.  Until then
+# the context variable "accept_queue_maxlen" lets you tweak one of the
+# variables.
+#
+# The actual implementation is somewhat convoluted because of gevent's
+# BaseServer -> StreamServer -> WSGIServer inheritence hierarchy:
+#
+# BaseServer.start -> BaseServer.start_accepting
+#                                 |
+#                                 v
+#                      watcher = loop.io(listening_socket)
+#                      watcher.start(self._do_read)
+#                                 |
+#                                 | (read event)
+# BaseServer._do_read <-----------+
+#         |
+#         | (do_read *only* defined in subclasses)
+#         v
+#       args <--------- StreamServer.do_read ---- listener.accept()
+#       ...
+#       WSGIServer.do_handle(*args)  # *only* defined in subclasses
+#
+# The crux of our implementation is a ThreadWatcher which replaces the
+# loop.io(...) instance.  A subclass on threading.Thread, it
+# encapsulates:
+
+# 1) a queue bounded by maxlen (a deque, which has fast, thread-safe
+#    LIFO operations);
+#
+# 2) a gevent.coros.Semaphore, initialized to zero;
+#
+# 3) an async watcher whose send() callback is to release the
+#    Semaphore (2) so that its counter is equal to the number of items
+#    on the queue;
+#
+# 4) a consumer greenlet that acquires()s the semaphore (2), checks
+#    that there's something in the queue, and invokes a callback that
+#    returns None and accepts no arguments;
+#
+# 5) a run() method that blocks until listener.accept(2) returns and
+#     a) pushes the resulting socket and address *or* exception onto the
+#        queue
+#
+#     b) calls the async watcher's (3) send method
+#
+# Putting this together:
+#
+#         ThreadWatcher       |         main thread
+# ----------------------------+-------------------------------
+#                             |
+#                             | 4a. acquire lock; <----------+
+#                             |                              |
+#                             | 4b. set semaphore counter;   |
+#                             |     to queue size            |
+#                             |                              |
+#                             | 4c. release lock;            |
+#                             |                              |
+#                             |       +-----------------+    |
+#  1. sock, addr = accept(2)  |       | waiter_greenlet |    |
+#                             |       +-----------------+    |
+#  2a. acquire lock;          |       |   5. acquire    |    |
+#                             |       |                 |    |
+#      push                 queue     |                 |    |
+#      sock, addr +-------------------+---+             |    |
+#  2b. onto    -> |          (sock, addr) |             |    |
+#      queue;     +-------------------+---+             |    |
+#                             |       }                 |    |
+#  2c. release lock           |       |   6. callback() |    |
+#                             |       |                 |    |
+#  3. wake up                 |       |                 |    |
+#     waiter_greenlet         |       +-----------------+    |
+#            |                |                              |
+#            +-----------------------------------------------+
+#                             |
+#
+# So ThreadWatcher requires that it's the only writer to the queue,
+# and waiter_greenlet in the main thread requires that it's the only
+# consumer of the queue.
+#
+# However, nothing in the above description consumes off the queue!
+# Because of the code flow shown in the topmost diagram, we have to
+# replace StreamServer with an implementation that knows that
+# start_accepting() means create and spin up a ThreadWatcher, and
+# do_read() means to pop off the queue.  So the new code flow is as
+# follows:
+#
+# BaseServer.start -> ThreadQueueServer.start_accepting
+#                                 |
+#                                 v
+#                      watcher = ThreadWatcher(listening_socket)
+#                      watcher.start(callback=self._do_read)
+#                                 |
+#                                 | (async.send() fires callback)
+# BaseServer._do_read <-----------+
+#         |
+#         | (do_read *only* defined in subclasses)
+#         v
+#       args <--------- ThreadQueueServer.do_read ---- queue.popleft()
+#       ....
+#       ThreadQueueWSGIServer.do_handle(*args)  # *only* defined in subclasses
+#
+#
+# The queue depth can be controlled via Context.accept_queue_maxlen
+#
+# Finally: we define a ThreadQueueWSGIServer that inherits from
+# pywsgi.WSGIServer and our ThreadQueueServer *in that order*.
+# Python's C3 MRO algorithm ensures that pywsgi.WSGIServer calls
+# ThreadQueueServer's start_accepting, not StreamServer or BaseServer's
+
+
 class ThreadWatcher(threading.Thread):
-    # assumptions: there is one thread in which accept() is called,
-    # and one thread waiting for incoming connections.  this is
-    # reasonable because the wsgi handler should never be called
-    # except in the main thread (because it's not decorated with
-    # @cpu_bound or @io_bound or the like)
+    lock = threading.Lock()
 
     def __init__(self, listener, loop, maxlen=128):
         super(ThreadWatcher, self).__init__()
@@ -269,25 +423,38 @@ class ThreadWatcher(threading.Thread):
         self.queue = collections.deque(maxlen=maxlen)
 
         self.listener = listener
+        # a cross-thread way to invoke bump_semaphore
         self.async = loop.async()
-        self.event = gevent.event.Event()
+        # the event our watcher greenlet wait()s on.
+        self.semaphore = gevent.coros.Semaphore(0)
         self.running = False
 
     def _make_waiter(self, callback):
+        # the watcher greenlet
         def waiter():
             while self.running:
-                self.event.clear()
-                print 'going to wait on', self.event
-                self.event.wait()
-                print 'woke up on', self.event
+                ml.ld('Thread connection consumer greenlet waiting')
+                self.semaphore.acquire()
+                ml.ld('Thread connection consumer greenlet woke up')
                 if not self.queue:
-                    print "EXPECTED SOMETHING!"
+                    ml.la('Thread connection consumer greenlet found queue '
+                          'empty after being woken up.  Why?')
+                    continue
                 callback()
         return waiter
 
+    def bump_semaphore(self):
+        # we use a lock here to make sure that the semaphore gets a
+        # chance to run with its current value
+        with self.lock:
+            self.semaphore.counter = len(self.queue)
+            self.semaphore._start_notify()
+
     def start(self, callback):
         self.running = True
-        self.async.start(self.event.set)
+        # invoke self.event.set() on async.send().  Presumably this is
+        # invoked in the *main* thread
+        self.async.start(self.bump_semaphore)
         self.waiter = gevent.spawn(self._make_waiter(callback))
         super(ThreadWatcher, self).start()
 
@@ -300,37 +467,63 @@ class ThreadWatcher(threading.Thread):
             try:
                 sock, addr = self.listener.accept()
             except Exception as exc:
-                traceback.print_exc()
-            if len(self.queue) > self.maxlen:
-                sock.close()
-                print "CLOSED %r BECAUSE QUEUE IS FULL" % ((sock, addr),)
+                # Maybe call sys.exc_info() here?  Is that safe to
+                # send across threads?
+                pass
+
+            if len(self.queue) >= self.maxlen:
+                event = context.get_context().cal.event
+                stats = context.get_context().stats
+                if sock and addr:
+                    sock.close()
+                    stats['server_group.dropped_connections.queue_full'].add(1)
+                    event(type='HTTP',
+                          name='ERROR',
+                          status='500',
+                          data='Thread closed %r because queue '
+                          'is full' % ((sock, addr),))
+                else:
+
+                    stats['server_group.dropped_exceptions.queue_full'].add(1)
+
+                    event(type='HTTP',
+                          name='ERROR',
+                          status='500',
+                          data='Thread dropped exception %r because queue '
+                          'is full' % (exc,))
             else:
-                self.queue.appendleft((sock, addr, exc))
+                with self.lock:
+                    self.queue.appendleft((sock, addr, exc))
+                # wake up the watcher greenlet in the main thread
                 self.async.send()
 
 
-if ufork:
-    class ThreadQueueServer(gevent.server.StreamServer):
+class ThreadQueueServer(gevent.server.StreamServer):
 
-        def start_accepting(self):
-            if self._watcher is None:
-                accept_maxlen = context.get_context().accept_queue_maxlen
-                self._watcher = ThreadWatcher(self.socket, self.loop,
-                                              accept_maxlen)
-                self._watcher.start(self._do_read)
+    def start_accepting(self):
+        # NB: This is called via BaseServer.start, which is invoked
+        # *only* in post_fork.  It is *criticial* this thread is *not*
+        # started prior to forking, lest it die.
+        if self._watcher is None:
+            accept_maxlen = context.get_context().accept_queue_maxlen
+            self._watcher = ThreadWatcher(self.socket, self.loop,
+                                          accept_maxlen)
+            self._watcher.start(self._do_read)
 
-        def do_read(self):
-            if not self._watcher.queue:
-                raise RuntimeError('QUEUE DISAPPEARED')
-            client_socket, address, exc = self._watcher.queue.pop()
-            if exc is not None:
-                raise
+    def do_read(self):
+        # invoked via BaseServer._do_read.  Whereas
+        # StreamServer.do_read calls self.socket.accept, we just
+        # need to pop off our queue
+        if not self._watcher:
+            return
+        if not self._watcher.queue:
+            raise RuntimeError('QUEUE DISAPPEARED')
+        client_socket, address, exc = self._watcher.queue.pop()
+        if exc is not None:
+            # raise the Exception
+            raise exc
 
-            return gevent.socket.socket(_sock=client_socket), address
-
-
-else:
-    ThreadQueueServer = gevent.server.StreamServer
+        return gevent.socket.socket(_sock=client_socket), address
 
 
 class ThreadQueueWSGIServer(pywsgi.WSGIServer, ThreadQueueServer):

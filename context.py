@@ -72,6 +72,9 @@ class Context(object):
                                                                     entry found
 
     cal                        the current infra.cal.Client() object (appname, '127.0.0.1', 1118)
+    accept_queue_maxlen        the depth of the user-space accept
+                               queue.  If the queue exceeds this
+                               length, connections will be closed.   128
     ========================== ===================================== ==============================
     '''
     def __init__(self, dev=False, stage_host=None):
@@ -216,7 +219,7 @@ class Context(object):
         # Are we up yet as a server?
         self.running = False
 
-        self.accept_queue_maxlen = 10
+        self.accept_queue_maxlen = 128
 
     def disable_recent_cache(self):
         '''
