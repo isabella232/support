@@ -22,7 +22,6 @@ else:
     ufork = None
 import gevent
 from gevent import pywsgi
-import gevent.coros
 import gevent.server
 import gevent.socket
 import gevent.pool
@@ -331,15 +330,14 @@ class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
 # 1) a queue bounded by maxlen (a deque, which has fast, thread-safe
 #    LIFO operations);
 #
-# 2) a gevent.coros.Semaphore, initialized to zero;
+# 2) a gevent.event.Event
 #
-# 3) an async watcher whose send() callback is to release the
-#    Semaphore (2) so that its counter is equal to the number of items
-#    on the queue;
+# 3) an async watcher whose send() callback is to release the set the
+#    event (2)
 #
-# 4) a consumer greenlet that acquires()s the semaphore (2), checks
-#    that there's something in the queue, and invokes a callback that
-#    returns None and accepts no arguments;
+# 4) a consumer greenlet that wait()s the event (2), checks that
+#    there's something in the queue, and *fairly* runs the supplied
+#    callback until the queue is empty;
 #
 # 5) a run() method that blocks until listener.accept(2) returns and
 #     a) pushes the resulting socket and address *or* exception onto the
@@ -351,28 +349,21 @@ class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
 #
 #         ThreadWatcher       |         main thread
 # ----------------------------+-------------------------------
-#                             |
-#                             | 4a. acquire lock; <----------+
-#                             |                              |
-#                             | 4b. set semaphore counter;   |
-#                             |     to queue size            |
-#                             |                              |
-#                             | 4c. release lock;            |
+#                             | 4. event.set()    <----------+
 #                             |                              |
 #                             |       +-----------------+    |
 #  1. sock, addr = accept(2)  |       | waiter_greenlet |    |
 #                             |       +-----------------+    |
-#  2a. acquire lock;          |       |   5. acquire    |    |
 #                             |       |                 |    |
-#      push                 queue     |                 |    |
-#      sock, addr +-------------------+---+             |    |
-#  2b. onto    -> |          (sock, addr) |             |    |
-#      queue;     +-------------------+---+             |    |
-#                             |       }                 |    |
-#  2c. release lock           |       |   6. callback() |    |
-#                             |       |                 |    |
-#  3. wake up                 |       |                 |    |
-#     waiter_greenlet         |       +-----------------+    |
+#     push                  queue     | 5. event.wait() |    |
+#     sock, addr  +-------------------+---+             |    |
+#  2. onto     -> |          (sock, addr) |             |    |
+#     queue;      +-------------------+---+             |    |
+#                             |       | 6. while queue: |    |
+#                             |       |     callback()  |    |
+#                             |       |     sleep(0)    |    |
+#  3. async.send()            |       |                 |    |
+#            |                |       +-----------------+    |
 #            |                |                              |
 #            +-----------------------------------------------+
 #                             |
@@ -413,7 +404,6 @@ class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
 
 
 class ThreadWatcher(threading.Thread):
-    lock = threading.Lock()
 
     def __init__(self, listener, loop, maxlen=128):
         super(ThreadWatcher, self).__init__()
@@ -423,10 +413,10 @@ class ThreadWatcher(threading.Thread):
         self.queue = collections.deque(maxlen=maxlen)
 
         self.listener = listener
-        # a cross-thread way to invoke bump_semaphore
-        self.async = loop.async()
         # the event our watcher greenlet wait()s on.
-        self.semaphore = gevent.coros.Semaphore(0)
+        self.event = gevent.event.Event()
+        # a cross-thread way to invoke event.set
+        self.async = loop.async()
         self.running = False
 
     def _make_waiter(self, callback):
@@ -434,27 +424,21 @@ class ThreadWatcher(threading.Thread):
         def waiter():
             while self.running:
                 ml.ld('Thread connection consumer greenlet waiting')
-                self.semaphore.acquire()
+                self.event.clear()
+                self.event.wait()
                 ml.ld('Thread connection consumer greenlet woke up')
-                if not self.queue:
-                    ml.la('Thread connection consumer greenlet found queue '
-                          'empty after being woken up.  Why?')
-                    continue
-                callback()
-        return waiter
 
-    def bump_semaphore(self):
-        # we use a lock here to make sure that the semaphore gets a
-        # chance to run with its current value
-        with self.lock:
-            self.semaphore.counter = len(self.queue)
-            self.semaphore._start_notify()
+                while self.queue and self.running:
+                    callback()
+                    gevent.sleep(0)
+
+        return waiter
 
     def start(self, callback):
         self.running = True
-        # invoke self.event.set() on async.send().  Presumably this is
-        # invoked in the *main* thread
-        self.async.start(self.bump_semaphore)
+        # invoke self.event.set() on async.send().  This is invoked in
+        # the *main* thread
+        self.async.start(self.event.set)
         self.waiter = gevent.spawn(self._make_waiter(callback))
         super(ThreadWatcher, self).start()
 
@@ -492,8 +476,7 @@ class ThreadWatcher(threading.Thread):
                           data='Thread dropped exception %r because queue '
                           'is full' % (exc,))
             else:
-                with self.lock:
-                    self.queue.appendleft((sock, addr, exc))
+                self.queue.appendleft((sock, addr, exc))
                 # wake up the watcher greenlet in the main thread
                 self.async.send()
 
