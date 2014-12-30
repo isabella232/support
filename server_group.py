@@ -229,6 +229,7 @@ class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
         ret = super(MakeFileCloseWSGIHandler, self).handle_one_request()
         if not ret:
             self.state.transition('done')
+        return ret
 
     def run_application(self):
         self.state.transition('running_application')
@@ -399,7 +400,7 @@ class PayPalWsgiApplication(object):
         from asf import _ecv
         from asf import _favicon
         from asf import _app_info
-        
+
         mw = [CALTransactionMiddleware()]
         if middlewares:
             mw.extend(middlewares)
