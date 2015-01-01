@@ -435,6 +435,11 @@ class Context(object):
     def serve_daemon(self):
         self._serve_daemon = None
 
+    def set_default_timeout(self, secs):
+        import opscfg
+        opscfg.DEFAULT_CONNECT_INFO = opscfg.DEFAULT_CONNECT_INFO._replace(
+            response_timeout_ms=1000 * secs)
+
     @property
     def sampling(self):
         return self.profiler is not None
