@@ -12,8 +12,8 @@ import collections
 import socket
 import os
 import threading
-import weakref
 import traceback
+import time
 
 if hasattr(os, "fork"):
     import ufork
@@ -25,6 +25,8 @@ from gevent import pywsgi
 import gevent.server
 import gevent.socket
 import gevent.pool
+
+from faststat import nanotime
 
 import async
 from protected import Protected
@@ -404,6 +406,10 @@ class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
 # ThreadQueueServer's start_accepting, not StreamServer or BaseServer's
 
 
+DROPPED_CONN_STATS = 'server_group.dropped_connections.queue_full'
+DROPPED_EXC_STATS = 'server_group.dropped_exceptions.queue_full'
+
+
 class ThreadWatcher(threading.Thread):
 
     def __init__(self, listener, loop, maxlen=128):
@@ -447,6 +453,10 @@ class ThreadWatcher(threading.Thread):
         self.running = False
 
     def run(self):
+        _nanotime = nanotime
+        _DROPPED_CONN_STATS = DROPPED_CONN_STATS
+        _DROPPED_EXC_STATS = DROPPED_EXC_STATS
+
         while self.running:
             sock, addr, exc = None, None, None
             try:
@@ -461,7 +471,7 @@ class ThreadWatcher(threading.Thread):
                 stats = context.get_context().stats
                 if sock and addr:
                     sock.close()
-                    stats['server_group.dropped_connections.queue_full'].add(1)
+                    stats[_DROPPED_CONN_STATS].add(1)
                     event(type='HTTP',
                           name='ERROR',
                           status='500',
@@ -469,7 +479,7 @@ class ThreadWatcher(threading.Thread):
                           'is full' % ((sock, addr),))
                 else:
 
-                    stats['server_group.dropped_exceptions.queue_full'].add(1)
+                    stats[_DROPPED_EXC_STATS].add(1)
 
                     event(type='HTTP',
                           name='ERROR',
@@ -477,9 +487,12 @@ class ThreadWatcher(threading.Thread):
                           data='Thread dropped exception %r because queue '
                           'is full' % (exc,))
             else:
-                self.queue.appendleft((sock, addr, exc))
+                self.queue.appendleft((sock, addr, exc, _nanotime()))
                 # wake up the watcher greenlet in the main thread
                 self.async.send()
+
+
+CONN_AGE_STATS = 'server_group.queued_connection_age_ms'
 
 
 class ThreadQueueServer(gevent.server.StreamServer):
@@ -502,7 +515,11 @@ class ThreadQueueServer(gevent.server.StreamServer):
             return
         if not self._watcher.queue:
             raise RuntimeError('QUEUE DISAPPEARED')
-        client_socket, address, exc = self._watcher.queue.pop()
+        client_socket, address, exc, pushed_at = self._watcher.queue.pop()
+
+        age = nanotime() - pushed_at
+        context.get_context().stats[CONN_AGE_STATS].add(age / 1e6)
+
         if exc is not None:
             # raise the Exception
             raise exc
