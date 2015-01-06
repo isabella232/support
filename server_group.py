@@ -80,7 +80,7 @@ class ServerGroup(object):
         socket_type = gevent.socket.socket if not ufork else socket.socket
 
         for app, address, ssl in wsgi_apps:
-            sock = _make_server_sock(address, socket_type)
+            sock = _make_server_sock(address, socket_type=socket_type)
             if isinstance(ssl, Protected):
                 protected = ssl
             elif ssl:
@@ -109,21 +109,20 @@ class ServerGroup(object):
             server.set_environ({'SERVER_NAME': socket.getfqdn(address[0]),
                                 'wsgi.multiprocess': True})
         for handler, address in self.stream_handlers:
-            sock = _make_server_sock(address, socket_type=gevent.socket.socket)
+            sock = _make_server_sock(address)
             server = gevent.server.StreamServer(sock, handler, spawn=self.client_pool)
             self.servers.append(server)
         for server_class, address in self.custom_servers:
             # our stated requirement is that users provide a subclass
             # of StreamServer, which would *not* know about our thread
             # queue.  consequently we can't give it a blocking socket
-            sock = _make_server_sock(address, socket_type=gevent.socket.socket)
+            sock = _make_server_sock(address)
             server = server_class(sock, spawn=self.client_pool)
             self.servers.append(server)
         if ctx.backdoor_port is not None:
             try:
                 sock = _make_server_sock(("0.0.0.0",
-                                          ctx.backdoor_port),
-                                         socket_type=gevent.socket.socket)
+                                          ctx.backdoor_port))
             except Exception as e:
                 print "WARNING: unable to start backdoor server on port", ctx.backdoor_port, repr(e)
             else:
