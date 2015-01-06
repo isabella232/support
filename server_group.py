@@ -108,7 +108,7 @@ class ServerGroup(object):
             server.set_environ({'SERVER_NAME': socket.getfqdn(address[0]),
                                 'wsgi.multiprocess': True})
         for handler, address in self.stream_handlers:
-            sock = _make_server_sock(address, socket_type)
+            sock = _make_server_sock(address, socket_type=gevent.socket.socket)
             server = gevent.server.StreamServer(sock, handler, spawn=self.client_pool)
             self.servers.append(server)
         for server_class, address in self.custom_servers:
