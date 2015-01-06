@@ -18,6 +18,7 @@ import time
 if hasattr(os, "fork"):
     import ufork
     import fcntl
+    import errno
 else:
     ufork = None
 import gevent
@@ -451,6 +452,8 @@ class ThreadWatcher(threading.Thread):
 
     def stop(self):
         self.running = False
+        # wake up the thread and have it bail out
+        self.listener.shutdown(socket.SHUT_RDWR)
 
     def run(self):
         _nanotime = nanotime
@@ -461,6 +464,13 @@ class ThreadWatcher(threading.Thread):
             sock, addr, exc = None, None, None
             try:
                 sock, addr = self.listener.accept()
+            except socket.error as exc:
+                if exc.errno == errno.EINVAL:
+                    ml.la('thread accept resulted in EINVAL; '
+                          'assuming socket has been shutdown and terminating '
+                          'accept loop')
+                    self.running = False
+                    return
             except Exception as exc:
                 # Maybe call sys.exc_info() here?  Is that safe to
                 # send across threads?
@@ -526,9 +536,13 @@ class ThreadQueueServer(gevent.server.StreamServer):
 
         return gevent.socket.socket(_sock=client_socket), address
 
-
-class ThreadQueueWSGIServer(pywsgi.WSGIServer, ThreadQueueServer):
-    pass
+# don't bother to use the thread queue server if we're not going to
+# fork
+if ufork:
+    class ThreadQueueWSGIServer(pywsgi.WSGIServer, ThreadQueueServer):
+        pass
+else:
+    ThreadQueueServer = pywsgi.WSGIServer
 
 
 class SslContextWSGIServer(ThreadQueueWSGIServer):
