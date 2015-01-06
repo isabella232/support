@@ -133,7 +133,7 @@ class ServerGroup(object):
         for server in self.servers:
             server.max_accept = 1
 
-    def run(self):
+    def run(self, event=None):
         ctx = context.get_context()
         ctx.running = True
         try:
@@ -144,6 +144,8 @@ class ServerGroup(object):
         if not self.prefork:
             self.start()
             ml.la("The server is now really running and listening to requests-init over!")
+            if event:
+                event.set()
 
             if ctx.dev and ctx.dev_service_repl_enabled and os.isatty(0):
                 async.start_repl({'server': ctx.server_group})
@@ -475,7 +477,6 @@ class ThreadWatcher(threading.Thread):
                 # Maybe call sys.exc_info() here?  Is that safe to
                 # send across threads?
                 pass
-
             if len(self.queue) >= self.maxlen:
                 event = context.get_context().cal.event
                 stats = context.get_context().stats
@@ -488,7 +489,6 @@ class ThreadWatcher(threading.Thread):
                           data='Thread closed %r because queue '
                           'is full' % ((sock, addr),))
                 else:
-
                     stats[_DROPPED_EXC_STATS].add(1)
 
                     event(type='HTTP',
