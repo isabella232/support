@@ -125,3 +125,17 @@ def _sketch2dict(sketch, brief=True):
         "cardinality": sketch.card(),
         "common_elements": heavy_hitters,
     }
+
+
+TEMPLATE = '''
+<html>
+<head>
+<script source="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.2/d3.min.js"></script>
+</head>
+
+<body>
+
+</body>
+</html>
+'''
+
