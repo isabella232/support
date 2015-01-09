@@ -541,7 +541,7 @@ if ufork:
     class ThreadQueueWSGIServer(pywsgi.WSGIServer, ThreadQueueServer):
         pass
 else:
-    ThreadQueueServer = pywsgi.WSGIServer
+    ThreadQueueWSGIServer = pywsgi.WSGIServer
 
 
 class SslContextWSGIServer(ThreadQueueWSGIServer):
