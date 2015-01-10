@@ -52,6 +52,7 @@ class BufferedSocket(object):
             timeout = self.timeout
         chunks = []
         recvd = 0
+        nxt = ''
         try:
             with gevent.Timeout(timeout, False):
                 nxt = self.rbuf or self.sock.recv(32 * 1024)
