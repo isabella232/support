@@ -16,6 +16,7 @@ from .. import cal
 
 import stats
 import eval_server
+import codeview
 
 
 def create_meta_app(additional_routes=None):
@@ -51,8 +52,8 @@ def create_meta_app(additional_routes=None):
         ('/topos/<appname>', get_topos, render),
         ('/protected', get_protected, render),
         ('/environment', get_environment, render),
-        ('/docs/<path*>', render_doc),
-        ('/code/<path*>', render_code),
+        ('/listmodules', codeview.listmodules),
+        ('/showmodule/<module_name>', codeview.showmodule),
         ('/connection_mgr', get_connection_mgr, render),
         ('/fd_info', get_fd_info, rt_json_render_basic),
         ('/fd_info/<fd:int>', get_one_fd_info, rt_json_render_basic),
@@ -503,56 +504,6 @@ def reset_stats():
     from .. import context
     context.get_context().stats = defaultdict(faststat.Stats)
     return "OK"
-
-
-def _normalize_path(path):
-    if not isinstance(path, basestring):
-        path = '/'.join(path)
-    return path
-
-
-def render_doc(path):
-    path = _normalize_path(path)
-    root = os.path.abspath(__file__)
-    for i in range(3):
-        root = os.path.dirname(root)
-    pass
-
-
-def _render_dir(path):
-    elements = os.listdir(path)
-    html = _RENDER_DIR_TEMPLATE.format('</td></tr><tr><td>'.join(elements))
-    return clastic.Response(html, mimetype='text/html')
-
-
-_RENDER_DIR_TEMPLATE = (
-    '<html><head><title>{0}</title></head><body>'
-    '<table>{1}</table></body></html>')
-
-
-def render_code(path):
-    path = _normalize_path(path)
-
-    with open(path, 'rb') as f:
-        code = f.read()
-
-    try:
-        from pygments import highlight
-        from pygments.lexers import PythonLexer
-        from pygments.formatters import HtmlFormatter
-    except ImportError:
-        return clastic.Response(code, mimetype="text/plain")
-
-    formatter = HtmlFormatter()
-
-    html = _RENDER_CODE_TEMPLATE.format(
-        path, formatter.get_style_defs(), highlight(code, PythonLexer(), formatter))
-    return clastic.Response(html, mimetype='text/html')
-
-
-_RENDER_CODE_TEMPLATE = (
-    '<html><head><title>{0}</title><style type="text/css">{1}</style>'
-    '</head><body>{2}</body></html>')
 
 
 def get_live_checks():
