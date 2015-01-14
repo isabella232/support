@@ -9,7 +9,7 @@ from .. import context
 
 
 def listmodules():
-    filename_leaf_samples, filename_branch_samples = _get_samples_by_file()
+    filename_leaf_samples, filename_branch_samples, total = _get_samples_by_file()
 
     rows = []
     for name, mod in sys.modules.items():
@@ -25,7 +25,7 @@ def listmodules():
         rows.append('<tr><td>{0}</td><td>{1}</td><td>{2}</td></tr>'.format(
             href, count, cum_count))
     return clastic.Response(
-        _LIST_MODULES_TEMPLATE.format('\n'.join(rows)), mimetype="text/html")
+        _LIST_MODULES_TEMPLATE.format(total, '\n'.join(rows)), mimetype="text/html")
 
 
 def showmodule(module_name):
@@ -62,19 +62,21 @@ def _get_samples_by_file():
     ctx = context.get_context()
     filename_leaf_samples = collections.defaultdict(int)
     filename_branch_samples = collections.defaultdict(int)
+    total = 0
     if ctx.sampling:
         leaf_samples = {}
         branch_samples = {}
         for key, count in ctx.profiler.live_data_copy().items():
             if key[2] is None:
                 leaf_samples[key] = count
+                total += count
             else:
                 branch_samples[key] = count
         for key, count in leaf_samples.items():
             filename_leaf_samples[key[0].co_filename] += count
         for key, count in branch_samples.items():
             filename_branch_samples[key[0].co_filename] += count
-    return filename_leaf_samples, filename_branch_samples
+    return filename_leaf_samples, filename_branch_samples, total
 
 
 def _get_samples_by_line(filename):
@@ -100,8 +102,9 @@ _LIST_MODULES_TEMPLATE = '''
     <title>Modules</title>
 </head>
 <body>
+    total samples {0}
     <table><tr><th>Module</th><th>Count</th><th>Shared Count</th></tr>
-    {0}
+    {1}
     </table>
 </body>
 </html>
