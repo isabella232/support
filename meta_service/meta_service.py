@@ -394,7 +394,7 @@ def get_connection_mgr():
 
 
 def get_logs():
-    import ll
+    from .. import ll
     return ll.log_msgs
 
 
