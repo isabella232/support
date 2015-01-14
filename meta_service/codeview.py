@@ -47,10 +47,13 @@ def showmodule(module_name):
     lines = []
     with open(fname) as f:
         for i, line in enumerate(f):
-            lines.append((cgi.escape(line), leaf_count[i + 1], branch_count[i + 1]))
+            lines.append((
+                i + 1, cgi.escape(line),
+                leaf_count[i + 1], branch_count[i + 1]))
     rows = '\n'.join(
-        ['<tr><td><code class="python">{0}</code></td>'
-         '<td>{1}</td><td>{2}</td></tr>'.format(*e) for e in lines])
+        ['<tr><td><code>{0}</code></td>'
+         '<td><pre><code class="python">{1}</code></pre></td>'
+         '<td>{2}</td><td>{3}</td></tr>'.format(*e) for e in lines])
     return clastic.Response(
         _RENDER_MODULE_TEMPLATE.format(rows), mimetype="text/html")
 
@@ -110,19 +113,43 @@ _RENDER_MODULE_TEMPLATE = '''
 <head>
     <meta charset="utf-8" />
     <title>Modules</title>
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
     <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.4/styles/default.min.css">
     <script src="//cdnjs.cloudflare.com/ajax/libs/highlight.js/8.4/highlight.min.js"></script>
-    <script>hljs.initHighlightingOnLoad();</script>
     <style>
         code {{
                 font-size: 15px;
                 font-family: "Lucida Console", Monaco, "Bitstream Vera Sans Mono", monospace;
                 white-space: pre;
             }}
+        .code-table tr td pre {{ display: inline; }}
     </style>
+    <script>
+        $(document).ready(function() {{
+            $('pre code').each(function(i, block) {{ hljs.highlightBlock(block); }})
+            $('.code-table > tbody > tr').each(function(i, v) {{
+                    v = $(v);
+                    var zero_row = true;
+                    v.children('td').each(function(i, v) {{
+                        v = $(v);
+                        if(v.find('code').length == 0 && v.text() != '0') {{
+                            zero_row = false;
+                        }}
+                        if(v.find('th').length != 0) {{
+                            zero_row = false;
+                        }}
+                    }});
+                    if(zero_row) {{
+                        v.addClass("zero-row");
+                    }}
+                }});
+            }});
+    </script>
 </head>
 <body>
-    <table><tr><th>Code</th><th>Count</th><th>Shared Count</th></tr>
+    <a href="javascript:$('.zero-row').toggle()">show/hide zero rows</a>
+    <table class="code-table">
+      <tr><th>Line</th><th>Code</th><th>Count</th><th>Shared Count</th></tr>
     {0}
     </table>
 </body>
