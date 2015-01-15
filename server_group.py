@@ -183,8 +183,11 @@ class ServerGroup(object):
         import ll
         ctx.log_failure_print = False  # do not print logs failures -- they are in stats
         if ctx.serve_daemon:
-            ll.use_the_file()  # stdout was closed during daemonization.
-                               # plus ufork stdout logging issue
+            ll.use_std_out()
+        if ctx.sampling:
+            ctx.set_sampling(False)
+            ctx.set_sampling(True)
+            
         if self.post_fork:
             self.post_fork()
         ctx.cal.event('WORKER', 'STARTED', '0', {'pid': os.getpid()})
