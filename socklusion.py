@@ -101,7 +101,7 @@ else:
 
     def reap_processes(signo, frame):
         global PROCS
-        PROCS = [proc for proc in PROCS if proc.poll() is not None]
+        PROCS = [proc for proc in PROCS if proc.poll() is None]
         if not PROCS:
             signal.signal(signal.SIGCHLD, orig_disposition)
         if callable(orig_disposition):
