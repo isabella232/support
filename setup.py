@@ -4,7 +4,7 @@
     support
     ~~~~~~~
 
-    An evented server framework designed for building scalable'
+    An evented server framework designed for building scalable
     and introspectable services. Built at PayPal, based on gevent.
 
     :copyright: (c) 2015 by Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane
