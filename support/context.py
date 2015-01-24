@@ -78,7 +78,6 @@ class Context(object):
     ========================== ===================================== ==============================
     '''
     def __init__(self, dev=False, stage_host=None):
-        import topos
         import cache
 
         ml.ld("Initing Context {0}",  id(self))
@@ -100,23 +99,15 @@ class Context(object):
         self.thread_locals = local()
         self.cpu_thread_enabled = True
 
-        #CAL RELATED STUFF
-        import cal
-        self.cal = cal.DefaultClient('python-default')
+        self.cal = None  # TODO
         self.greenlet_trans_stack = WeakKeyDictionary()
-        self.async_cal_visible = False
-        self.max_cal_threadids = 30
 
         # recent stuff
         self.recent = cache.DefaultLRU(4096, lambda: deque(maxlen=1024))
         self.recent['network'] = cache.DefaultLRU(512, lambda: deque(maxlen=100))
 
         #ASF RELATED STUFF
-        from asf import asf_context
-        self.asf_context = asf_context.ASFContext()
-        self.cal_client_info_event_enabled = True
-        self.asf_default_live_format = 'binary'
-        self.asf_default_nonlive_format = 'xml'
+        self.asf_context = None
 
         #PROTECTED RELATED STUFF
         self.protected = None
@@ -163,22 +154,13 @@ class Context(object):
                         pass
 
         #TOPO RELATED STUFF
-        try:
-            self.topos = topos.TopoFile(ip=self.ip)
-        except EnvironmentError:
-            self.topos = None
-        self.set_stage_host(stage_host)
-        self.address_groups = {}
-        self.service_server_map = topos.ServiceServerMap()
-        self.address_aliases = dict(
-            [(k, v[0]) for k, v in self.service_server_map.items() if len(v) == 1])
+        self.topos = None  # TODO
 
         self.amqs = {}
         self.fpti_client = None  # set from contrib ?
 
-        import opscfg
-        self.ops_config = opscfg.DefaultConfig()
-        self.opscfg_revmap = opscfg.ReverseMap()
+        self.ops_config = None  # TODO
+        self.opscfg_revmap = None
 
         self._serve_ufork = None
         self._serve_daemon = None
@@ -231,42 +213,20 @@ class Context(object):
         self.recent['network'] = cache.DefaultEmptyCache(lambda: deque(maxlen=1))
 
     def set_stage_host(self, stage_host, stage_ip=None):
-        from contrib import net
-
-        self.stage_host = stage_host
-        if stage_ip:
-            self.stage_ip = stage_ip
-        elif stage_host:
-            self.stage_ip = net.find_host(stage_host)[0]
-        else:
-            self.stage_ip = None
-
+        self.stage_host = None
+        self.stage_ip = None  # net.find_host(stage_host)[0]  # TODO
         self._update_addresses()
 
     def set_config(self, config):
         self.config = config
         self._update_addresses()
         if self.appname:
-            import opscfg
-            self.ops_config = opscfg.OpsCfg(self.appname)
-
-    def set_topos(self, topo_or_path):
-        import topos
-        if isinstance(topo_or_path, basestring):
-            topo_or_path = topos.TopoFile(topo_dir=topo_or_path, ip=self.ip)
-        self.topos = topo_or_path
-        self._update_addresses()
+            self.ops_config = None  # TODO
 
     def _update_addresses(self):
         stage_path = '/x/web/' + self.hostname.upper() + '/topo/STAGE2.default.topo'
         dev_path = os.path.expanduser('~/.pyinfra/topo/STAGE2.default.topo')
         altus_path = '/x/web/LIVE/topo/STAGE2.default.topo'
-        if self.stage_host:
-            import topos
-            for path in stage_path, dev_path, altus_path:
-                if os.path.exists(path):
-                    self.topos = topos.TopoFile(path, ip=self.stage_ip)
-                    break
         if self.topos:
             addresses = self.topos.get(self.appname) or {}
         else:

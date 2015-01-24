@@ -34,7 +34,7 @@ import gevent
 import async
 import context
 import sockpool
-from protected import Protected
+
 import ll
 
 ml = ll.LLogger()
@@ -111,7 +111,7 @@ class ConnectionManager(object):
                 return value
             else:
                 return get_gai(e)
-            
+
         with ctx.cal.trans('DNS-CACHE', name, msg = {'len': len(address_list)}):
             address_list = [cache_gai(e) for e in address_list]
 

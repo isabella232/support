@@ -28,15 +28,13 @@ import gevent.socket
 import gevent.pool
 
 from faststat import nanotime
-
-import async
-from protected import Protected
-import context
-import env
 import clastic
 
-import ll
+import async
+import context
 
+
+import ll
 ml = ll.LLogger()
 
 
@@ -81,6 +79,7 @@ class ServerGroup(object):
 
         for app, address, ssl in wsgi_apps:
             sock = _make_server_sock(address, socket_type=socket_type)
+
             if isinstance(ssl, Protected):
                 protected = ssl
             elif ssl:
@@ -187,7 +186,7 @@ class ServerGroup(object):
         if ctx.sampling:
             ctx.set_sampling(False)
             ctx.set_sampling(True)
-            
+
         if self.post_fork:
             self.post_fork()
         ctx.cal.event('WORKER', 'STARTED', '0', {'pid': os.getpid()})
