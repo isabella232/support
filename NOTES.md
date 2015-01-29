@@ -17,7 +17,7 @@
   - topos
   - opscfg
 - include contrib.net (+ other contrib things?)
-
+- is .run() really a public part of the ServerGroup API?
 
 ## Deps
 

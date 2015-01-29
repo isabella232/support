@@ -165,9 +165,10 @@ class Context(object):
         self._serve_ufork = None
         self._serve_daemon = None
         self._wsgi_middleware = None
-        self.ssl_client_cert_optional_in_dev = True
         # whether or not dev mode servers should make client certs optional
-        self.dev_service_repl_enabled = True
+        self.ssl_client_cert_optional_in_dev = True
+
+        self.dev_service_repl_enabled = False
         self.dev_cal_print_logs = True
         self.dev_use_reloader = False
         # whether a greenlet REPL should be started when a server is run in dev mode
@@ -284,18 +285,6 @@ class Context(object):
             feel_addr = self._feel.lar.conn.address
             self.cal.event("MSG", "INIT", '0', "server=%r" % feel_addr)
         return self._feel
-
-    @property
-    def pid_file_path(self):
-        warnings.warn('DEPRECATED: pid_file_path is deprecated'
-                      '\nplease use process_group_file_path instead')
-        return self.process_group_file_path
-
-    @pid_file_path.setter
-    def pid_file_path(self, value):
-        warnings.warn('DEPRECATED: pid_file_path is deprecated'
-                      '\nplease use process_group_file_path instead')
-        self.process_group_file_path = value
 
     @property
     def dev(self):
@@ -669,47 +658,6 @@ def get_ip_from_hosts():
         for line in hosts:
             if hostname in line:
                 return line.split()[0]
-
-
-def _find_warnings(root, max_depth=6, _cur_depth=1, _sofar=None):
-    '''
-    recursively walk attributes and items to find all warnings attributes
-    '''
-    if _sofar is None:
-        _sofar = {}
-    warnings = {}
-
-    if id(root) in _sofar:
-        return _sofar[id(root)]
-
-    children = {}
-    try:
-        if hasattr(root, "__dict__"):
-            children.update(root.__dict__)
-    except:
-        pass
-        #import traceback; traceback.print_exc()
-    try:
-        if hasattr(root, "items") and callable(root.items):
-            children.update(root)
-    except:
-        pass
-        #import traceback; traceback.print_exc()
-
-    if _cur_depth <= max_depth:
-        for key, val in children.items():
-            sub_warnings = _find_warnings(val, max_depth, _cur_depth + 1, _sofar)
-            if sub_warnings:
-                warnings[key] = sub_warnings
-
-    if hasattr(root, "warnings") and root.warnings:
-        warnings['warnings'] = root.warnings
-
-    if hasattr(root, "errors") and root.errors:
-        warnings['errors'] = root.errors
-
-    _sofar[id(root)] = warnings
-    return warnings
 
 
 CONTEXT = None

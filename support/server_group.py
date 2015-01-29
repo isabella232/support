@@ -38,6 +38,10 @@ import ll
 ml = ll.LLogger()
 
 
+class SSLContext(object):  # TODO
+    pass
+
+
 class ServerGroup(object):
     def __init__(self, wsgi_apps=(), stream_handlers=(), custom_servers=(),
                  prefork=None, daemonize=None, dev=None, **kw):
@@ -80,31 +84,27 @@ class ServerGroup(object):
         for app, address, ssl in wsgi_apps:
             sock = _make_server_sock(address, socket_type=socket_type)
 
-            if isinstance(ssl, Protected):
-                protected = ssl
+            if isinstance(ssl, SSLContext):
+                ssl_context = ssl
             elif ssl:
-                protected = ctx.protected
+                ssl_context = ctx.ssl_context
             else:
-                protected = None
-            if protected:
-                # TODO: maybe this determination belongs centralized in context?
-                if dev or env.pp_host_env() in ("STAGE2", "HYPER") or kw.get('no_client_auth_required'):
-                    if ctx.ssl_client_cert_optional_in_dev or kw.get('no_client_auth_required'):
-                        sslcontext = getattr(protected, 'ssl_dev_server_context')
-                    else:
-                        sslcontext = getattr(protected, 'ssl_server_context')
+                ssl_context = None
+            if ssl_context:
+                if kw.get('no_client_auth_req'):
                     server = MultiProtocolWSGIServer(
-                        sock, app, spawn=self.client_pool, context=sslcontext)
+                        sock, app, spawn=self.client_pool, context=ssl_context)
                 else:
                     server = SslContextWSGIServer(
-                        sock, app, spawn=self.client_pool, context=protected.ssl_server_context)
+                        sock, app, spawn=self.client_pool, context=ssl_context)
             else:
                 server = ThreadQueueWSGIServer(sock, app)
             server.log = self.server_log or RotatingGeventLog()
             self.servers.append(server)
             self.socks[server] = sock
             # prevent a "blocking" call to DNS on each request
-            # (NOTE: although the OS won't block, gevent will dispatch to a threadpool which is expensive)
+            # (NOTE: although the OS won't block, gevent will dispatch
+            # to a threadpool which is expensive)
             server.set_environ({'SERVER_NAME': socket.getfqdn(address[0]),
                                 'wsgi.multiprocess': True})
         for handler, address in self.stream_handlers:
@@ -556,7 +556,7 @@ class SslContextWSGIServer(ThreadQueueWSGIServer):
 
         if not self.ssl_args:
             raise ValueError('https server requires server-side'
-                             ' SSL certificate (protected)')
+                             ' SSL certificate')
         protocol = _socket_protocol(client_socket)
         if protocol == "ssl":
             with ctx.cal.atrans('CONNECT_SSL', str(address[0])):
@@ -685,25 +685,24 @@ def console_sock_handle(sock, address):
         os.getpid(), address))
 
 
+# TODO: move elsewhere
 
-class CALTransactionMiddleware(clastic.Middleware):
+class SimpleLogMiddleware(clastic.Middleware):
     provides = ['api_cal_trans']
 
     def request(self, next, request, _route):
         url = getattr(_route, 'pattern', '').encode('utf-8')
         ctx = context.get_context()
-        with ctx.cal.trans('URL', url) as request_txn:
+        with ctx.cal.trans('URL', url) as request_txn:  # TODO
             request_txn.msg = {}
             return next(api_cal_trans=request_txn)
 
-class PayPalWsgiApplication(object):
+class SimpleSupportApplication(object):
 
     def __init__(self, routes_handlers, middlewares=None):
         from . import asf
         from asf import meta_service
-        from asf import _ecv
         from asf import _favicon
-        from asf import _app_info
 
         mw = [CALTransactionMiddleware()]
         if middlewares:
