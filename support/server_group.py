@@ -66,15 +66,20 @@ class ServerGroup(object):
         self.prefork = prefork if prefork is not None else ctx.serve_ufork
         self.daemonize = daemonize if daemonize is not None else ctx.serve_daemon
         dev = dev if dev is not None else ctx.dev
-        self.post_fork = kw.get('post_fork')  # callback to be executed post fork
-        self.server_log = kw.get('gevent_log')
         self.wsgi_apps = wsgi_apps
         self.stream_handlers = list(stream_handlers)
         self.custom_servers = list(custom_servers)
         self.num_workers = ctx.num_workers
+        self.post_fork = kw.pop('post_fork', None)  # callback to be executed post fork
+        self.server_log = kw.pop('gevent_log', None)
+        self._no_client_auth_req = kw.pop('no_client_auth_req', False)
+
+        if kw:
+            raise TypeError('unexpected keyword args: %r' % kw.keys())
+
+        self.client_pool = gevent.pool.Pool(ctx.max_concurrent_clients)
         self.servers = []
         self.socks = {}
-        self.client_pool = gevent.pool.Pool(ctx.max_concurrent_clients)
 
         # we do NOT want a gevent socket if we're going to use a
         # thread to manage our accepts; it's critical that the
@@ -91,7 +96,7 @@ class ServerGroup(object):
             else:
                 ssl_context = None
             if ssl_context:
-                if kw.get('no_client_auth_req'):
+                if self._no_client_auth_req:
                     server = MultiProtocolWSGIServer(
                         sock, app, spawn=self.client_pool, context=ssl_context)
                 else:
@@ -131,20 +136,18 @@ class ServerGroup(object):
         for server in self.servers:
             server.max_accept = 1
 
-    def run(self, event=None):
+    def serve_forever(self):
         ctx = context.get_context()
         ctx.running = True
         try:
+            # set up greenlet switch monitoring
             import greenlet
             greenlet.settrace(ctx._trace)
         except AttributeError:
             pass  # oh well
         if not self.prefork:
             self.start()
-            ml.la("The server is now really running and listening to requests-init over!")
-            if event:
-                event.set()
-
+            ml.la("Group initialized and serving forever")
             if ctx.dev and ctx.dev_service_repl_enabled and os.isatty(0):
                 async.start_repl({'server': ctx.server_group})
             try:
