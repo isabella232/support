@@ -44,7 +44,7 @@ class SSLContext(object):  # TODO
 
 class ServerGroup(object):
     def __init__(self, wsgi_apps=(), stream_handlers=(), custom_servers=(),
-                 prefork=None, daemonize=None, dev=None, **kw):
+                 prefork=None, daemonize=None, **kw):
         '''Create a new ServerGroup which will can be started / stopped / forked as a group.
 
         *wsgi_apps* should be of the form  [ (wsgi_app, address, ssl), ...  ]
@@ -65,14 +65,13 @@ class ServerGroup(object):
         ctx = context.get_context()
         self.prefork = prefork if prefork is not None else ctx.serve_ufork
         self.daemonize = daemonize if daemonize is not None else ctx.serve_daemon
-        dev = dev if dev is not None else ctx.dev
         self.wsgi_apps = wsgi_apps
         self.stream_handlers = list(stream_handlers)
         self.custom_servers = list(custom_servers)
         self.num_workers = ctx.num_workers
         self.post_fork = kw.pop('post_fork', None)  # callback to be executed post fork
         self.server_log = kw.pop('gevent_log', None)
-        self._no_client_auth_req = kw.pop('no_client_auth_req', False)
+        self._require_client_auth = kw.pop('require_client_auth', True)
 
         if kw:
             raise TypeError('unexpected keyword args: %r' % kw.keys())
@@ -147,7 +146,7 @@ class ServerGroup(object):
             pass  # oh well
         if not self.prefork:
             self.start()
-            ml.la("Group initialized and serving forever")
+            ml.la("Group initialized and serving forever...")
             if ctx.dev and ctx.dev_service_repl_enabled and os.isatty(0):
                 async.start_repl({'server': ctx.server_group})
             try:
@@ -197,7 +196,7 @@ class ServerGroup(object):
             ctx.set_greenlet_trace(True)  # if it was enabled before forking
         self.start()
 
-    def start(self):
+    def start(self):  # TODO
         errs = {}
         for server in self.servers:
             try:
@@ -208,7 +207,7 @@ class ServerGroup(object):
         if errs:
             raise RuntimeError(errs)
 
-    def stop(self, timeout=30.0):
+    def stop(self, timeout=30.0):  # TODO: .shutdown()?
         gevent.joinall([gevent.spawn(server.stop, timeout) for server in self.servers], raise_error=True)
 
 
