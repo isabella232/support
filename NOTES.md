@@ -17,16 +17,16 @@
   - topos
   - opscfg
 - include contrib.net (+ other contrib things?)
+- absolute imports (async -> support.async)
 
 ### ServerGroup
 
-- is .run() really a public part of the ServerGroup API?
-- no_client_auth_req keyword arg => require_client_auth?
-- dev kw arg?
 - split console into separate module?
 - split out SimpleSupportApplication
 
-- run became serve_forever and run had an event kwarg called post-start and we removed it
+- run became serve_forever and run had an `event` kwarg that was called after server.start() and we removed it
+- removed dev kwarg
+- start() may not be part of public API (needs cleanup/clarification)
 
 ## Deps
 

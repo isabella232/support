@@ -1,11 +1,11 @@
 '''
-Protocol agnostic socket pooler.
+Protocol-agnostic socket pooler.
 
 This code is both extremely tested and hard to test.
 Modify with caution :-)
 
-"There are two ways of constructing a software design: 
-One way is to make it so simple that there are obviously no deficiencies, 
+"There are two ways of constructing a software design:
+One way is to make it so simple that there are obviously no deficiencies,
 and the other way is to make it so complicated that there are no obvious deficiencies."
 -CAR Hoare, 1980 Turing Award lecture
 
@@ -13,9 +13,9 @@ In particular: it is tempting to attempt to auto-reconnect and re-try at this la
 This is not possible to do correctly however, since only the protocol aware clients
 know what a retry entails.  (e.g. SSL handshake, reset protocol state)
 '''
-import socket
 import time
 import select
+import socket
 
 import gevent
 
@@ -25,7 +25,7 @@ ml = ll.LLogger()
 
 # TODO: free_socks_by_addr using sets instead of lists could probably improve
 # performance of cull
-class SockPool(object):
+class SocketPool(object):
     def __init__(self, timeout=0.25, max_sockets=800):
         import async  # breaks circular dependency
 
@@ -61,7 +61,7 @@ class SockPool(object):
         try:  # sock.fileno() will throw if EBADF
             ml.ld("Releasing sock {0} /FD {1}", str(id(sock)), str(sock.fileno()))
         except:
-            pass  
+            pass
         try:
             if select.select([sock], [], [], 0)[0]:
                 self.killsock(sock)
@@ -153,5 +153,7 @@ class SockPool(object):
             gevent.spawn(self.killsock, sock)
 
     def __repr__(self):
-        return "<sockpool.SockPool nsocks={0}/{1} naddrs={2}>".format(
-            self.total_sockets, self.max_sockets, len(self.free_socks_by_addr))
+        return "<%s nsocks=%r/%r naddrs=%r>" % (self.__class__.__name__,
+                                                self.total_sockets,
+                                                self.max_sockets,
+                                                len(self.free_socks_by_addr))

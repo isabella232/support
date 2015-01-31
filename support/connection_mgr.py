@@ -188,8 +188,8 @@ class ConnectionManager(object):
         if protected not in self.sockpools:
             self.sockpools[protected] = {}
         if sock_type not in self.sockpools[protected]:
-            self.sockpools[protected][sock_type] = sockpool.SockPool(
-                timeout=getattr(sock_type, "idle_timeout", 0.25))
+            idle_timeout = getattr(sock_type, "idle_timeout", 0.25)
+            self.sockpools[protected][sock_type] = socket_pool.SocketPool(timeout=idle_timeout)
 
         sock = self.sockpools[protected][sock_type].acquire(address)
         msock = None
