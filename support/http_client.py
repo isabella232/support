@@ -80,9 +80,10 @@ class _GHTTPConnection(httplib.HTTPConnection):
             try:
                 thelen = str(os.fstat(body.fileno()).st_size)
             except (AttributeError, OSError):
+                # TODO
                 # Don't send a length if this failed
                 if self.debuglevel > 0:
-                    print "Cannot stat!!"
+                    print "Cannot stat file-type HTTP body."
 
         if thelen is not None:
             self.putheader('Content-Length', thelen)

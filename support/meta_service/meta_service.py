@@ -78,7 +78,6 @@ def rt_json_render_basic(request, context, _route):
 
 class MetaTable(clastic.render.Table):
     def get_cell_html(self, value):
-        print "HELLO WORLD!"
         inner = super(MetaTable, self).get_cell_html(value)
         if not gc.is_tracked(value):
             return inner
@@ -367,7 +366,7 @@ def get_frames_local_to(obj):
         if not isinstance(f, types.FrameType):
             continue
         if f.f_code.co_filename == __file__:
-            continue  # skip incestuous self-references
+            continue  # skip references to this file
         for k, v in f.f_locals.items():
             if v is obj:
                 frame_refs.append((k, f))
@@ -542,4 +541,3 @@ def view_obj(request, obj_id=None):
         obj_browser.render_html(
             obj, lambda id: path + '/{0}'.format(id)),
         mimetype="text/html")
-
