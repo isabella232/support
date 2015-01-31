@@ -33,7 +33,7 @@ import gevent
 
 import async
 import context
-import sockpool
+import socket_pool
 
 import ll
 
@@ -43,7 +43,7 @@ ml = ll.LLogger()
 class ConnectionManager(object):
 
     def __init__(self, address_groups=None, address_aliases=None, ops_config=None, protected=None):
-        self.sockpools = weakref.WeakKeyDictionary()  # one sockpool per protected
+        self.sockpools = weakref.WeakKeyDictionary()  # one socket pool per protected
         # self.sockpools = { weakref(protected) : {socket_type: [list of sockets]} }
         self.address_groups = address_groups
         self.address_aliases = address_aliases
