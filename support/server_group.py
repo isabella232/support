@@ -51,7 +51,7 @@ class ServerGroup(object):
 
         *stream_handlers* should be of the form  [ (handler_func, address), ...  ]
 
-        *custom handlers* should be of the form [ (server_class, address), ... ]
+        *custom_servers* should be of the form [ (server_class, address), ... ]
         where server_class refers to subclasses of gevent.server.StreamServer
         which define their own handle function
 
@@ -65,10 +65,14 @@ class ServerGroup(object):
         ctx = context.get_context()
         self.prefork = prefork if prefork is not None else ctx.serve_ufork
         self.daemonize = daemonize if daemonize is not None else ctx.serve_daemon
-        self.wsgi_apps = wsgi_apps
-        self.stream_handlers = list(stream_handlers)
-        self.custom_servers = list(custom_servers)
-        self.num_workers = ctx.num_workers
+        self.wsgi_apps = list(wsgi_apps or [])
+        self.stream_handlers = list(stream_handlers or [])
+        self.custom_servers = list(custom_servers or [])
+        self.meta_address = kw.pop('meta_address', None)
+        self.console_address = kw.pop('console_address', None)
+        # max number of concurrent clients per worker
+        self.max_clients = kw.pop('max_clients', 1024)
+        self.num_workers = kw.pop('num_workers', 1)
         self.post_fork = kw.pop('post_fork', None)  # callback to be executed post fork
         self.server_log = kw.pop('gevent_log', None)
         self._require_client_auth = kw.pop('require_client_auth', True)
@@ -122,18 +126,26 @@ class ServerGroup(object):
             sock = _make_server_sock(address)
             server = server_class(sock, spawn=self.client_pool)
             self.servers.append(server)
-        if ctx.backdoor_port is not None:
+        if self.console_address is not None:
             try:
-                sock = _make_server_sock(("0.0.0.0",
-                                          ctx.backdoor_port))
+                sock = _make_server_sock(self.console_address)
             except Exception as e:
                 print "WARNING: unable to start backdoor server on port", ctx.backdoor_port, repr(e)
             else:
                 server = gevent.server.StreamServer(sock, console_sock_handle, spawn=self.client_pool)
                 self.servers.append(server)
-        # set all servers max_accept to 1 since we are in a pre-forked/multi-process enviornment
+        # set all servers max_accept to 1 since we are in a pre-forked/multiprocess environment
         for server in self.servers:
             server.max_accept = 1
+
+    def iter_addresses(self):
+        # TODO: also yield app/handler?
+        for wsgi_app, address, ssl_ctx in self.wsgi_apps:
+            yield address
+        for handler, address in self.stream_handlers:
+            yield address
+        for server, address in self.custom_servers:
+            yield address
 
     def serve_forever(self):
         ctx = context.get_context()
@@ -156,8 +168,8 @@ class ServerGroup(object):
                 self.stop()
             return
         if not ufork:
-            raise RuntimeError('attempting to run pre-forked on platform without fork')
-        if ctx.tracing:  # a little bit hackey, disable tracing in aribter
+            raise RuntimeError('attempted to run pre-forked on platform without fork')
+        if ctx.tracing:  # a little bit hacky, disable tracing in aribter
             self.trace_in_child = True
             ctx.set_greenlet_trace(False)
         else:
@@ -696,15 +708,15 @@ class SimpleLogMiddleware(clastic.Middleware):
         url = getattr(_route, 'pattern', '').encode('utf-8')
         ctx = context.get_context()
         with ctx.cal.trans('URL', url) as request_txn:  # TODO
+            print '-- hit the URL trans'
             request_txn.msg = {}
             return next(api_cal_trans=request_txn)
 
 class SimpleSupportApplication(object):
 
     def __init__(self, routes_handlers, middlewares=None):
-        from . import asf
-        from asf import meta_service
-        from asf import _favicon
+        #from asf import meta_service
+        #from asf import _favicon
 
         mw = [CALTransactionMiddleware()]
         if middlewares:
