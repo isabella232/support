@@ -237,10 +237,6 @@ def _make_server_sock(address, socket_type=gevent.socket.socket):
     return sock
 
 
-def my_close(self):
-    context.get_context().stats['fake_close'].add(1.0)
-
-
 class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
     '''
     quick work-around to re-enable gevent's work-around of the
