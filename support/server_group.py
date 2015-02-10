@@ -1,5 +1,5 @@
 '''
-Defines a ServerGroup class for running and managing servers, as well as a set of
+Defines a Group class for running and managing servers, as well as a set of
 base server types.
 
 The following information is needed to start a server:
@@ -37,6 +37,8 @@ import ll
 ml = ll.LLogger()
 
 
+# TODO: autoadd console and meta servers
+
 DEFAULT_NUM_WORKERS = 1
 DEFAULT_MAX_CLIENTS = 1024  # per worker
 DEFAULT_SOCKET_LISTEN_SIZE = 128
@@ -46,10 +48,12 @@ class SSLContext(object):  # TODO
     pass
 
 
-class ServerGroup(object):
+class Group(object):
     def __init__(self, wsgi_apps=(), stream_handlers=(), custom_servers=(),
                  prefork=None, daemonize=None, **kw):
-        '''Create a new ServerGroup which will can be started / stopped / forked as a group.
+        """\
+        Create a new Group of servers which can be started/stopped/forked
+        as a group.
 
         *wsgi_apps* should be of the form  [ (wsgi_app, address, ssl), ...  ]
 
@@ -63,22 +67,24 @@ class ServerGroup(object):
         acceptable as the address parameter to
         `socket.bind() <http://docs.python.org/2/library/socket.html#socket.socket.bind>`_.
 
-        handler_func should have the following signature: f(socket, address), following
+        `handler_func` should have the following signature: f(socket, address), following
         the `convention of gevent <http://www.gevent.org/servers.html>`_.
-        '''
+        """
         ctx = context.get_context()
-        self.prefork = prefork if prefork is not None else ctx.serve_ufork
-        self.daemonize = daemonize if daemonize is not None else ctx.serve_daemon
         self.wsgi_apps = list(wsgi_apps or [])
         self.stream_handlers = list(stream_handlers or [])
         self.custom_servers = list(custom_servers or [])
-        self.meta_address = kw.pop('meta_address', None)
-        self.console_address = kw.pop('console_address', None)
+
+        self.prefork = prefork if prefork is not None else ctx.serve_ufork
+        self.daemonize = ctx.serve_daemon if daemonize is None else daemonize
         # max number of concurrent clients per worker
         self.max_clients = kw.pop('max_clients', DEFAULT_MAX_CLIENTS)
         self.num_workers = kw.pop('num_workers', DEFAULT_NUM_WORKERS)
-        self.post_fork = kw.pop('post_fork', None)  # callback to be executed post fork
+        self.post_fork = kw.pop('post_fork', None)  # post-fork callback
         self.server_log = kw.pop('gevent_log', None)
+
+        self.meta_address = kw.pop('meta_address', None)
+        self.console_address = kw.pop('console_address', None)
         self._require_client_auth = kw.pop('require_client_auth', True)
 
         if kw:
