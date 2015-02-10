@@ -4,14 +4,23 @@ from support import Group
 from clastic import Application
 from clastic import render_basic
 
-from support.server_group import SimpleSupportApplication
 
 def home_handler():
     return 'Hello!'
 
 
-app = Application([('/', home_handler, render_basic)])
+def main():
+    app = Application([('/', home_handler, render_basic)])
 
-support.init()
-group = Group(wsgi_apps=[(app, ('0.0.0.0', 8888), False)])
-group.serve_forever()
+    support.init()
+    apps = [(app, ('0.0.0.0', 8888), False)]
+
+    group = Group(wsgi_apps=apps,
+                  prefork=True,
+                  num_workers=2,
+                  daemonize=True)
+    group.serve_forever()
+
+
+if __name__ == '__main__':
+    main()

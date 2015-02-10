@@ -1,5 +1,5 @@
 
-from lithoxyl import BaseLogger
+from lithoxyl import Logger
 from lithoxyl.sinks import SensibleSink, Formatter, StreamEmitter
 from lithoxyl.fields import FormatField
 
@@ -9,7 +9,7 @@ def get_current_gthreadid(record):
     return id(gevent.getcurrent())
 
 
-class SupportLogger(BaseLogger):
+class SupportLogger(Logger):
     pass
 
 

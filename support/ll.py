@@ -189,4 +189,3 @@ class LLogger(object):
                                                          self.tag), msg
             except:
                 log_failure(args[0])
-

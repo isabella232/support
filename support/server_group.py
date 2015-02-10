@@ -8,12 +8,11 @@ The following information is needed to start a server:
 3- ssl preference
 
 '''
-import collections
-import socket
 import os
+import socket
 import threading
 import traceback
-import time
+import collections
 
 if hasattr(os, "fork"):
     import ufork
@@ -32,10 +31,15 @@ import clastic
 
 import async
 import context
-
+from log import support_log, worker_log
 
 import ll
 ml = ll.LLogger()
+
+
+DEFAULT_NUM_WORKERS = 1
+DEFAULT_MAX_CLIENTS = 1024  # per worker
+DEFAULT_SOCKET_LISTEN_SIZE = 128
 
 
 class SSLContext(object):  # TODO
@@ -71,8 +75,8 @@ class ServerGroup(object):
         self.meta_address = kw.pop('meta_address', None)
         self.console_address = kw.pop('console_address', None)
         # max number of concurrent clients per worker
-        self.max_clients = kw.pop('max_clients', 1024)
-        self.num_workers = kw.pop('num_workers', 1)
+        self.max_clients = kw.pop('max_clients', DEFAULT_MAX_CLIENTS)
+        self.num_workers = kw.pop('num_workers', DEFAULT_NUM_WORKERS)
         self.post_fork = kw.pop('post_fork', None)  # callback to be executed post fork
         self.server_log = kw.pop('gevent_log', None)
         self._require_client_auth = kw.pop('require_client_auth', True)
@@ -158,7 +162,8 @@ class ServerGroup(object):
             pass  # oh well
         if not self.prefork:
             self.start()
-            ml.la("Group initialized and serving forever...")
+            log_msg = 'Group initialized and serving forever...'
+            support_log.critical('group_init').success(log_msg)
             if ctx.dev and ctx.dev_service_repl_enabled and os.isatty(0):
                 async.start_repl({'server': ctx.server_group})
             try:
@@ -203,7 +208,8 @@ class ServerGroup(object):
 
         if self.post_fork:
             self.post_fork()
-        ctx.cal.event('WORKER', 'STARTED', '0', {'pid': os.getpid()})
+        msg = 'successfully started process {pid}'
+        worker_log.critical('worker start').success(msg, pid=os.getpid())
         if self.trace_in_child:  # re-enable tracing LONG SPIN detection
             ctx.set_greenlet_trace(True)  # if it was enabled before forking
         self.start()
@@ -225,15 +231,21 @@ class ServerGroup(object):
 
 def _make_server_sock(address, socket_type=gevent.socket.socket):
     ml.ld("about to bind to {0!r}", address)
+    # support_log.info('bind')
     sock = socket_type()
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(address)
-    sock.listen(128)  # Note: 128 is a "hint" to the OS than a strict rule about backlog size
+
+    # NOTE: this is a "hint" to the OS than a strict rule about backlog size
+    sock.listen(DEFAULT_SOCKET_LISTEN_SIZE)
     if ufork is not None:
         # we may fork, so protect ourselves
         flags = fcntl.fcntl(sock.fileno(), fcntl.F_GETFD)
         fcntl.fcntl(sock.fileno(), fcntl.F_SETFD, flags | fcntl.FD_CLOEXEC)
     ml.la("Listen to {0!r} gave this socket {1!r}", address, sock)
+    support_log.critical('listen').success('Listen to {addr} gave {sock}',
+                                           addr=address,
+                                           sock=sock)
     return sock
 
 
@@ -323,7 +335,7 @@ class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
 # variables.
 #
 # The actual implementation is somewhat convoluted because of gevent's
-# BaseServer -> StreamServer -> WSGIServer inheritence hierarchy:
+# BaseServer -> StreamServer -> WSGIServer inheritance hierarchy:
 #
 # BaseServer.start -> BaseServer.start_accepting
 #                                 |
@@ -638,9 +650,10 @@ class RotatingGeventLog(object):
             self.msgs.pop()
 
 
-### a little helper for running an interactive console over a socket
+# a little helper for running an interactive console over a socket
 import code
 import sys
+
 
 class SockConsole(code.InteractiveConsole):
     def __init__(self, sock):
@@ -707,6 +720,7 @@ class SimpleLogMiddleware(clastic.Middleware):
             print '-- hit the URL trans'
             request_txn.msg = {}
             return next(api_cal_trans=request_txn)
+
 
 class SimpleSupportApplication(object):
 
