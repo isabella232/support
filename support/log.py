@@ -5,6 +5,7 @@ from lithoxyl.fields import FormatField
 
 import gevent
 
+
 def get_current_gthreadid(record):
     return id(gevent.getcurrent())
 
