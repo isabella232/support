@@ -1,3 +1,4 @@
+
 import os
 import os.path
 import sys
@@ -24,18 +25,26 @@ from . import ll
 ml = ll.LLogger()
 
 
-sleep = gevent.sleep  # alias gevent.sleep here so user doesn't have to know/worry about gevent
-Timeout = gevent.Timeout  # alias Timeout here as well since this is a darn useful class
-with_timeout = gevent.with_timeout
-nanotime = faststat.nanotime
+# TODO: investigate replacing curtime with nanotime
+# (mostly used in Threadpool dispatch
+if hasattr(time, "perf_counter"):
+    curtime = time.perf_counter  # 3.3
+elif platform.system() == "Windows":
+    curtime = time.clock
+else:
+    curtime = time.time
 
 
 class Greenlet(gevent.Greenlet):
     '''
     A subclass of gevent.Greenlet which adds additional members:
-    locals: a dict of variables that are local to the "spawn tree" of greenlets
-    spawner: a weak-reference back to the spawner of the greenlet
-    stacks: a record of the stack at which the greenlet was spawned, and ancestors
+
+     - locals: a dict of variables that are local to the "spawn tree" of
+       greenlets
+     - spawner: a weak-reference back to the spawner of the
+       greenlet
+     - stacks: a record of the stack at which the greenlet was
+       spawned, and ancestors
     '''
     def __init__(self, f, *a, **kw):
         super(Greenlet, self).__init__(f, *a, **kw)
@@ -52,6 +61,12 @@ class Greenlet(gevent.Greenlet):
 
 
 def get_spawntree_local(name):
+    """
+    Essentially provides dynamic scope lookup for programming aspects
+    that cross greenlet borders. Be wary of overusing this
+    functionality, as it effectively constitutes mutating global state
+    which can lead to race conditions and architectural problems.
+    """
     locals = getattr(gevent.getcurrent(), 'locals', None)
     if locals:
         return locals.get(name)
@@ -59,30 +74,30 @@ def get_spawntree_local(name):
 
 
 def set_spawntree_local(name, val):
+    """
+    Similar to get_spawntree_local except that it allows setting these
+    values. Again, be wary of overuse.
+    """
     cur = gevent.getcurrent()
     if not hasattr(cur, 'locals'):
         cur.locals = {}
     cur.locals[name] = val
 
 
-spawn = Greenlet.spawn
-
-
 def staggered_retries(run, *a, **kw):
     """
-        A version of spawn that will block will it is done
-        running the function, and which will call the function
-        repeatedly as time progresses through the timeouts list.
+    A version of spawn that will block will it is done
+    running the function, and which will call the function
+    repeatedly as time progresses through the timeouts list.
 
-        Best used for idempotent network calls (e.g. UserRead).
+    Best used for idempotent network calls (e.g. HTTP GETs).
 
-        e.g.
-        user_data = infra.async.staggered_retries(get_data, max_results,
-                                                  latent_data_ok, public_credential_load,
-                                                  timeouts_secs=[0.1, 0.5, 1, 2])
+    e.g.
+    user_data = async.staggered_retries(get_data, max_results,
+                                        latent_data_ok, public_credential_load,
+                                        timeouts_secs=[0.1, 0.5, 1, 2])
 
-        returns None on timeout.
-
+    returns None on timeout.
     """
     ctx = context.get_context()
     ready = gevent.event.Event()
@@ -98,7 +113,7 @@ def staggered_retries(run, *a, **kw):
         timeouts_secs = [0.05, 0.1, 0.15, 0.2]
     if timeouts_secs[0] > 0:
         timeouts_secs.insert(0, 0)
-    gs = spawn(run, *a, **kw)
+    gs = gevent.spawn(run, *a, **kw)
     gs.link_value(call_back)
     running = [gs]
     for i in range(1, len(timeouts_secs)):
@@ -107,13 +122,13 @@ def staggered_retries(run, *a, **kw):
             this_timeout = this_timeout * 5.0
         ml.ld2("Using timeout {0}", this_timeout)
         try:
-            with Timeout(this_timeout):
+            with gevent.Timeout(this_timeout):
                 ready.wait()
                 break
-        except Timeout:
+        except gevent.Timeout:
             ml.ld2("Timed out!")
             ctx.cal.event('ASYNC-STAGGER', run.__name__, '0', {'timeout': this_timeout})
-            gs = spawn(run, *a, **kw)
+            gs = gevent.spawn(run, *a, **kw)
             gs.link_value(call_back)
             running.append(gs)
     vals = [l.value for l in running if l.successful()]
@@ -135,56 +150,18 @@ def timed(f):
 
     @functools.wraps(f)
     def g(*a, **kw):
-        s = nanotime()
+        s = faststat.nanotime()
         r = f(*a, **kw)
-        context.get_context().stats[name].add((nanotime() - s) / 1e6)
+        context.get_context().stats[name].add((faststat.nanotime() - s) / 1e6)
         return r
     return g
-
-
-def get_parent(greenlet=None):
-    return context.get_context().greenlet_ancestors.get(greenlet or gevent.getcurrent())
-
-
-def get_cur_correlation_id():
-    ctx = context.get_context()
-    ancestors = ctx.greenlet_ancestors
-    corr_ids = ctx.greenlet_correlation_ids
-    cur = gevent.getcurrent()
-    #walk ancestors looking for a correlation id
-    while cur not in corr_ids and cur in ancestors:
-        cur = ancestors[cur]
-    #if no correlation id found, create a new one at highest level
-    if cur not in corr_ids:
-        import pp_crypt  # breaking circular import
-        #this is reproducing CalUtility.cpp
-        #TODO: where do different length correlation ids come from in CAL logs?
-        t = time.time()
-        corr_val = "{0}{1}{2}{3}".format(gevent.socket.gethostname(),
-                                         os.getpid(), int(t), int(t % 1 * 10 ** 6))
-        corr_id = "{0:x}{1:x}".format(
-            pp_crypt.fnv_hash(corr_val) & 0xFFFFFFFF,
-            int(t % 1 * 10 ** 6) & 0xFFFFFFFF)
-        ml.ld2("Generated corr_id {0}", corr_id)
-        corr_ids[cur] = corr_id
-    return corr_ids[cur]
-
-
-def set_cur_correlation_id(corr_id):
-    context.get_context().greenlet_correlation_ids[gevent.getcurrent()] = corr_id
-
-
-def unset_cur_correlation_id():
-    greenlet_id = gevent.getcurrent()
-    if greenlet_id in context.get_context().greenlet_correlation_ids:
-        del context.get_context().greenlet_correlation_ids[greenlet_id]
 
 
 def _make_threadpool_dispatch_decorator(name, size):
     def dispatch(f):
         '''
-        decorator to mark a function as cpu-heavy; will be executed in a separate
-        thread to avoid blocking any socket communication
+        decorator to mark a function as cpu-heavy; will be executed in a
+        separate thread to avoid blocking socket communication
         '''
 
         @functools.wraps(f)
@@ -198,10 +175,11 @@ def _make_threadpool_dispatch_decorator(name, size):
                 ml.ld3("In thread {0}", f.__name__)
                 started.append(curtime())
                 return f(*a, **kw)
-            #some modules import things lazily; it is too dangerous to run a function
-            #in another thread if the import lock is held by the current thread
-            #(this happens rarely -- only if the thread dispatched function is being executed
-            #at the import time of a module)
+            # some modules import things lazily; it is too dangerous
+            # to run a function in another thread if the import lock is
+            # held by the current thread (this happens rarely -- only
+            # if the thread dispatched function is being executed at
+            # the import time of a module)
             if not ctx.cpu_thread_enabled or imp.lock_held():
                 ret = in_thread(*a, **kw)
             else:
@@ -303,7 +281,7 @@ class CPUThread(object):
         self.in_q.append((done, func, args, kwargs, curtime()))
         context.get_context().stats['cpu_bound.depth'].add(1 + len(self.in_q))
         while not self.in_async:
-            gevent.sleep(0.01)  # poll until worker thread has finished initializing
+            gevent.sleep(0.01)  # poll until worker thread has initialized
         self.in_async.send()
         done.wait()
         res = self.results[done]
@@ -329,15 +307,18 @@ class CPUThread(object):
             self.err = err
 
     def __repr__(self):
-        return "<CPUThread@{0} in_q:{1} out_q:{2}>".format(id(self), len(self.in_q), len(self.out_q))
+        cn = self.__class__.__name__
+        return ("<%s@%s in_q:%s out_q:%s>" %
+                (cn, id(self), len(self.in_q), len(self.out_q)))
 
     def _error(self):
         # TODO: something better, but this is darn useful for debugging
         import traceback
         traceback.print_exc()
-        if hasattr(context.get_context().thread_locals, 'cpu_bound_thread') and \
-                context.get_context().thread_locals.cpu_bound_thread is self:
-            del context.get_context().thread_locals.cpu_bound_thread
+        ctx = context.get_context()
+        tl = ctx.thread_locals
+        if hasattr(tl, 'cpu_bound_thread') and tl.cpu_bound_thread is self:
+            del tl.cpu_bound_thread
 
 
 def _queue_stats(qname, fname, queued_ns, duration_ns, size_B=None):
@@ -353,29 +334,25 @@ def _queue_stats(qname, fname, queued_ns, duration_ns, size_B=None):
             ctx.stats[fprefix + '.rate(B/ms)'].add(size_B / (duration_ns * 1000.0))
 
 
-if hasattr(time, "perf_counter"):
-    curtime = time.perf_counter  # 3.3
-elif platform.system() == "Windows":
-    curtime = time.clock
-else:
-    curtime = time.time
+# TODO: make size configurable
+io_bound = _make_threadpool_dispatch_decorator('io_bound', 10)
 
-
-io_bound = _make_threadpool_dispatch_decorator('io_bound', 10)  # TODO: make size configurable
-# N.B.  In many cases fcntl could be used as an alternative method of achieving non-blocking file
-# io on unix systems
+# N.B.  In many cases fcntl could be used as an alternative method of
+# achieving non-blocking file io on unix systems
 
 
 def cpu_bound(f, p=None):
     '''
-    Cause the decorated function to have its execution deferred to a separate thread to avoid
-    blocking the IO loop in the main thread.
+    Cause the decorated function to have its execution deferred to a
+    separate thread to avoid blocking the IO loop in the main thread.
+    Useful for wrapping encryption or serialization tasks.
 
     Example usage:
 
     @async.cpu_bound
     def my_slow_function():
         pass
+
     '''
     @functools.wraps(f)
     def g(*a, **kw):
@@ -387,23 +364,26 @@ def cpu_bound(f, p=None):
         if not hasattr(ctx.thread_locals, 'cpu_bound_thread'):
             ctx.thread_locals.cpu_bound_thread = CPUThread()
         ml.ld3("Calling in cpu thread {0}", f.__name__)
-        return context.get_context().thread_locals.cpu_bound_thread.apply(f, a, kw)
+        return ctx.thread_locals.cpu_bound_thread.apply(f, a, kw)
     g.no_defer = f
     return g
 
 
 def cpu_bound_if(p):
     '''
-    Similar to cpu_bound, but should be called with a predicate parameter which determines
-    whether or not to dispatch to a cpu_bound thread.  The predicate will be passed the same
+    Similar to cpu_bound, but should be called with a predicate
+    parameter which determines whether or not to dispatch to a
+    cpu_bound thread.  The predicate will be passed the same
     parameters as the function itself.
 
     Example usage:
 
-    # will be deferred to a thread if parameter greater than 16k, else run locally
+    # will be deferred to a thread if parameter greater than 16k,
+    # else run inline
     @async.cpu_bound_if(lambda s: len(s) > 16 * 1024)
     def my_string_function(data):
         pass
+
     '''
     def g(f):
         f = cpu_bound(f)
@@ -428,6 +408,11 @@ def close_threadpool():
 
 
 def killsock(sock):
+    """Attempts to cleanly shutdown a socket. Regardless of cleanliness,
+    ensures that upon return, the socket is fully closed, catching any
+    exceptions along the way. A safe and prompt way to dispose of the
+    socket, freeing system resources.
+    """
     if hasattr(sock, '_sock'):
         ml.ld("Killing socket {0}/FD {1}", id(sock), sock._sock.fileno())
     else:
@@ -453,7 +438,7 @@ PID = os.getpid()
 
 
 def check_fork(fn):
-        """Hack for Django/infra interaction to reset after non-gevent fork"""
+        """Hack for Django/gevent interaction to reset after non-gevent fork"""
         @functools.wraps(fn)
         def wrapper(request):
                 global PID
@@ -464,8 +449,8 @@ def check_fork(fn):
         return wrapper
 
 
-### a little helper for running a greenlet-friendly console
-## implemented here since it directly references gevent
+# a little helper for running a greenlet-friendly console
+# implemented here since it directly references gevent
 
 
 class GreenConsole(code.InteractiveConsole):
@@ -481,3 +466,12 @@ def start_repl(local=None, banner="infra REPL (exit with Ctrl+C)"):
 def greenify(banner="REPL is now greenlet friendly (exit with Ctrl+C)"):
     import __main__
     GreenConsole(__main__.__dict__).interact(banner)
+
+
+# The following are imported/aliased for user import convenience
+spawn = Greenlet.spawn
+sleep = gevent.sleep
+Timeout = gevent.Timeout
+with_timeout = gevent.with_timeout
+nanotime = faststat.nanotime
+# end user imports/aliases
