@@ -1,15 +1,16 @@
 import os
 import os.path
-import copy
+import sys
 import functools
 import time
 import imp
-import traceback
+import code
 import platform
 import threading
 import collections
+import weakref
 
-from exceptions import ASFError
+import gevent
 import gevent.pool
 import gevent.socket
 import gevent.threadpool
@@ -27,6 +28,44 @@ sleep = gevent.sleep  # alias gevent.sleep here so user doesn't have to know/wor
 Timeout = gevent.Timeout  # alias Timeout here as well since this is a darn useful class
 with_timeout = gevent.with_timeout
 nanotime = faststat.nanotime
+
+
+class Greenlet(gevent.Greenlet):
+    '''
+    A subclass of gevent.Greenlet which adds additional members:
+    locals: a dict of variables that are local to the "spawn tree" of greenlets
+    spawner: a weak-reference back to the spawner of the greenlet
+    stacks: a record of the stack at which the greenlet was spawned, and ancestors
+    '''
+    def __init__(self, f, *a, **kw):
+        super(Greenlet, self).__init__(f, *a, **kw)
+        spawner = self.spawn_parent = weakref.proxy(gevent.getcurrent())
+        if not hasattr(spawner, 'locals'):
+            spawner.locals = {}
+        self.locals = spawner.locals
+        stack = []
+        cur = sys._getframe()
+        while cur:
+            stack.extend((cur.f_code, cur.f_lineno))
+            cur = cur.f_back
+        self.stacks = (tuple(stack),) + getattr(spawner, 'stacks', ())[:10]
+
+
+def get_spawntree_local(name):
+    locals = getattr(gevent.getcurrent(), 'locals', None)
+    if locals:
+        return locals.get(name)
+    return None
+
+
+def set_spawntree_local(name, val):
+    cur = gevent.getcurrent()
+    if not hasattr(cur, 'locals'):
+        cur.locals = {}
+    cur.locals[name] = val
+
+
+spawn = Greenlet.spawn
 
 
 def staggered_retries(run, *a, **kw):
@@ -84,103 +123,6 @@ def staggered_retries(run, *a, **kw):
         return vals[0]
     else:
         return None
-
-
-@functools.wraps(gevent.spawn)
-def spawn(run, *a, **kw):
-    gr = gevent.spawn(_exception_catcher, run, *a, **kw)
-    gr.calling_frame = sys._getframe()
-    ctx = context.get_context()
-    ctx.greenlet_ancestors[gr] = gevent.getcurrent()
-    if '_pid' not in kw:
-        ctx.cal.event('ASYNC', 'spawn.' + run.__name__, '0', {'id': hex(id(gr))[-5:]})
-    if hasattr(run, '__code__'):
-        gr.spawn_code = run.__code__
-    else:
-        gr.spawn_code = None
-    return gr
-
-
-def join(reqs, raise_exc=False, timeout=None):
-    with context.get_context().cal.atrans('ASYNC', 'join') as trans:
-        greenlets = []
-        for req in reqs:
-            if isinstance(req, gevent.greenlet.Greenlet):
-                greenlets.append(req)
-            else:
-                greenlets.append(spawn(_safe_req, req))
-        gevent.joinall(greenlets, raise_error=raise_exc, timeout=timeout)
-        results = []
-        aliases = getattr(context.get_context().cal, "aliaser", None)
-        aliases = aliases and aliases.mapping or {}
-        for gr, req in zip(greenlets, reqs):
-            # handle the case that we are joining on a greenlet that
-            # wasn't spawned via async.spawn and so doesn't have a
-            # spawn_code attribute
-            name = getattr(gr, "spawn_code", None)
-            name = (name and name.co_name or "") + "(" + hex(id(gr))[-5:] + ")"
-            if gr.successful():
-                results.append(gr.value)
-                trans.msg[name] = "0"
-            elif gr.ready():  # finished, but must have had error
-                results.append(gr.exception)
-                trans.msg[name] = "1"
-            else:  # didnt finish, must have timed out
-                results.append(AsyncTimeoutError(req, timeout))
-                trans.msg[name] = "U"
-            trans.msg[name] += ",tid=" + str(aliases.get(gr, "(-)"))
-        return results
-
-_CI = ((os.getpid() & 0xff) << 24)
-
-
-def parallel(reqs):
-    global _CI
-    ctx = context.get_context()
-    glets = []
-    pid = id(gevent.getcurrent())
-    with ctx.cal.trans('EXECT', 'M') as tran:
-        tran.msg['PI'] = pid
-        for x in reqs:
-            if hasattr(x, '__call__'):
-                # allow list of functions as well as list of spawn args
-                x = [x]
-            _CI += 1
-            glets.append(spawn(*x, _pid=pid, _ci=_CI))
-            ctx.cal.event('EXECP', 'P', '0', {'CI': _CI, 'Name': str(x[0].__name__)})
-
-        results = join(glets)
-    return results
-
-
-def _exception_catcher(f, *a, **kw):
-    from . import cal
-    ctx = context.get_context()
-    try:
-        if cal.get_root_trans() is None:
-            return f(*a, **kw)
-        my_name = 'ASYNC-SPAWN.' + f.__name__.upper()
-        if '_pid' in kw and '_ci' in kw:
-            pid = kw.pop('_pid')
-            _ci = kw.pop('_ci')
-            if ctx.async_cal_visible:
-                ctx.cal.event('ASYNC', "API", "1", {})
-            with ctx.cal.trans('EXECP', my_name) as trans:
-                trans.msg['CI'] = _ci
-                trans.msg['PI'] = pid
-                return f(*a, **kw)
-        else:
-            with ctx.cal.trans('ASYNC', my_name):
-                return f(*a, **kw)
-    except gevent.greenlet.GreenletExit:  # NOTE: would rather do this with weakrefs,
-        ml.ld("Exited by majeur")
-    except (Timeout, Exception) as e:  # NOTE: would rather do this with weakrefs,
-        if not hasattr(e, '__greenlet_traces'):  # but Exceptions are not weakref-able
-            e.__greenlet_traces = []
-        traces = e.__greenlet_traces
-        traces.append(traceback.format_exc())
-        traces.append(repr(gevent.getcurrent()))
-        raise
 
 
 def timed(f):
@@ -296,10 +238,6 @@ def _make_threadpool_dispatch_decorator(name, size):
     return dispatch
 
 
-# TODO: build this out to support a pool of threads and fully support
-# the gevent.threadpool.ThreadPool API and upstream back to gEvent
-# so they have a threadpool which is purely event based instead of
-# using polling
 class CPUThread(object):
     '''
     Manages a single worker thread to dispatch cpu intensive tasks to.
@@ -398,7 +336,7 @@ class CPUThread(object):
         import traceback
         traceback.print_exc()
         if hasattr(context.get_context().thread_locals, 'cpu_bound_thread') and \
-                   context.get_context().thread_locals.cpu_bound_thread is self:
+                context.get_context().thread_locals.cpu_bound_thread is self:
             del context.get_context().thread_locals.cpu_bound_thread
 
 
@@ -489,365 +427,6 @@ def close_threadpool():
         del tlocals.cpu_bound_thread
 
 
-def _safe_req(req):
-    'capture the stack trace of exceptions that happen inside a greenlet'
-    try:
-        return req()
-    except Exception as e:
-        raise ASFError(e)
-
-
-class AsyncTimeoutError(ASFError):
-    def __init__(self, request=None, timeout=None):
-        try:
-            self.ip = request.ip
-            self.port = request.port
-            self.service_name = request.service
-            self.op_name = request.operation
-        except AttributeError:
-            pass
-        if timeout:
-            self.timeout = timeout
-
-    def __str__(self):
-        ret = "AsyncTimeoutError"
-        try:
-            ret += " encountered while to trying execute " + self.op_name \
-                   + " on " + self.service_name + " (" + str(self.ip) + ':'      \
-                   + str(self.port) + ")"
-        except AttributeError:
-            pass
-        try:
-            ret += " after " + str(self.timeout) + " seconds"
-        except AttributeError:
-            pass
-        return ret
-
-ASFTimeoutError = AsyncTimeoutError
-#NOTE: for backwards compatibility; name changed on March 2013
-#after a decent interval, this can be removed
-
-
-### What follows is code related to map() contributed from MoneyAdmin's asf_util
-class Node(object):
-    def __init__(self, ip, port, **kw):
-        self.ip   = ip
-        self.port = port
-
-        # in case you want to add name/location/id/other metadata
-        for k, v in kw.items():
-            setattr(self, k, v)
-
-
-# call it asf_map to avoid name collision with builtin map?
-# return callable to avoid collision with kwargs?
-def map_factory(op, node_list, raise_exc=False, timeout=None):
-    """
-    map_factory() enables easier concurrent calling across multiple servers,
-    provided a node_list, which is an iterable of Node objects.
-    """
-
-    def asf_map(*a, **kw):
-        return join([op_ip_port(op, node.ip, node.port).async(*a, **kw)
-                     for node in node_list], raise_exc=raise_exc, timeout=timeout)
-    return asf_map
-
-
-def op_ip_port(op, ip, port):
-    serv = copy.copy(op.service)
-    serv.meta = copy.copy(serv.meta)
-    serv.meta.ip = ip
-    serv.meta.port = port
-    op = copy.copy(op)
-    op.service = serv
-    return op
-
-
-#these words fit the following criteria:
-#1- one or two syllables (fast to say), short (fast to write)
-#2- simple to pronounce and spell (no knee/knife)
-#3- do not have any homonyms (not aunt/ant, eye/I, break/brake, etc)
-# they are used to generate easy to communicate correlation IDs
-# should be edited if areas of confusion are discovered :-)
-SIMPLE_WORDS_LIST = ["air", "art", "arm", "bag", "ball", "bank", "bath", "back",
-                     "base", "bed", "beer", "bell", "bird", "block", "blood", "boat", "bone", "bowl",
-                     "box", "boy", "branch", "bridge", "bus", "cake", "can", "cap", "car",
-                     "case", "cat", "chair", "cheese", "child", "city", "class", "clock", "cloth",
-                     "cloud", "coat", "coin", "corn", "cup", "day", "desk", "dish", "dog", "door",
-                     "dream", "dress", "drink", "duck", "dust", "ear", "earth", "egg", "face", "fact",
-                     "farm", "fat", "film", "fire", "fish", "flag", "food", "foot", "fork", "game",
-                     "gate", "gift", "glass", "goat", "gold", "grass", "group", "gun", "hair",
-                     "hand", "hat", "head", "heart", "hill", "home", "horse", "house", "ice",
-                     "iron", "job", "juice", "key", "king", "lamp", "land", "leaf", "leg", "life",
-                     "lip", "list", "lock", "luck", "man", "map", "mark", "meal", "meat", "milk",
-                     "mind", "mix", "month", "moon", "mouth", "name", "net", "noise", "nose",
-                     "oil", "page", "paint", "pan", "park", "party", "pay", "path", "pen",
-                     "pick", "pig", "pin", "plant", "plate", "point", "pool", "press", "prize",
-                     "salt", "sand", "seat", "ship", "soup", "space", "spoon", "sport",
-                     "spring", "shop", "show", "sink", "skin", "sky", "smoke", "snow", "step", "stone",
-                     "store", "star", "street", "sweet", "swim", "tea", "team", "test", "thing",
-                     "tool", "tooth", "top", "town", "train", "tram", "tree", "type",
-                     "wash", "west", "wife", "wind", "wire", "word", "work", "world", "yard", "zoo"]
-
-# SSLSocket below started as a significant copy-pasta from gEvent, so we leave the license message
-# here
-
-'''
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software
-and associated documentation files (the "Software"), to deal in the Software without restriction,
-including without limitation the rights to use, copy, modify, merge, publish, distribute,
-sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial
-portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
-BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
-DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-'''
-
-
-from OpenSSL import SSL
-from gevent.socket import socket, timeout_default
-import sys
-
-try:
-    sslerror = gevent.socket.__socket__.sslerror
-except AttributeError:
-    class sslerror(gevent.socket.error):
-        pass
-
-
-def _wrap(v):
-    def wrapper(self, *a, **kw):
-        try:
-            return v(SSL.Connection if type(self) is type else self._proxy,
-                     *a, **kw)
-        except SSL.ZeroReturnError:
-            return ''
-        except SSL.Error as e:
-            t = type(e)  # convert OpenSSL errors to sub-classes of SSL.error
-            if t not in SSL_EX_MAP:
-                SSL_EX_MAP[t] = type(t.__name__, (gevent.socket.__socket__.error, t), {})
-            raise SSL_EX_MAP[t](*e.args)
-    functools.update_wrapper(wrapper, v,
-                             set(functools.WRAPPER_ASSIGNMENTS) & set(dir(v)))
-    return wrapper
-
-
-SSL_EX_MAP = {}
-
-
-def make_sock_close_wrapper():
-    items = dict(SSL.Connection.__dict__)
-    wrap_items = {}
-    for k, v in items.items():
-        if k in ('__init__', '__module__', '__slots__', '__new__', '__getattribute__'):
-            continue
-        wrap_items[k] = _wrap(v) if callable(v) else v
-
-    def __init__(self, sock):
-        self._proxy = sock
-    wrap_items['__init__'] = __init__
-    wrap_items['close'] = lambda self, *a, **kw: None
-    #OpenSSL.SSL.Connection itself uses __getattr__ for some things,
-    #so in addition to copying over the dict we also need to pass through
-    wrap_items['__getattr__'] = lambda self, k: getattr(self._proxy, k)
-    return type('SockCloseWrapper', (object,), wrap_items)
-
-#this class is a proxy for an underlying socket (OpenSSL.SSL.Connection in this case)
-#with the exception of close, which it ignores for the purposes of not closing the
-#socket before OpenSSL buffers have been cleared to the underlying socket when
-#gevent.pywsgi calls close()
-SockCloseWrapper = make_sock_close_wrapper()
-
-
-#TODO: convert to subclass of OpenSSL.SSL.Connection?
-# then, replace the _sock attribute of an existing gevent socket with this?
-# would this allow for the SockCloseWrapper to be eliminated?
-class SSLSocket(gevent.socket.socket):
-
-    def __init__(self, sock, server_side=False):
-        'sock is an instance of OpenSSL.SSL.Connection'
-        if server_side:  # work-around gevent.pywsgi hard-closing the underlying socket
-            sock = SockCloseWrapper(sock)
-        socket.__init__(self, _sock=sock)
-        self._makefile_refs = 0
-        self.peek_buf = ""  # buffer used to enable msg_peek
-        if server_side:
-            self._sock.set_accept_state()
-        else:
-            self._sock.set_connect_state()
-
-    def __getattr__(self, item):
-        assert item != '_sock', item
-        # since socket no longer implements __getattr__ let's do it here
-        # even though it's not good for the same reasons it was not good on socket instances
-        # (it confuses sublcasses)
-        return getattr(self._sock, item)
-
-    def _formatinfo(self):
-        return socket._formatinfo(self) + ' state_string=%r' % self._sock.state_string()
-
-    def accept(self):
-        sock, addr = gevent.socket.socket.accept(self)
-        ml.ld2("Accepted {0!r} {1!r}", sock, addr)
-        client = SSLSocket(sock._sock, server_side=True)
-        client.do_handshake()
-        return client, addr
-
-    def do_handshake(self, timeout=timeout_default):
-        self._do_ssl(self._sock.do_handshake, timeout)
-        # TODO: how to handle if timeout is 0.0, e.g. somebody
-        # wants to use this thing in a select() loop?
-        # don't worry about for now, because you'd have to be crazy
-        # to put a select loop when there are all these excellent greenlets available
-        peer_cert = self.get_peer_certificate()
-        if peer_cert:  # may be None if no cert
-            peer_cert = peer_cert.get_subject().get_components()
-        context.get_context().recent['peer_certs'].append(
-            (self._sock.getpeername(), time.time(), peer_cert))
-
-    def set_renegotiate(self, timeout=timeout_default):
-        '''
-        Set the renegotiate flag so that the next send/recv
-        or do_handshake will cause the session to be
-        renegotiated.
-        This allows session to be updated to reflect
-        changes on SSL context (e.g. change ciphers).
-        '''
-        self._do_ssl(self._sock.renegotiate, timeout)
-
-    def connect(self, *args):
-        socket.connect(self, *args)
-        self.do_handshake()
-
-    def send(self, data, flags=0, timeout=timeout_default):
-        if ll.get_log_level() >= ll.LOG_LEVELS['DEBUG2']:
-            if hasattr(data, 'tobytes'):
-                ml.ld2("SSL: {{{0}}}/FD {1}: OUTDATA: {{{2}}}",
-                       id(self), self._sock.fileno(), data.tobytes())
-            else:
-                ml.ld2("SSL: {{{0}}}/FD {1}: OUTDATA: {{{2}}}",
-                       id(self), self._sock.fileno(), data)
-
-        # tobytes() fails on strings -- how did this ever work?
-        # data is buffer on many platforms - thought it was only 2.6
-        return self._do_ssl(lambda: self._sock.send(data, flags), timeout)
-
-    def recv(self, buflen, flags=0):
-        if self.peek_buf:
-            if len(self.peek_buf) >= buflen:
-                if flags & gevent.socket.MSG_PEEK:
-                    return self.peek_buf[:buflen]
-                retval, self.peek_buf = self.peek_buf[:buflen], self.peek_buf[buflen:]
-                return retval
-            else:
-                buflen -= len(self.peek_buf)
-        pending = self._sock.pending()
-        if pending:
-            retval = self._sock.recv(min(pending, buflen))
-        else:
-            retval = self._do_ssl(lambda: self._sock.recv(buflen))
-        ml.ld2("SSL: {{{0}}}/FD {1}: INDATA: {{{2}}}",
-               id(self), self._sock.fileno(), retval)
-        if self.peek_buf:
-            retval, self.peek_buf = self.peek_buf + retval, ""
-        if flags and flags & gevent.socket.MSG_PEEK:
-            self.peek_buf = retval
-        return retval
-
-    def read(self, buflen=1024):
-        """
-        NOTE: read() in SSLObject does not have the semantics of file.read
-        reading here until we have buflen bytes or hit EOF is an error
-        """
-        return self.recv(buflen)
-
-    def write(self, data):
-        try:
-            return self.sendall(data)
-        except SSL.Error as ex:
-            raise sslerror(str(ex))
-
-    def makefile(self, mode='r', bufsize=-1):
-        self._makefile_refs += 1
-        return gevent.socket._fileobject(self, mode, bufsize, close=True)
-
-    def shutdown(self, how, timeout=timeout_default):
-        if timeout is timeout_default:
-            timeout = self.timeout
-        self._do_ssl(self._sock.shutdown)
-        #accept how parameter for compatibility with normal sockets,
-        #although OpenSSL.SSL.Connection objects do not accept how
-
-    def close(self):
-        if self._makefile_refs < 1:
-            self.shutdown(gevent.socket.SHUT_RDWR)
-            gevent.socket.socket.close(self)
-        else:
-            self._makefile_refs -= 1
-
-    def _do_ssl(self, func, timeout=timeout_default):
-        'call some network funcion, re-handshaking if necessary'
-        if timeout is timeout_default:
-            timeout = self.timeout
-        while True:
-            try:
-                ml.ld2("Calling {0} for do_ssl", func.__name__)
-                return func()
-            except SSL.WantReadError as ex:
-                ml.ld2("SSL: {{{0}}}/FD {1}:  INDATA: Want Read", id(self), self._sock.fileno())
-                if timeout == 0.0:
-                    raise gevent.socket.timeout(str(ex))
-                else:
-                    sys.exc_clear()
-                    gevent.socket.wait_read(self._sock.fileno(), timeout=timeout)
-            except SSL.WantWriteError as ex:
-                ml.ld2("SSL: {{{0}}}/FD {1}:  INDATA: Want Write {{}}", id(self), self._sock.fileno())
-                if timeout == 0.0:
-                    raise gevent.socket.timeout(str(ex))
-                else:
-                    sys.exc_clear()
-                    gevent.socket.wait_write(self._sock.fileno(), timeout=timeout)
-            except SSL.ZeroReturnError:
-                ml.ld2("SSL: {{{0}}}/FD {1}:  INDATA: {{}}", id(self), self._sock.fileno())
-                return ''
-            except SSL.SysCallError as ex:
-                ml.ld2("SSL: {{{0}}}/FD {1}: Call Exception", id(self), self._sock.fileno())
-                raise sslerror(SysCallError_code_mapping.get(ex.args[0], ex.args[0]), ex.args[1])
-            except SSL.Error as ex:
-                ml.ld2("SSL: {{{0}}}/FD {1}: Exception", id(self), self._sock.fileno())
-                raise sslerror(str(ex))
-
-
-SysCallError_code_mapping = {-1: 8}
-
-
-def wrap_socket_context(sock, context, server_side=False):
-    timeout = sock.gettimeout()
-    try:
-        sock = sock._sock
-    except AttributeError:
-        pass
-    connection = SSL.Connection(context, sock)
-    ssl_sock = SSLSocket(connection, server_side)
-    ssl_sock.settimeout(timeout)
-
-    try:
-        sock.getpeername()
-    except Exception:
-        # no, no connection yet
-        pass
-    else:
-        # yes, do the handshake
-        ssl_sock.do_handshake()
-    return ssl_sock
-
-
 def killsock(sock):
     if hasattr(sock, '_sock'):
         ml.ld("Killing socket {0}/FD {1}", id(sock), sock._sock.fileno())
@@ -856,14 +435,14 @@ def killsock(sock):
     try:
         # TODO: better ideas for how to get SHUT_RDWR constant?
         sock.shutdown(gevent.socket.SHUT_RDWR)
-    except (gevent.socket.error, SSL.Error):
+    except gevent.socket.error:
         pass  # just being nice to the server, don't care if it fails
     except Exception as e:
         context.get_context().cal.event("INFO", "SOCKET", "0",
                                         "unexpected error closing socket: " + repr(e))
     try:
         sock.close()
-    except (gevent.socket.error, SSL.Error):
+    except gevent.socket.error:
         pass  # just being nice to the server, don't care if it fails
     except Exception as e:
         context.get_context().cal.event("INFO", "SOCKET", "0",
@@ -887,11 +466,6 @@ def check_fork(fn):
 
 ### a little helper for running a greenlet-friendly console
 ## implemented here since it directly references gevent
-
-import sys
-import code
-import gevent.os
-import gevent.fileobject
 
 
 class GreenConsole(code.InteractiveConsole):
