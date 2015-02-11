@@ -18,9 +18,9 @@ import gevent.threadpool
 import gevent.greenlet
 import faststat
 
-from . import context
+from support import context
 
-from . import ll
+from support import ll
 
 ml = ll.LLogger()
 

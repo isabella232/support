@@ -1,11 +1,12 @@
-import sys
-import collections
+
 import cgi
+import sys
 import os.path
+import collections
 
 import clastic
 
-from .. import context
+from support import context
 
 
 def listmodules():
@@ -158,11 +159,3 @@ _RENDER_MODULE_TEMPLATE = '''
 </body>
 </html>
 '''
-
-
-
-
-
-
-
-

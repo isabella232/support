@@ -1,3 +1,4 @@
+
 import traceback
 import sys
 import datetime
@@ -11,8 +12,10 @@ import clastic
 import clastic.render
 from werkzeug.wrappers import Response  # for iterable json thingy
 
-from .. import context
-from .. import cal
+from support import ll
+from support import cal
+from support import context
+from support import cache
 
 import stats
 import eval_server
@@ -393,7 +396,7 @@ def get_connection_mgr():
 
 
 def get_logs():
-    from .. import ll
+
     return ll.log_msgs
 
 
@@ -425,7 +428,7 @@ def get_sampro_data():
 
 
 def get_recent(thing1=None, thing2=None):
-    from .. import cache
+
 
     if thing1 is None:
         return [k for k in context.get_context().recent.keys()]
@@ -451,7 +454,6 @@ def get_recent_cal():
 
 
 def get_warnings(path=None):
-    from .. import context
     warns = context.get_context().get_warnings()
     if path:
         path_segs = path.split('.')
@@ -493,14 +495,12 @@ def _dict_map(data, transform, recurse=lambda k, v: isinstance(v, dict)):
 
 
 def set_level(level):
-    from .. import ll
     ll.set_log_level(int(level))
     return ll.get_log_level()
 
 
 def reset_stats():
     import faststat
-    from .. import context
     context.get_context().stats = defaultdict(faststat.Stats)
     return "OK"
 

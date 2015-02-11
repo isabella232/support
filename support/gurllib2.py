@@ -1,8 +1,9 @@
+
 import urllib2
 from urllib2 import *
 import socket
-from . import context
-from .http_client import _GHTTPConnection, _GHTTPSConnection
+from support import context
+from support.http_client import _GHTTPConnection, _GHTTPSConnection
 
 
 class CALAwareHandler(urllib2.AbstractHTTPHandler):

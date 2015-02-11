@@ -1,7 +1,8 @@
+
 import math
 import faststat
 
-from .. import context
+from support import context
 
 
 def get_stats(the_stat=None):
@@ -138,4 +139,3 @@ TEMPLATE = '''
 </body>
 </html>
 '''
-
