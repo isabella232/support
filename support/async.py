@@ -172,7 +172,7 @@ class ThreadPoolDispatcher(object):
 
             def in_thread(*a, **kw):
                 ml.ld3("In thread {0}", f.__name__)
-                stared.append(curtime())
+                started.append(curtime())
                 return f(*a, **kw)
 
             # some modules import things lazily; it is too dangerous
@@ -188,7 +188,6 @@ class ThreadPoolDispatcher(object):
                 ctx.stats[self.name + '.depth'].add(1 + len(self.pool))
                 ret = self.pool.apply_e((Exception,), in_thread, a, kw)
                 ml.ld3("Enqueued to thread {0}/depth {1}", f.__name__, len(pool))
-            start = started[0]
             start = started[0]
             duration = curtime() - start
             queued = start - enqueued
