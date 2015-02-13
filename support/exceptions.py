@@ -8,6 +8,17 @@ import traceback
 import gevent
 
 
+def code_list2trace_list(code_list):
+    trace_list = []
+    for code, lineno in zip(code_list[0::2], code_list[1::2]):
+        line = LINECACHE.getline(code.co_filename, lineno)
+        trace = '  File "{0}", line {1}, in {2}\n'.format(filename, lineno, code.co_name)
+        if line:
+            trace += '    {0}\n'.format(line.strip())
+        trace_list.append(trace)
+    return trace_list
+
+
 class GLineCache(object):
     'same idea as linecache.py module, but uses gevent primitives and thread/greenlet safe'
     def __init__(self):
@@ -15,7 +26,7 @@ class GLineCache(object):
 
     def getline(self, filename, lineno):
         if filename not in self.cache:
-            self.update(filename)
+            gevent.get_hub().threadpool.apply_e(self.update(filename))
         lines = self.cache.get(filename, [])
         try:
             return lines[lineno]
@@ -39,7 +50,10 @@ class GLineCache(object):
                 lines = trypath(os.path.join(directory, filename))
                 if lines is not None:
                     break
-        return lines
+        self.cache[filename] = lines
+
+
+LINECACHE = GLineCache()
 
 
 class ASFError(Exception):

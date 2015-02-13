@@ -157,24 +157,24 @@ def timed(f):
     return g
 
 
-def _make_threadpool_dispatch_decorator(name, size):
-    def dispatch(f):
-        '''
-        decorator to mark a function as cpu-heavy; will be executed in a
-        separate thread to avoid blocking socket communication
-        '''
+class ThreadPoolDispatcher(object):
+    def __init__(self, pool, name):
+        self.pool = pool
+        self.name = name
+
+    def __call__(self, f):
 
         @functools.wraps(f)
         def g(*a, **kw):
-            enqueued = curtime()  # better than microsecond precision
+            enqueued = curtime()
             ctx = context.get_context()
-            tlocals = ctx.thread_locals
             started = []
 
             def in_thread(*a, **kw):
                 ml.ld3("In thread {0}", f.__name__)
-                started.append(curtime())
+                stared.append(curtime())
                 return f(*a, **kw)
+
             # some modules import things lazily; it is too dangerous
             # to run a function in another thread if the import lock is
             # held by the current thread (this happens rarely -- only
@@ -182,22 +182,13 @@ def _make_threadpool_dispatch_decorator(name, size):
             # the import time of a module)
             if not ctx.cpu_thread_enabled or imp.lock_held():
                 ret = in_thread(*a, **kw)
+            elif in_threadpool() is self.pool:
+                ret = in_thread(*a, **kw)
             else:
-                if getattr(tlocals, 'in_' + name + '_thread', False):
-                    ret = in_thread(*a, **kw)
-                else:
-                    attr = name + '_thread'
-                    if not hasattr(tlocals, attr):
-                        setattr(tlocals, attr, gevent.threadpool.ThreadPool(size))
-                        ml.ld2("Getting new thread pool for " + name)
-
-                        def set_flag():
-                            setattr(tlocals, 'in_' + name + '_thread', True)
-                        getattr(tlocals, attr).apply_e((Exception,), set_flag, (), {})
-                    pool = getattr(tlocals, attr)
-                    ctx.stats[name + '.depth'].add(1 + len(pool))
-                    ret = pool.apply_e((Exception,), in_thread, a, kw)
-                    ml.ld3("Enqueued to thread {0}/depth {1}", f.__name__, len(pool))
+                ctx.stats[self.name + '.depth'].add(1 + len(self.pool))
+                ret = self.pool.apply_e((Exception,), in_thread, a, kw)
+                ml.ld3("Enqueued to thread {0}/depth {1}", f.__name__, len(pool))
+            start = started[0]
             start = started[0]
             duration = curtime() - start
             queued = start - enqueued
@@ -213,7 +204,17 @@ def _make_threadpool_dispatch_decorator(name, size):
         g.no_defer = f
         return g
 
-    return dispatch
+
+def in_threadpool():
+    'function to return the threadpool in which code is currently executing (if any)'
+    frame = sys._getframe()
+    while frame.f_back:
+        frame = frame.f_back
+    self = frame.f_locals.get('self')
+    if (isinstance(self, gevent.threadpool.ThreadPool) and
+           frame.f_code is getattr(getattr(self._worker, "im_func"), "func_code")):
+        return self
+    return None
 
 
 class CPUThread(object):
@@ -335,7 +336,7 @@ def _queue_stats(qname, fname, queued_ns, duration_ns, size_B=None):
 
 
 # TODO: make size configurable
-io_bound = _make_threadpool_dispatch_decorator('io_bound', 10)
+io_bound = ThreadPoolDispatcher(gevent.threadpool.ThreadPool(10), 'io_bound')
 
 # N.B.  In many cases fcntl could be used as an alternative method of
 # achieving non-blocking file io on unix systems
