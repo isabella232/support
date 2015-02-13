@@ -1,48 +1,52 @@
 '''
 This module defines a context object which holds on to all global state.
 '''
-import getpass
-from weakref import WeakKeyDictionary
-from multiprocessing import cpu_count
-import weakref
-from threading import local
-from collections import defaultdict, deque
-import socket
+
 import os.path
 import sys
+import time
+import socket
+import getpass
+import weakref
+import linecache
+import threading
+from weakref import WeakKeyDictionary
+from collections import defaultdict, deque
+from multiprocessing import cpu_count
+
 import gevent
 import greenlet
-import warnings
-import linecache
-import time
-import threading
-
 import faststat
 import hyperloglog.hll
 
 import ll
 ml = ll.LLogger()
 
-#NOTE: do not import anything else from infra at context import time
+from support import cache
+
+#NOTE: do not import anything else from support at context import time
 #this is a bit heavy-handed, but guarantees no circular import errors
 #which are otherwise very easy to create
 
 
 class Context(object):
     '''
-    Context object is meant to be the clearing-house for global data in an
-    application written using Python Infrastructure.  There should only be
-    one Context at a time.  Access the context with infra.context.get_context().
+    Context object is meant to be the clearinghouse for global data in
+    an application written using SuPPort.  There is only one active
+    Context at a time.  Access the context with
+    infra.context.get_context().
 
     Two categories of data in here:
 
-    1- Global data used internally by the infrastructure.
+      1. Global data used internally by the infrastructure.
 
-    2- Global data which would otherwise need to be kept track of by user code.
-    (This stuff can be identified by the presence of getters)
+      2. Global data which would otherwise need to be kept track of by
+      user code. (This stuff can be identified by the presence of
+      getters)
 
-    There are many configuration attributes.  They ALL go to a sane default,
-    it is not necessary to touch them but they are available for advanced users.
+    There are many configuration attributes. They ALL go to a sane
+    default, it is not necessary to touch them but they are available
+    for advanced users.
 
     ========================== ===================================== ==============================
     attribute                  description                           default
@@ -76,10 +80,9 @@ class Context(object):
                                queue.  If the queue exceeds this
                                length, connections will be closed.   128
     ========================== ===================================== ==============================
+
     '''
     def __init__(self, dev=False, stage_host=None):
-        import cache
-
         ml.ld("Initing Context {0}",  id(self))
 
         self.config = None
@@ -96,7 +99,7 @@ class Context(object):
         self.greenlet_ancestors = WeakKeyDictionary()
         self.greenlet_correlation_ids = WeakKeyDictionary()
         self.exception_traces = WeakKeyDictionary()
-        self.thread_locals = local()
+        self.thread_locals = threading.local()
         self.cpu_thread_enabled = True
 
         self.cal = None  # TODO
@@ -104,10 +107,8 @@ class Context(object):
 
         # recent stuff
         self.recent = cache.DefaultLRU(4096, lambda: deque(maxlen=1024))
-        self.recent['network'] = cache.DefaultLRU(512, lambda: deque(maxlen=100))
-
-        #ASF RELATED STUFF
-        self.asf_context = None
+        self.recent['network'] = cache.DefaultLRU(512,
+                                                  lambda: deque(maxlen=100))
 
         #PROTECTED RELATED STUFF
         self.protected = None
