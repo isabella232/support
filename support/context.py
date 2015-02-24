@@ -22,6 +22,7 @@ import hyperloglog.hll
 import ll
 ml = ll.LLogger()
 
+from support import log
 from support import cache
 
 #NOTE: do not import anything else from support at context import time
@@ -103,6 +104,7 @@ class Context(object):
         self.cpu_thread_enabled = True
 
         self.cal = None  # TODO
+        self.log = log.LoggingContext()
         self.greenlet_trans_stack = WeakKeyDictionary()
 
         # recent stuff

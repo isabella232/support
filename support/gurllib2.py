@@ -1,22 +1,24 @@
 
 import urllib2
-from urllib2 import *
 import socket
 from support import context
 from support.http_client import _GHTTPConnection, _GHTTPSConnection
 
+# convenience so that others can import urllib2 symbols from right here
+from urllib2 import *
 
-class CALAwareHandler(urllib2.AbstractHTTPHandler):
+
+class LogAwareHandler(urllib2.AbstractHTTPHandler):
     TRANSACTION_TYPE = 'API'
 
     def transaction_args(self, req):
         return {'type': self.TRANSACTION_TYPE,
                 'name': req.get_host() + '.%s' % req.get_method()}
 
-    def before_request(self, cal, req):
+    def pre_request(self, logger, req):
         pass
 
-    def after_request(self, cal, req, resp):
+    def post_request(self, logger, req, resp):
         pass
 
     def do_open(self, conn_type, req):
@@ -45,9 +47,9 @@ def _make_handler(name, connection_class, base, protocol):
 
 
 GHTTPHandler = _make_handler('GHTTPHandler', _GHTTPConnection,
-                             CALAwareHandler, 'http')
+                             LogAwareHandler, 'http')
 GHTTPSHandler = _make_handler('GHTTPSHandler', _GHTTPSConnection,
-                              CALAwareHandler, 'https')
+                              LogAwareHandler, 'https')
 
 
 def build_opener(*args, **kwargs):

@@ -35,7 +35,7 @@ from log import support_log, worker_log
 
 import ll
 ml = ll.LLogger()
-
+ml2 = context.get_context().log.get_module_log()
 
 # TODO: autoadd console and meta servers
 
@@ -237,21 +237,20 @@ class Group(object):
 
 def _make_server_sock(address, socket_type=gevent.socket.socket):
     ml.ld("about to bind to {0!r}", address)
-    # support_log.info('bind')
+    ml2.info('listen_prep').success('about to bind to {addr}', addr=address)
     sock = socket_type()
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(address)
 
     # NOTE: this is a "hint" to the OS than a strict rule about backlog size
-    sock.listen(DEFAULT_SOCKET_LISTEN_SIZE)
-    if ufork is not None:
-        # we may fork, so protect ourselves
-        flags = fcntl.fcntl(sock.fileno(), fcntl.F_GETFD)
-        fcntl.fcntl(sock.fileno(), fcntl.F_SETFD, flags | fcntl.FD_CLOEXEC)
-    ml.la("Listen to {0!r} gave this socket {1!r}", address, sock)
-    support_log.critical('listen').success('Listen to {addr} gave {sock}',
-                                           addr=address,
-                                           sock=sock)
+    with support_log.critical('listen') as _log:
+        sock.listen(DEFAULT_SOCKET_LISTEN_SIZE)
+        if ufork is not None:
+            # we may fork, so protect ourselves
+            flags = fcntl.fcntl(sock.fileno(), fcntl.F_GETFD)
+            fcntl.fcntl(sock.fileno(), fcntl.F_SETFD, flags | fcntl.FD_CLOEXEC)
+        ml.la("Listen to {0!r} gave this socket {1!r}", address, sock)
+        _log.success('Listen to {addr} gave {sock}', addr=address, sock=sock)
     return sock
 
 
@@ -463,8 +462,10 @@ class ThreadWatcher(threading.Thread):
         def waiter():
             while self.running:
                 ml.ld('Thread connection consumer greenlet waiting')
+                ml2.info('thread_consumer').success('waiting')
                 self.event.clear()
                 self.event.wait()
+                ml2.info('thread_consumer').success('woke up')
                 ml.ld('Thread connection consumer greenlet woke up')
 
                 while self.queue and self.running:

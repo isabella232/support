@@ -12,32 +12,14 @@ import gevent.queue
 
 import context
 import async
-import asf.serdes
+
 import ll
-
 ml = ll.LLogger()
-
-class LARClient(object):
-    def __init__(self):
-        self.conn = Connection("larbroker")
-
-    def send(self, vo, event_name, consumer_name=None):
-        '''
-        Generate a STOMP frame to send to the LAR broker
-        from the given VO and event name.
-
-        (Equivalent to LARProxy in functionality)
-        '''
-        headers = {
-            "event_name": event_name,
-            "correlation_id": async.get_cur_correlation_id(),
-        }
-        self.conn.send("/queue/relaydasf_msgs", asf.serdes.vo2compbin(vo), headers)
 
 
 class Connection(object):
     '''
-    Represents a STOMP connection.  Note that the distinction between client and server 
+    Represents a STOMP connection.  Note that the distinction between client and server
     in STOMP is fuzzy.
 
     This connection is a "client" in that it may SEND data synchronously to the broker.
@@ -72,9 +54,9 @@ class Connection(object):
         self.sub_id = 0
         self.no_receipt = set()  # send ids for which there was no receipt
         self.start()
-    
+
     def send(self, destination, body="", extra_headers=None):
-        headers = { 
+        headers = {
             "destination": destination,
             "receipt": self.msg_id
         }
@@ -137,7 +119,6 @@ class Connection(object):
         self.recv_glet = gevent.spawn(_run_recv, weak)
         self.sock_glet = gevent.spawn(_run_socket_fixer, weak)
 
-
     def stop(self):
         self.stopping = True
 
@@ -196,6 +177,7 @@ def _run_send(self):
             ml.ld2("run send Waiting for sock ready")
             self.sock_ready.wait()
 
+
 def _run_recv(self):
     ml.ld2("run recv waiting for sock ready")
     self.sock_ready.wait()
@@ -220,7 +202,6 @@ def _run_recv(self):
         except socket.timeout as e:
             ml.ld2("Got exception {0!r}", e)
             pass  # expected if no traffic
-        
         except socket.error as e:
             ml.ld2("Got exception {0!r}", e)
             context.get_context().cal.event("STOMP", "EXCEPTION", '1', {'msg':repr(e), 'green':'recv'})
@@ -372,5 +353,3 @@ class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
         sock.recv(bytes_consumed)  # throw away consumed data
         ml.ld2("returning {0} from  parse from socket", bytes_consumed)
         return frame
-
- 
