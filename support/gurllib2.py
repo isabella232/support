@@ -9,30 +9,31 @@ from urllib2 import *
 
 
 class LogAwareHandler(urllib2.AbstractHTTPHandler):
+    LOG_LEVEL = 'info'
     TRANSACTION_TYPE = 'API'
 
-    def transaction_args(self, req):
+    def get_log_kwargs(self, request):
         return {'type': self.TRANSACTION_TYPE,
-                'name': req.get_host() + '.%s' % req.get_method()}
+                'name': request.get_host() + '.%s' % request.get_method()}
 
-    def pre_request(self, logger, req):
+    def pre_request(self, log_record, request):
         pass
 
-    def post_request(self, logger, req, resp):
+    def post_request(self, log_record, request, response):
         pass
 
     def do_open(self, conn_type, req):
-        cal = context.get_context().cal
-        with cal.trans(**self.transaction_args(req)):
-            self.before_request(cal, req)
+        get_log_record = getattr(context.get_context().log, self.LOG_LEVEL)
+        with get_log_record(**self.get_log_kwargs(req)) as log_record:
+            self.pre_request(log_record, req)
             resp = urllib2.AbstractHTTPHandler.do_open(self, conn_type, req)
-            self.after_request(cal, req, resp)
+            self.post_request(log_record, req, resp)
             return resp
 
 
 # need to do this the hard way because of the dir based
 # metaprogramming inside urllib2.  unfortunately this returns a new
-# style class.  should be ok. . . . . . . . .
+# style class.
 
 def _make_handler(name, connection_class, base, protocol):
     def _open(self, req):

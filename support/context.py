@@ -163,7 +163,8 @@ class Context(object):
         self.fpti_client = None  # set from contrib ?
 
         self.ops_config = None  # TODO
-        self.opscfg_revmap = None
+        self.opscfg_revmap = {}
+        self.address_aliases = {}
 
         self._serve_ufork = None
         self._serve_daemon = None
