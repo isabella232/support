@@ -43,6 +43,7 @@ class LoggingContext(object):
         self.level = level
         self.enable_stderr = enable_stderr
         self.module_logs = {}
+        self.default_logger = support_log
 
     def get_module_log(self):
         module_name = sys._getframe(1).f_globals.get('__name__', '<module>')
@@ -51,3 +52,12 @@ class LoggingContext(object):
             log.add_sink(stderr_sink)
         self.module_logs[module_name] = log
         return log
+
+    def debug(self, *a, **kw):
+        return self.default_logger.debug(*a, **kw)
+
+    def info(self, *a, **kw):
+        return self.default_logger.info(*a, **kw)
+
+    def critical(self, *a, **kw):
+        return self.default_logger.critical(*a, **kw)
