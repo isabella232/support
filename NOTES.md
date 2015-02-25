@@ -28,6 +28,15 @@
 - removed dev kwarg
 - start() may not be part of public API (needs cleanup/clarification)
 
+### NetworkEndointModel (currently known as ServerModel)
+
+- logical name (key)
+- addresses/tiers
+- connect/read retries/markdown, timeouts
+- pooling options
+- ssl options
+- long-term todo: UDP (no connection, so connection_mgr is a funny concept)
+
 ## Deps
 
 Based on Ubuntu, at least the following libs are required
