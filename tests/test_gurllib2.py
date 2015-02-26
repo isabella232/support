@@ -1,6 +1,5 @@
 from support import gurllib2
 
-
 def test_urlopen():
     # not a great test, but something
     resp = gurllib2.urlopen('https://www.paypal.com')

@@ -26,7 +26,10 @@ class LogAwareHandler(urllib2.AbstractHTTPHandler):
         get_log_record = getattr(context.get_context().log, self.LOG_LEVEL)
         with get_log_record(**self.get_log_kwargs(req)) as log_record:
             self.pre_request(log_record, req)
+            log_record['full_url'] = req.get_full_url()
             resp = urllib2.AbstractHTTPHandler.do_open(self, conn_type, req)
+            log_record['status_code'] = resp.getcode()
+            log_record.success('{record_name} got {status_code}')
             self.post_request(log_record, req, resp)
             return resp
 
