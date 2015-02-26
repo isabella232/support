@@ -3,7 +3,10 @@ from support import gurllib2
 
 def test_urlopen():
     # not a great test, but something
-    gurllib2.urlopen('https://www.ebay.com')
+    resp = gurllib2.urlopen('https://www.paypal.com')
+    assert resp.getcode() == 200
+    lines = resp.readlines()
+    assert lines
 
 
 def test_build_opener():
