@@ -14,7 +14,7 @@ class LogAwareHandler(urllib2.AbstractHTTPHandler):
 
     def get_log_kwargs(self, request):
         return {'type': self.TRANSACTION_TYPE,
-                'name': request.get_host() + '.%s' % request.get_method()}
+                'name': request.get_host() + '_%s' % request.get_method()}
 
     def pre_request(self, log_record, request):
         pass
