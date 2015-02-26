@@ -42,16 +42,24 @@ class LoggingContext(object):
     def __init__(self, level=None, enable_stderr=True):
         self.level = level
         self.enable_stderr = enable_stderr
-        self.module_logs = {}
+        self.loggers = {}
+        self.module_loggers = {}
         self.default_logger = support_log
 
-    def get_module_log(self):
+    def get_module_logger(self):
         module_name = sys._getframe(1).f_globals.get('__name__', '<module>')
         log = Logger(name=module_name, module=module_name)
         if self.enable_stderr:
             log.add_sink(stderr_sink)
-        self.module_logs[module_name] = log
+        self.module_loggers[module_name] = log
         return log
+
+    def get_logger(self, name):
+        try:
+            ret = self.module_loggers[name]
+        except KeyError:
+            ret = self.module_loggers[name] = SupportLogger(name)
+        return ret
 
     def debug(self, *a, **kw):
         return self.default_logger.debug(*a, **kw)

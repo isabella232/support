@@ -43,6 +43,16 @@ ml = ll.LLogger()
 Address = collections.namedtuple('Address', 'ip port')
 
 
+class SSLContext(object):  # TODO
+    pass
+
+
+KNOWN_KEYS = ("connect_timeout_ms", "response_timeout_ms", "max_connect_retry",
+              "transient_markdown_enabled", "markdown")
+ConnectInfo = collections.namedtuple("ConnectInfo", KNOWN_KEYS)
+DEFAULT_CONNECT_INFO = ConnectInfo(5000, 30000, 1, False, False)
+
+
 class ConnectionManager(object):
 
     def __init__(self,
@@ -76,7 +86,7 @@ class ConnectionManager(object):
         '''
         ctx = context.get_context()
         address_aliases = self.address_aliases or ctx.address_aliases
-        ops_config = self.ops_config or ctx.ops_config
+        #ops_config = self.ops_config or ctx.ops_config
         #### POTENTIAL ISSUE: OPS CONFIG IS MORE SPECIFIC THAN ADDRESS (owch)
         if isinstance(gevent.get_hub().resolver, gevent.resolver_thread.Resolver):
             gevent.get_hub().resolver = _Resolver()  # avoid pointless thread dispatches
@@ -89,22 +99,21 @@ class ConnectionManager(object):
             address_list = self.get_all_addrs(name)
         else:
             address_list = [name_or_addr]
-            name = ctx.opscfg_revmap.get(name_or_addr)
+            # default to a string-ification of ip for the name
+            name = address_list[0][0].replace('.', '-')
 
         #if name:
         #    sock_config = ops_config.get_endpoint_config(name)
         #else:
         #    sock_config = ops_config.get_endpoint_config()
-        sock_config = None
+        sock_config = DEFAULT_CONNECT_INFO
 
-        if name is None:  # default to a string-ification of ip for the name
-            name = address_list[0][0].replace('.', '-')
 
         # ensure all DNS resolution is completed; past this point
         # everything is in terms of ips
         def get_gai(e):
             name = e[0].replace(".","-")
-            with ctx.cal.trans('DNS', name):
+            with ctx.log.get_logger('DNS').info(name) as _log:
                 gai = gevent.socket.getaddrinfo(*e, family=gevent.socket.AF_INET)[0][4]
             context.get_context().name_cache[e] = (time.time(), gai)
             return gai
@@ -118,22 +127,24 @@ class ConnectionManager(object):
             else:
                 return get_gai(e)
 
-        with ctx.cal.trans('DNS-CACHE', name, msg = {'len': len(address_list)}):
+        with ctx.log.get_logger('DNS.CACHE').info(name) as _log:
+            _log['len'] = len(address_list)
             address_list = [cache_gai(e) for e in address_list]
 
-        with ctx.cal.trans('COMPACT', name):
+        with ctx.log.get_logger('COMPACT').info(name):
             self._compact(address_list, name)
 
         errors = []
         for address in address_list:
             try:
-                with ctx.cal.trans('CONNECT', name + ':' + address[0], ) as cal_t:
+                log_name = '%s:%s' % (name, address[0])
+                with ctx.log.get_logger('CONNECT').info(log_name) as _log:
                     s = self._connect_to_address(
                         name, ssl, sock_config, address, sock_type, read_timeout)
                     if hasattr(s, 'getsockname'):
-                        cal_t.msg["lport"] = s.getsockname()[1]
+                        _log["lport"] = s.getsockname()[1]
                     elif hasattr(s, '_sock'):
-                        cal_t.msg["lport"] = s._sock.getsockname()[1]
+                        _log["lport"] = s._sock.getsockname()[1]
                     return s
             except socket.error as err:
                 if len(address_list) == 1:
@@ -178,13 +189,12 @@ class ConnectionManager(object):
 
         if ssl:
             if ssl is True:
-                protected = self.protected or ctx.protected
-                if protected is None:
+                ssl_context = self.ssl_context or ctx.ssl_context
+                if ssl_context is None:
                     raise EnvironmentError("Unable to make protected connection to " +
                                            repr(name or "unknown") + " at " + repr(address) +
-                                           " with no protected loaded."
-                                           " (maybe you forgot to call infra.init()/infra.init_dev()?)")
-            elif isinstance(ssl, Protected):
+                                           " with no SSLContext loaded.")
+            elif isinstance(ssl, SSLContext):
                 protected = ssl
             elif ssl == PLAIN_SSL:
                 protected = PLAIN_SSL_PROTECTED
@@ -217,17 +227,19 @@ class ConnectionManager(object):
                 try:
                     ml.ld("CONNECTING...")
                     sock_state = ctx.markov_stats['socket.state.' + str(address)].make_transitor('connecting')
-                    with ctx.cal.atrans('CONNECT_TCP', str(address[0]) + ":" + str(address[1])):
+                    log_name = str(address[0]) + ":" + str(address[1])
+                    with ctx.log.get_logger('CONNECT.TCP').info(log_name) as _log:
                         timeout = sock_config.connect_timeout_ms / 1000.0
                         if internal:  # connect timeout of 50ms inside the data center
                             timeout = min(timeout, ctx.datacenter_connect_timeout)
                         sock = gevent.socket.create_connection(address, timeout)
+                        _log['timeout'] = timeout
                         sock_state.transition('connected')
                         new_sock = True
                         ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
                     if ssl:  # TODO: how should SSL failures interact with markdown & connect count?
                         sock_state.transition('ssl_handshaking')
-                        with ctx.cal.atrans('CONNECT_SSL', str(address[0]) + ":" + str(address[1])):
+                        with ctx.log.get_logger('CONNECT.SSL').info(log_name) as _log:
                             if ssl == PLAIN_SSL:
                                 sock = gevent.ssl.wrap_socket(sock)
                             else:
@@ -244,7 +256,9 @@ class ConnectionManager(object):
                             ctx.intervals['net.markdowns.' + str(name) + '.' +
                                           str(address[0]) + ':' + str(address[1])].tick()
                             ctx.intervals['net.markdowns'].tick()
-                            ctx.cal.event('ERROR', 'TMARKDOWN', '2', 'name=' + str(name) + '&addr=' + str(address))
+                            ctx.log.get_logger('error').critical('TMARKDOWN').error(name=str(name),
+                                                                                    addr=str(address))
+                            # was event: ('ERROR', 'TMARKDOWN', '2', 'name=' + str(name) + '&addr=' + str(address))
                         ml.ld("Connection err {0!r}, {1}, {2!r}", address, name, err)
                         raise
                     failed += 1
@@ -294,8 +308,10 @@ class ConnectionManager(object):
         address_list raises OutOfSockets() if unable to make room
         '''
         ctx = context.get_context()
+        sock_log = ctx.log.get_logger('NET.SOCKET')
         all_pools = sum([e.values() for e in self.sockpools.values()], [])
-        with ctx.cal.trans('CULL', name, msg={'len': len(all_pools)}):
+        with ctx.log.get_logger('CULL').info(name) as _log:
+            _log['len'] = len(all_pools)
             for pool in all_pools:
                 pool.cull()
 
@@ -303,8 +319,9 @@ class ConnectionManager(object):
                                 for model in self.server_models.values()])
 
         if total_num_in_use >= GLOBAL_MAX_CONNECTIONS:
-            ctx.cal.event('NET.SOCKET', 'GLOBAL_MAX', 0,
-                {'limit': GLOBAL_MAX_CONNECTIONS, 'in_use': total_num_in_use})
+            sock_log.critical('GLOBAL_MAX').success('culling sockets',
+                                                    limit=GLOBAL_MAX_CONNECTIONS,
+                                                    in_use=total_num_in_use)
             # try to cull sockets to make room
             made_room = False
             for pool in all_pools:
@@ -320,8 +337,11 @@ class ConnectionManager(object):
                           for address in address_list])
 
         if num_in_use >= MAX_CONNECTIONS:
-            ctx.cal.event('NET.SOCK', 'ADDR_MAX', 0,
-                {'limit': MAX_CONNECTIONS, 'in_use': num_in_use, 'addr': repr(address_list)})
+            sock_log.critical('ADDR_MAX').success('culling {addr} sockets',
+                                                  limit=GLOBAL_MAX_CONNECTIONS,
+                                                  in_use=total_num_in_use,
+                                                  addr=repr(address_list))
+
             # try to cull sockets
             made_room = False
             for pool in all_pools:
