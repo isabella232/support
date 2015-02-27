@@ -18,18 +18,19 @@ ml = ll.LLogger()
 
 
 class Connection(object):
-    '''
-    Represents a STOMP connection.  Note that the distinction between client and server
-    in STOMP is fuzzy.
+    '''\
+    Represents a STOMP connection.  Note that the distinction between
+    client and server in STOMP is fuzzy.
 
-    This connection is a "client" in that it may SEND data synchronously to the broker.
+    This connection is a "client" in that it may SEND data
+    synchronously to the broker.
 
-    This connection is also a "server" in that it may get MESSAGE, RECEIPT, or ERROR
-    frames from the broker at any time.
+    This connection is also a "server" in that it may get MESSAGE,
+    RECEIPT, or ERROR frames from the broker at any time.
     '''
     def __init__(self, address, login="", passcode="",
-                 on_message=None, on_reciept=None, on_error=None, protected = True):
-        self.protected = protected
+                 on_message=None, on_reciept=None, on_error=None, ssl=True):
+        self.ssl = ssl
         self.address = address
         self.login = login
         self.passcode = passcode
@@ -99,7 +100,8 @@ class Connection(object):
 
     def disconnect(self, timeout=10):
         self.send_q.put(Frame("DISCONNECT", {}))
-        self.wait("RECEIPT")  # wait for a reciept from server acknowledging disconnect
+        # wait for a reciept from server acknowledging disconnect
+        self.wait("RECEIPT")
 
     def send_frame(self, frame):
         '''
@@ -137,7 +139,8 @@ class Connection(object):
     def _reconnect(self):
         if self.sock:
             async.killsock(self.sock)
-        self.sock = context.get_context().get_connection(self.address, ssl = self.protected)
+        ctx = context.get_context()
+        self.sock = ctx.get_connection(self.address, ssl=self.ssl)
         self.sock_broken.clear()
         self.sock_container[0] = self.sock
         headers = {"login": self.login, "passcode": self.passcode}
@@ -155,9 +158,9 @@ class Connection(object):
         # once sock_ready.set() happens, others will resume execution
 
 
-### these are essentially methods of the Connection class; they are broken
-### out to regular functions so that bound methods in greenlet call stacks
-### do not interfere with garbage collection
+# these are essentially methods of the Connection class; they are
+# broken out to regular functions so that bound methods in greenlet
+# call stacks do not interfere with garbage collection
 def _run_send(self):
     ml.ld2("run send Waiting for sock ready")
     self.sock_ready.wait()
@@ -192,7 +195,7 @@ def _run_recv(self):
             if cur.command == 'HEARTBEAT':
                 # discard
                 pass
-            #print "GOT", cur.command, "\n", cur.headers, "\n", cur.body
+            # print "GOT", cur.command, "\n", cur.headers, "\n", cur.body
             if cur.command == "MESSAGE":
                 if 'ack' in cur.headers:
                     ack = Frame("ACK", {})
@@ -344,7 +347,7 @@ class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
             raise ValueError("Excess data passed to stomp.Frame.parse(): "
                              + repr(data[bytes_consumed:])[:100])
         if frame is None:
-            raise ValueError("Incomplete frame passed to stomp.Frame.parse():. "
+            raise ValueError("Incomplete frame passed to stomp.Frame.parse(): "
                              "Consumed {0} bytes.".format(bytes_consumed))
         return frame
 
