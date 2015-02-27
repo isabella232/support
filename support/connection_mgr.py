@@ -113,7 +113,7 @@ class ConnectionManager(object):
         # everything is in terms of ips
         def get_gai(e):
             name = e[0].replace(".","-")
-            with ctx.log.get_logger('DNS').info(name) as _log:
+            with ctx.log.info('DNS', name) as _log:
                 gai = gevent.socket.getaddrinfo(*e, family=gevent.socket.AF_INET)[0][4]
             context.get_context().name_cache[e] = (time.time(), gai)
             return gai

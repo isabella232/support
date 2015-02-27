@@ -1,10 +1,10 @@
 
 import sys
+
+import gevent
 from lithoxyl import Logger
 from lithoxyl.sinks import SensibleSink, Formatter, StreamEmitter
 from lithoxyl.fields import FormatField
-
-import gevent
 
 
 def get_current_gthreadid(record):
@@ -62,10 +62,19 @@ class LoggingContext(object):
         return ret
 
     def debug(self, *a, **kw):
+        if len(a) == 2:
+            log_name, record_name = a
+            return self.get_logger(log_name).debug(record_name, **kw)
         return self.default_logger.debug(*a, **kw)
 
     def info(self, *a, **kw):
+        if len(a) == 2:
+            log_name, record_name = a
+            return self.get_logger(log_name).info(record_name, **kw)
         return self.default_logger.info(*a, **kw)
 
     def critical(self, *a, **kw):
+        if len(a) == 2:
+            log_name, record_name = a
+            return self.get_logger(log_name).critical(record_name, **kw)
         return self.default_logger.critical(*a, **kw)

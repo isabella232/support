@@ -11,8 +11,6 @@ def home_handler():
 
 def main():
     app = Application([('/', home_handler, render_basic)])
-
-    support.init()
     apps = [(app, ('0.0.0.0', 8888), False)]
 
     group = Group(wsgi_apps=apps,

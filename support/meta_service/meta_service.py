@@ -1,25 +1,21 @@
 
-import traceback
-import sys
-import datetime
-import hashlib
-import os
-import os.path
-from collections import defaultdict
 import gc
+import os
+import sys
+import hashlib
+import datetime
+import traceback
+import collections
+from collections import defaultdict
 
 import clastic
-import clastic.render
-from werkzeug.wrappers import Response  # for iterable json thingy
+from clastic import Response
 
 from support import ll
-from support import cal
 from support import context
 from support import cache
-
-import stats
-import eval_server
-import codeview
+from support.meta_service import stats
+from support.meta_service import codeview
 
 
 def create_meta_app(additional_routes=None):
@@ -43,16 +39,12 @@ def create_meta_app(additional_routes=None):
         ('/reset_stats', reset_stats, render),
         ('/statvars', stats.get_stats, render),
         ('/statvars/<the_stat>', stats.get_stats, render),
-        ('/cal/thread_ids', get_cal_threadid_info, render),
-        ('/recent_cal', get_recent_cal, render),
         ('/recent_tcp', get_recent_tcp, render),
         ('/recent_tcp/<name>', get_recent_tcp, render),
         ('/recent/', get_recent, render),
         ('/recent/<thing1>', get_recent, render),
         ('/recent/<thing1>/<thing2>', get_recent, render),
         ('/samples', get_sampro_data, render),
-        ('/topos', get_topos, render),
-        ('/topos/<appname>', get_topos, render),
         ('/protected', get_protected, render),
         ('/environment', get_environment, render),
         ('/listmodules', codeview.listmodules),
@@ -63,7 +55,6 @@ def create_meta_app(additional_routes=None):
         ('/live_checks/', get_live_checks, render),
         ('/object', view_obj),
         ('/object/<obj_id:int>', view_obj),
-        # ('/console', eval_server.make_eval_app()),
     ] + (additional_routes or [])
 
     app = clastic.Application(routes)
@@ -91,25 +82,11 @@ def get_config_dict():
     'returns information about the current environment in a dictionary'
     ctx = context.get_context()
     data = []
-    keys_handled_directly = ['cal', 'protected', 'ssl_contexts']
+    keys_handled_directly = ['protected', 'ssl_contexts']
     for k in ctx.__dict__:
-        if not k in keys_handled_directly:
+        if k not in keys_handled_directly:
             data.append([k, getattr(ctx, k)])
-
-    if isinstance(ctx.cal, cal.DefaultClient):
-        data.append(['cal', 'local-print'])
-    else:
-        data.append(['cal', ctx.cal.pool, ctx.cal.host, ctx.cal.port])
-    if ctx.protected:
-        prot = ctx.protected
-        data.append(['protected', prot.prot_dir, prot.prot_name,
-                     prot.pin_name])
-        ssl_contexts = dict([(n, bool(getattr(prot, n, None))) for n in
-                            ("ssl_client_context", "ssl_server_context")])
-        data.append(['ssl_contexts', ssl_contexts])
-        data.append(['protected_pin_source', prot.pin.source])
-    else:
-        data.append(['protected', '(none loaded)'])
+    # TODO: log and ssl_context info
 
     return dict([(e[0], e[1:]) for e in data])
 
@@ -124,18 +101,8 @@ def get_context_dict():
 
 
 def get_thread_stacks():
-    return dict([(k, traceback.format_stack(v)) for k, v in sys._current_frames().items()])
-
-
-def get_topos(appname=None):
-    ctx = context.get_context()
-    if ctx.topos is None:
-        return "WARNING: no topos loaded"
-    if appname is None:
-        appname = ctx.appname
-    if appname not in ctx.topos.apps:
-        return "appname {0} not found in topos.".format(ctx.appname)
-    return ctx.topos.apps[appname].addresses
+    return dict([(k, traceback.format_stack(v))
+                 for k, v in sys._current_frames().items()])
 
 
 def get_protected():
@@ -165,18 +132,9 @@ def get_connections():
     return ret
 
 
-def get_cal_threadid_info():
-    ctx = context.get_context()
-    if not hasattr(ctx.cal, "aliaser"):
-        return ("Error: context.cal has no aliaser attribute; "
-                "(context.cal is of type " + repr(type(ctx.cal)) + ")")
-    return dict(ctx.cal.aliaser.mapping)
-
-
 def get_pytypes():
     answer = defaultdict(lambda: 0)
     try:
-        import gc
         for ob in gc.get_objects():
             answer[repr(type(ob))] += 1
     except:
@@ -190,7 +148,6 @@ def get_pytypes_len():
 
 def get_pytypes_len_gen():
     try:
-        import gc
         yield "{\n"
 
         def get_total_size(obj, n=0):
@@ -219,8 +176,6 @@ def get_pytypes_len_gen():
 def dump_id(in_id):
     answer = {}
     try:
-        import gc
-
         def get_total_size(obj, n=0):
             if n > 10:
                 return 0
@@ -243,7 +198,6 @@ def dump_id(in_id):
 
 def get_greenlets():
     try:
-        import gc
         import traceback
         from greenlet import greenlet
         answer = []
@@ -295,11 +249,6 @@ def get_fd_info():
     This function is a little bit open-ended, we can probably continue
     to find additional sources of information
     '''
-    import gc
-    import os.path
-    import os
-    import collections
-
     import psutil
 
     fd_info = collections.defaultdict(
@@ -361,7 +310,6 @@ def get_frames_local_to(obj):
     Find all of the frames which the object is referenced in.
     Return a list [(name, frame), (name, frame) ... ]
     '''
-    import gc
     import types
     refs = gc.get_referrers(obj)
     frame_refs = []
@@ -396,7 +344,6 @@ def get_connection_mgr():
 
 
 def get_logs():
-
     return ll.log_msgs
 
 
@@ -428,29 +375,25 @@ def get_sampro_data():
 
 
 def get_recent(thing1=None, thing2=None):
-
-
+    ctx = context.get_context()
     if thing1 is None:
-        return [k for k in context.get_context().recent.keys()]
+        return [k for k in ctx.recent.keys()]
     if thing2 is None:
-        if isinstance(context.get_context().recent[thing1], (dict, cache.Cache)):
-            return dict([(repr(k), list(v)) for k, v in context.get_context().recent[thing1].items()])
+        if isinstance(ctx.recent[thing1], (dict, cache.Cache)):
+            return dict([(repr(k), list(v))
+                         for k, v in ctx.recent[thing1].items()])
         else:
-            return list(context.get_context().recent[thing1])
+            return list(ctx.recent[thing1])
     else:
-        if isinstance(context.get_context().recent[thing1], (dict, cache.Cache)):
+        if isinstance(ctx.recent[thing1], (dict, cache.Cache)):
             return dict([(repr(k), list(v)) for k, v in
-                        context.get_context().recent[thing1].items() if thing2 in str(k)])
+                         ctx.recent[thing1].items() if thing2 in str(k)])
         else:
             return '{"error":"' + thing1 + ' recent data is not dict."}'
 
 
 def get_recent_tcp(thing2=None):
     return get_recent(thing1='network', thing2=thing2)
-
-
-def get_recent_cal():
-    return get_recent(thing1='cal')
 
 
 def get_warnings(path=None):
@@ -509,9 +452,6 @@ def get_live_checks():
     checks = {}
 
     imported_modules = []
-    import sys
-    import os.path
-
     for mod in sys.modules.values():
         if not mod or not hasattr(mod, "__file__"):
             continue
@@ -523,7 +463,6 @@ def get_live_checks():
 
 
 def view_obj(request, obj_id=None):
-    import gc
     import obj_browser
 
     if obj_id is None:

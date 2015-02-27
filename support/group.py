@@ -26,16 +26,15 @@ import gevent.server
 import gevent.socket
 import gevent.pool
 
-from faststat import nanotime
 import clastic
+from faststat import nanotime
 
-import async
-import context
-from log import support_log, worker_log
+from support import async
+from support import context
 
 import ll
 ml = ll.LLogger()
-ml2 = context.get_context().log.get_module_log()
+ml2 = context.get_context().log.get_module_logger()
 
 # TODO: autoadd console and meta servers
 
@@ -169,7 +168,7 @@ class Group(object):
         if not self.prefork:
             self.start()
             log_msg = 'Group initialized and serving forever...'
-            support_log.critical('group_init').success(log_msg)
+            ctx.log.critical('GROUP.INIT').success(log_msg)
             if ctx.dev and ctx.dev_service_repl_enabled and os.isatty(0):
                 async.start_repl({'server': ctx.server_group})
             try:
@@ -215,7 +214,7 @@ class Group(object):
         if self.post_fork:
             self.post_fork()
         msg = 'successfully started process {pid}'
-        worker_log.critical('worker start').success(msg, pid=os.getpid())
+        ctx.log.critical('WORKER', 'START').success(msg, pid=os.getpid())
         if self.trace_in_child:  # re-enable tracing LONG SPIN detection
             ctx.set_greenlet_trace(True)  # if it was enabled before forking
         self.start()
@@ -243,7 +242,7 @@ def _make_server_sock(address, socket_type=gevent.socket.socket):
     sock.bind(address)
 
     # NOTE: this is a "hint" to the OS than a strict rule about backlog size
-    with support_log.critical('listen') as _log:
+    with context.get_context().log.critical('LISTEN') as _log:
         sock.listen(DEFAULT_SOCKET_LISTEN_SIZE)
         if ufork is not None:
             # we may fork, so protect ourselves
@@ -508,24 +507,21 @@ class ThreadWatcher(threading.Thread):
                 # send across threads?
                 pass
             if len(self.queue) >= self.maxlen:
-                event = context.get_context().cal.event
+                ctx = context.get_context()
                 stats = context.get_context().stats
+                log_rec = ctx.log.critical('HTTP')
                 if sock and addr:
                     sock.close()
                     stats[_DROPPED_CONN_STATS].add(1)
-                    event(type='HTTP',
-                          name='ERROR',
-                          status='500',
-                          data='Thread closed %r because queue '
-                          'is full' % ((sock, addr),))
+                    log_rec.failure('thread closed {socket} on {addr} '
+                                    'because queue is full',
+                                    socket=socket,
+                                    addr=addr)
                 else:
                     stats[_DROPPED_EXC_STATS].add(1)
-
-                    event(type='HTTP',
-                          name='ERROR',
-                          status='500',
-                          data='Thread dropped exception %r because queue '
-                          'is full' % (exc,))
+                    log_rec.failure('thread dropped {exc} '
+                                    'because queue is full',
+                                    exc=exc)
             else:
                 self.queue.appendleft((sock, addr, exc, _nanotime()))
                 # wake up the watcher greenlet in the main thread
@@ -566,8 +562,7 @@ class ThreadQueueServer(gevent.server.StreamServer):
 
         return gevent.socket.socket(_sock=client_socket), address
 
-# don't bother to use the thread queue server if we're not going to
-# fork
+# don't use the thread queue server if we're not going to fork
 if ufork:
     class ThreadQueueWSGIServer(pywsgi.WSGIServer, ThreadQueueServer):
         pass
@@ -610,18 +605,21 @@ class MultiProtocolWSGIServer(SslContextWSGIServer):
         return self.handle(client_socket, address)
 
 
-#http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
+# http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
 _HTTP_METHODS = ('GET', 'HEAD', 'POST', 'PUT', 'DELETE', 'TRACE', 'OPTION',
                  'CONNECT', 'PATCH')
 
 _SSL_RECORD_TYPES = {
-    '\x14': 'CHANGE_CIPHER_SPEC', '\x15': 'ALERT', '\x16': 'HANDSHAKE',
-    '\x17': 'APPLICATION_DATA',
-}
+    '\x14': 'CHANGE_CIPHER_SPEC',
+    '\x15': 'ALERT',
+    '\x16': 'HANDSHAKE',
+    '\x17': 'APPLICATION_DATA'}
 
 _SSL_VERSIONS = {
-    '\x03\x00': 'SSL3', '\x03\x01': 'TLS1', '\x03\x02': 'TLS1.1', '\x03\x03': 'TLS1.2'
-}
+    '\x03\x00': 'SSL3',
+    '\x03\x01': 'TLS1',
+    '\x03\x02': 'TLS1.1',
+    '\x03\x03': 'TLS1.2'}
 
 
 _NO_SSL_HTTP_RESPONSE = "\r\n".join([
@@ -629,8 +627,7 @@ _NO_SSL_HTTP_RESPONSE = "\r\n".join([
     'Content-Type: text/plain',
     'Content-Length: ' + str(len('SSL REQUIRED')),
     '',
-    'SSL REQUIRED'
-    ])  # this could probably be improved, but better than just closing the socket
+    'SSL REQUIRED'])
 
 
 def _socket_protocol(client_socket):
