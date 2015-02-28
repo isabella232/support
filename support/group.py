@@ -231,7 +231,8 @@ class Group(object):
             raise RuntimeError(errs)
 
     def stop(self, timeout=30.0):  # TODO: .shutdown()?
-        gevent.joinall([gevent.spawn(server.stop, timeout) for server in self.servers], raise_error=True)
+        gevent.joinall([gevent.spawn(server.stop, timeout)
+                        for server in self.servers], raise_error=True)
 
 
 def _make_server_sock(address, socket_type=gevent.socket.socket):
@@ -583,14 +584,15 @@ class SslContextWSGIServer(ThreadQueueWSGIServer):
                              ' SSL certificate')
         protocol = _socket_protocol(client_socket)
         if protocol == "ssl":
-            with ctx.cal.atrans('CONNECT_SSL', str(address[0])):
+            with ctx.log.info('HANDLE.SSL', str(address[0])):
                 ssl_socket = async.wrap_socket_context(
                     client_socket, **self.ssl_args)
             ctx.sketches['http.ssl.client_ips'].add(address[0])
             return self.handle(ssl_socket, address)
         elif protocol == "http":
+            with ctx.log.info('HANDLE.NOSSL', str(address[0])):
+                self._no_ssl(client_socket, address)
             ctx.sketches['http.client_ips'].add(address[0])
-            self._no_ssl(client_socket, address)
         else:
             context.get_context().intervals["server.pings"].tick()
 
@@ -720,8 +722,7 @@ class SimpleLogMiddleware(clastic.Middleware):
     def request(self, next, request, _route):
         url = getattr(_route, 'pattern', '').encode('utf-8')
         ctx = context.get_context()
-        with ctx.cal.trans('URL', url) as request_txn:  # TODO
-            print '-- hit the URL trans'
+        with ctx.log.info('URL', url) as request_txn:
             request_txn.msg = {}
             return next(api_cal_trans=request_txn)
 

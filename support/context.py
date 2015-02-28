@@ -76,7 +76,6 @@ class Context(object):
                                                                     8888 if in dev and no topo
                                                                     entry found
 
-    cal                        the current infra.cal.Client() object (appname, '127.0.0.1', 1118)
     accept_queue_maxlen        the depth of the user-space accept
                                queue.  If the queue exceeds this
                                length, connections will be closed.   128
@@ -282,14 +281,6 @@ class Context(object):
             ml.ld2("Network/SSL: Endpoint: {0}/FD {1}: {2}DATA: {{{3}}}",
                    name, fd, direction, data)
 
-    def get_feel(self):
-        if not hasattr(self, "_feel"):
-            import feel
-            self._feel = feel.LAR()
-            feel_addr = self._feel.lar.conn.address
-            self.cal.event("MSG", "INIT", '0', "server=%r" % feel_addr)
-        return self._feel
-
     @property
     def dev(self):
         return self._dev
@@ -441,8 +432,6 @@ class Context(object):
             self.profiler.stop()
         if self.server_group:
             self.server_group.stop()
-        if self.cal:
-            self.cal.close()
 
     @property
     def greenlet_settrace(self):
@@ -462,7 +451,7 @@ class Context(object):
             try:
                 greenlet.settrace(None)
             except AttributeError:
-                pass  # oh well
+                pass  # not the end of the world
 
     def get_connection(self, *a, **kw):
         return self.connection_mgr.get_connection(*a, **kw)
@@ -525,9 +514,8 @@ class _ThreadSpinMonitor(object):
             if dur > 150e6 and time.time() - self.last_cal_log > 1:
                 tid = self.main_thread_id
                 stack = _format_stack(sys._current_frames()[tid])
-                self.ctx.cal.event(
-                    'GEVENT', 'LONG_SPIN', '1',
-                    'time={0}ms&slow_green={1}'.format(dur / 1e6, stack))
+                self.ctx.log.info('LONG_SPIN').failure(time=dur/1e6,
+                                                       slow_green=stack)
                 self.last_cal_log = time.time()
 
 
@@ -625,10 +613,6 @@ def _sys_stats_monitor(context):
             tmp.stats['gc.count' + str(i)].add(counts[i])
         tmp.stats['greenlets.active'].add(_get_hub().loop.activecnt)
         tmp.stats['greenlets.pending'].add(_get_hub().loop.pendingcnt)
-        try:
-            tmp.stats['queues.cal.depth'].add(tmp.cal.actor.queue._qsize())
-        except AttributeError:
-            pass
         try:
             tmp.stats['queues.cpu_bound.depth'].add(
                 len(tmp.thread_locals.cpu_bound_thread.in_q))
