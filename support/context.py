@@ -30,6 +30,21 @@ from support import cache
 #which are otherwise very easy to create
 
 
+CONTEXT = None
+
+
+def get_context():
+    global CONTEXT
+    if CONTEXT is None:
+        CONTEXT = Context()
+    return CONTEXT
+
+
+def set_context(context):
+    global CONTEXT
+    CONTEXT = context
+
+
 class Context(object):
     '''
     Context object is meant to be the clearinghouse for global data in
@@ -228,47 +243,16 @@ class Context(object):
             self.ops_config = None  # TODO
 
     def _update_addresses(self):
-        stage_path = '/x/web/' + self.hostname.upper() + '/topo/STAGE2.default.topo'
-        dev_path = os.path.expanduser('~/.pyinfra/topo/STAGE2.default.topo')
-        altus_path = '/x/web/LIVE/topo/STAGE2.default.topo'
+        import connection_mgr
+
         if self.topos:
             addresses = self.topos.get(self.appname) or {}
         else:
             addresses = {}
 
-        import connection_mgr
-
         self.address_groups = connection_mgr.AddressGroupMap(
             [(name, connection_mgr.AddressGroup((((1, address),),)))
              for name, address in addresses.items()])
-        # combine _r1, _r2, _r3... read backups into a single AddressGroup
-        read_backups = defaultdict(list)
-        for i in range(10):
-            suffix = "_r" + str(i)
-            for name, address in addresses.items():
-                if name.endswith(suffix):
-                    read_backups[name[:-3]].append( ((1, address),) )
-        for key, value in read_backups.items():
-            self.address_groups[key] = connection_mgr.AddressGroup(value)
-
-    def get_mayfly(self, name, namespace):
-        name2 = None
-        if name in self.address_groups:
-            name2 = name
-        else:
-            for prefix in ("mayflydirectoryserv", "mayfly"):
-                if not name.startswith(prefix):
-                    name2 = prefix + "-" + name
-                    if name2 in self.address_groups:
-                        break
-        if name2:
-            import mayfly
-            return mayfly.Client(name2, self.appname, namespace)
-        else:
-            raise ValueError('Unknown Mayfly: %r' % name)
-
-    def get_warnings(self):
-        return _find_warnings(self)
 
     # empirically tested to take ~ 2 microseconds;
     # keep an eye to make sure this can't blow up
@@ -351,7 +335,7 @@ class Context(object):
     def appname(self):
         if self.config:
             return self.config.appname
-        return "pyinfra"
+        return "support"
 
     #TODO: serve_ufork and serve_daemon should really be Config, not Context
     @property
@@ -648,35 +632,12 @@ def get_ip_from_hosts():
                 return line.split()[0]
 
 
-CONTEXT = None
-
-
-def get_context():
-    global CONTEXT
-    if CONTEXT is None:
-        CONTEXT = Context()
-    return CONTEXT
-
-
-def set_context(context):
-    global CONTEXT
-    CONTEXT = context
-
-
 def counted(f):
     @functools.wraps(f)
     def g(*a, **kw):
         get_context().intervals['decorator.' + f.__name__] += 1
         return f(*a, **kw)
     return g
-
-
-# see: https://confluence.paypal.com/cnfl/display/CAL/CAL+Quick+Links
-CAL_DEV_ADDRESSES = {
-    'cal-stage': ('10.57.2.159', 1118),  # cal-stage.qa.paypal.com
-    'cal-qa': ('10.57.2.152', 1118),  # cal-qa.qa.paypal.com
-    'cal-dev': ('10.57.2.157', 1118)  # cal-dev.qa.paypal.com
-}
 
 
 def summarize(data, size=64):
