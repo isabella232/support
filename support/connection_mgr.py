@@ -19,12 +19,13 @@ In addition, by routing all connections through ConnectionManager,
 future refactorings/modifications will be easier.  For example,
 fallbacks or IP multi-plexing.
 '''
-import socket
+
 import time
 import datetime
-import collections
-import weakref
+import socket
 import random
+import weakref
+import collections
 
 import gevent.socket
 import gevent.ssl
@@ -34,6 +35,7 @@ import gevent
 import async
 import context
 import socket_pool
+from crypto import SSLContext
 
 import ll
 
@@ -41,10 +43,6 @@ ml = ll.LLogger()
 
 
 Address = collections.namedtuple('Address', 'ip port')
-
-
-class SSLContext(object):  # TODO
-    pass
 
 
 KNOWN_KEYS = ("connect_timeout_ms", "response_timeout_ms", "max_connect_retry",

@@ -31,6 +31,7 @@ from faststat import nanotime
 
 from support import async
 from support import context
+from support.crypto import SSLContext
 
 import ll
 ml = ll.LLogger()
@@ -41,10 +42,6 @@ ml2 = context.get_context().log.get_module_logger()
 DEFAULT_NUM_WORKERS = 1
 DEFAULT_MAX_CLIENTS = 1024  # per worker
 DEFAULT_SOCKET_LISTEN_SIZE = 128
-
-
-class SSLContext(object):  # TODO
-    pass
 
 
 class Group(object):
