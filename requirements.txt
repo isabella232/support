@@ -8,6 +8,7 @@ greenlet==0.4.5
 hyperloglog==0.0.9
 -e git+git@github.com:mahmoud/lithoxyl.git@f28f1d6cadef5ee487d0a539e8d1823bb42809c7#egg=lithoxyl-master
 py==1.4.26
+pyjks>=0.1
 pyasn1==0.1.7
 pycparser==2.10
 pyOpenSSL==0.14
