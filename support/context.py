@@ -18,6 +18,7 @@ import gevent
 import greenlet
 import faststat
 import hyperloglog.hll
+import sampro
 
 import ll
 ml = ll.LLogger()
@@ -286,40 +287,6 @@ class Context(object):
         self._port = val
 
     @property
-    def admin_port(self):
-        if self._admin_port is not None:
-            return self._admin_port
-        for topo_key in ['admin_ssl_connector_port', 'admin_connector_port']:
-            if (self.topos and self.topos.get(self.appname) and
-                    topo_key in self.topos.get(self.appname)):
-                if int(self.topos.get(self.appname)[topo_key]) != self._port:
-                    return int(self.topos.get(self.appname)[topo_key])
-        if self.dev:
-            if self.port is not None:
-                return self.port + 1
-            return 8889
-        return None
-
-    @admin_port.setter
-    def admin_port(self, val):
-        self._admin_port = val
-
-    @property
-    def backdoor_port(self):
-        if self._backdoor_port is not None:
-            return self._backdoor_port
-        # TODO: should this come out of topos?
-        if self.dev:
-            if self.port is not None:
-                return self.port + 2
-            return 8890
-        return None
-
-    @backdoor_port.setter
-    def backdoor_port(self, val):
-        self._backdoor_port = val
-
-    @property
     def debug_errors(self):
         return self._debug_errors
 
@@ -355,30 +322,10 @@ class Context(object):
         self._serve_ufork = None
 
     @property
-    def serve_daemon(self):
-        if self._serve_daemon is None:
-            return not self.dev
-        return self._serve_daemon
-
-    @serve_daemon.setter
-    def serve_daemon(self, val):
-        self._serve_daemon = val
-
-    @serve_daemon.deleter
-    def serve_daemon(self):
-        self._serve_daemon = None
-
-    def set_default_timeout(self, secs):
-        import opscfg
-        opscfg.DEFAULT_CONNECT_INFO = opscfg.DEFAULT_CONNECT_INFO._replace(
-            response_timeout_ms=1000 * secs)
-
-    @property
     def sampling(self):
         return self.profiler is not None
 
     def set_sampling(self, val):
-        from sampro import sampro
         if val not in (True, False):
             raise ValueError("sampling may only be set to True or False")
         if val and not self.profiler:
