@@ -15,10 +15,11 @@ from collections import defaultdict, deque
 from multiprocessing import cpu_count
 
 import gevent
+import sampro
 import greenlet
 import faststat
 import hyperloglog.hll
-import sampro
+
 
 import ll
 ml = ll.LLogger()
