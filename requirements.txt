@@ -16,6 +16,7 @@ clastic==0.4.1
 faststat==0.2.1
 pyjks>=0.1
 sampro==0.1
+boltons>=0.4.0
 -e git+git@github.com:mahmoud/lithoxyl.git@f28f1d6cadef5ee487d0a539e8d1823bb42809c7#egg=lithoxyl-master
 -e git+https://github.com/doublereedkurt/ufork.git@72996e395d1a6cc33887b392f3c54706f58f4765#egg=ufork-master
 

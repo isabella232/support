@@ -71,8 +71,8 @@ class Group(object):
         self.stream_handlers = list(stream_handlers or [])
         self.custom_servers = list(custom_servers or [])
 
-        self.prefork = prefork if prefork is not None else ctx.serve_ufork
-        self.daemonize = ctx.serve_daemon if daemonize is None else daemonize
+        self.prefork = prefork
+        self.daemonize = daemonize
         # max number of concurrent clients per worker
         self.max_clients = kw.pop('max_clients', DEFAULT_MAX_CLIENTS)
         self.num_workers = kw.pop('num_workers', DEFAULT_NUM_WORKERS)
@@ -200,9 +200,9 @@ class Group(object):
         # finally, eliminate our threadpools
         ctx = context.get_context()
         ctx.thread_locals = threading.local()
-        import ll
-        ctx.log_failure_print = False  # do not print logs failures -- they are in stats
-        if ctx.serve_daemon:
+        # do not print logs failures -- they are in stats
+        ctx.log_failure_print = False
+        if self.daemonize:
             ll.use_std_out()
         if ctx.sampling:
             ctx.set_sampling(False)
