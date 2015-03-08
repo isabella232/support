@@ -19,7 +19,7 @@ from support.meta_service import codeview
 
 
 def create_meta_app(additional_routes=None):
-    render = clastic.render.BasicRender(table_type=MetaTable)
+    render = clastic.render.BasicRender()  # table_type=MetaTable)
     ma = clastic.meta.MetaApplication()
     routes = [
         ('/', ma),
@@ -39,13 +39,14 @@ def create_meta_app(additional_routes=None):
         ('/reset_stats', reset_stats, render),
         ('/statvars', stats.get_stats, render),
         ('/statvars/<the_stat>', stats.get_stats, render),
+        ('/statgraphs', stats.statgraphs),
+        ('/statgraphs/<statname>', stats.statgraphs),
         ('/recent_tcp', get_recent_tcp, render),
         ('/recent_tcp/<name>', get_recent_tcp, render),
         ('/recent/', get_recent, render),
         ('/recent/<thing1>', get_recent, render),
         ('/recent/<thing1>/<thing2>', get_recent, render),
         ('/samples', get_sampro_data, render),
-        ('/protected', get_protected, render),
         ('/environment', get_environment, render),
         ('/listmodules', codeview.listmodules),
         ('/listmodules/<sort_col:int>', codeview.listmodules),
@@ -55,7 +56,6 @@ def create_meta_app(additional_routes=None):
         ('/connection_mgr', get_connection_mgr, render),
         ('/fd_info', get_fd_info, rt_json_render_basic),
         ('/fd_info/<fd:int>', get_one_fd_info, rt_json_render_basic),
-        ('/live_checks/', get_live_checks, render),
         ('/object', view_obj),
         ('/object/<obj_id:int>', view_obj),
     ] + (additional_routes or [])
@@ -106,21 +106,6 @@ def get_context_dict():
 def get_thread_stacks():
     return dict([(k, traceback.format_stack(v))
                  for k, v in sys._current_frames().items()])
-
-
-def get_protected():
-    ctx = context.get_context()
-    if ctx.protected is None:
-        return "(none)"
-    prot = ctx.protected
-    data = {}
-    for k, v in prot.__dict__.items():
-        if isinstance(v, basestring) and k not in ("pin", "passphrase"):
-            data[k] = v
-    data["sha1(passphrase)"] = hashlib.sha1(prot.passphrase).hexdigest()
-    data["sha1(pin)"] = hashlib.sha1(prot.pin).hexdigest()
-    # TODO: add cert chains and private key names
-    return data
 
 
 def get_connections():
@@ -449,20 +434,6 @@ def reset_stats():
     import faststat
     context.get_context().stats = defaultdict(faststat.Stats)
     return "OK"
-
-
-def get_live_checks():
-    checks = {}
-
-    imported_modules = []
-    for mod in sys.modules.values():
-        if not mod or not hasattr(mod, "__file__"):
-            continue
-        if 'site-packages' in os.path.abspath(mod.__file__):
-            imported_modules.append(repr(mod))
-    checks['imported_modules'] = imported_modules
-
-    return checks
 
 
 def view_obj(request, obj_id=None):
