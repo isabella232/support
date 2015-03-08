@@ -12,42 +12,25 @@ import gevent.queue
 
 import context
 import async
-import asf.serdes
+
 import ll
-
 ml = ll.LLogger()
-
-class LARClient(object):
-    def __init__(self):
-        self.conn = Connection("larbroker")
-
-    def send(self, vo, event_name, consumer_name=None):
-        '''
-        Generate a STOMP frame to send to the LAR broker
-        from the given VO and event name.
-
-        (Equivalent to LARProxy in functionality)
-        '''
-        headers = {
-            "event_name": event_name,
-            "correlation_id": async.get_cur_correlation_id(),
-        }
-        self.conn.send("/queue/relaydasf_msgs", asf.serdes.vo2compbin(vo), headers)
 
 
 class Connection(object):
-    '''
-    Represents a STOMP connection.  Note that the distinction between client and server 
-    in STOMP is fuzzy.
+    '''\
+    Represents a STOMP connection.  Note that the distinction between
+    client and server in STOMP is fuzzy.
 
-    This connection is a "client" in that it may SEND data synchronously to the broker.
+    This connection is a "client" in that it may SEND data
+    synchronously to the broker.
 
-    This connection is also a "server" in that it may get MESSAGE, RECEIPT, or ERROR
-    frames from the broker at any time.
+    This connection is also a "server" in that it may get MESSAGE,
+    RECEIPT, or ERROR frames from the broker at any time.
     '''
     def __init__(self, address, login="", passcode="",
-                 on_message=None, on_reciept=None, on_error=None, protected = True):
-        self.protected = protected
+                 on_message=None, on_reciept=None, on_error=None, ssl=True):
+        self.ssl = ssl
         self.address = address
         self.login = login
         self.passcode = passcode
@@ -56,7 +39,8 @@ class Connection(object):
         self.on_error = on_error
         self.send_q = gevent.queue.Queue()
         self.sock = None
-        self.sock_container = [self.sock]  # level of indirection for closing sock after GC
+        # a bit of indirection for closing sock after GC
+        self.sock_container = [self.sock]
         self.sock_ready = gevent.event.Event()
         self.sock_broken = gevent.event.Event()
         ml.ld2("init Setting sock broken")
@@ -72,20 +56,21 @@ class Connection(object):
         self.sub_id = 0
         self.no_receipt = set()  # send ids for which there was no receipt
         self.start()
-    
+
     def send(self, destination, body="", extra_headers=None):
-        headers = { 
+        headers = {
             "destination": destination,
             "receipt": self.msg_id
         }
         self.no_receipt.add(self.msg_id)
         self.msg_id += 1
         # NOTE: STOMP 1.0, no content-type
-        #if body:
-        #    headers['content-type'] = 'text/plain'
+        # if body:
+        #     headers['content-type'] = 'text/plain'
         if extra_headers:
             headers.update(extra_headers)
-        context.get_context().cal.event("STOMP", "ENQUEUE", '0', {'len':len(body)})
+        log_rec = context.get_context().log.info('STOMP', 'ENQUEUE')
+        log_rec.success(length=len(body))
         self.send_q.put(Frame("SEND", headers, body))
 
     def subscribe(self, destination):
@@ -115,7 +100,8 @@ class Connection(object):
 
     def disconnect(self, timeout=10):
         self.send_q.put(Frame("DISCONNECT", {}))
-        self.wait("RECEIPT")  # wait for a reciept from server acknowledging disconnect
+        # wait for a reciept from server acknowledging disconnect
+        self.wait("RECEIPT")
 
     def send_frame(self, frame):
         '''
@@ -137,7 +123,6 @@ class Connection(object):
         self.recv_glet = gevent.spawn(_run_recv, weak)
         self.sock_glet = gevent.spawn(_run_socket_fixer, weak)
 
-
     def stop(self):
         self.stopping = True
 
@@ -154,14 +139,16 @@ class Connection(object):
     def _reconnect(self):
         if self.sock:
             async.killsock(self.sock)
-        self.sock = context.get_context().get_connection(self.address, ssl = self.protected)
+        ctx = context.get_context()
+        self.sock = ctx.get_connection(self.address, ssl=self.ssl)
         self.sock_broken.clear()
         self.sock_container[0] = self.sock
-        headers = { "login": self.login, "passcode": self.passcode }
+        headers = {"login": self.login, "passcode": self.passcode}
         self.sock.sendall(Frame("CONNECT", headers).serialize())
         resp = Frame.parse_from_socket(self.sock)
         if resp.command != "CONNECTED":
-            raise ValueError("Expected CONNECTED frame from server, got: " + repr(resp))
+            raise ValueError("Expected CONNECTED frame from server, got: %r"
+                             % repr(resp))
         self.session = resp.headers['session']
         self.server_info = resp.headers.get('server')
         ml.ld2("reconn clearing sock broken")
@@ -171,22 +158,23 @@ class Connection(object):
         # once sock_ready.set() happens, others will resume execution
 
 
-### these are essentially methods of the Connection class; they are broken
-### out to regular functions so that bound methods in greenlet call stacks
-### do not interfere with garbage collection
+# these are essentially methods of the Connection class; they are
+# broken out to regular functions so that bound methods in greenlet
+# call stacks do not interfere with garbage collection
 def _run_send(self):
     ml.ld2("run send Waiting for sock ready")
     self.sock_ready.wait()
     while not self.stopping:
+        stomp_log = context.get_context().log.get_logger('STOMP')
         try:
             cur = self.send_q.peek()
             serial_cur = cur.serialize()
             ml.ld2("Lar sender dequed {{{0}}}", serial_cur)
             self.sock.sendall(serial_cur)
-            context.get_context().cal.event("STOMP", "DEQUEUE", '0', {'len':len(serial_cur)})  # after send
+            stomp_log.info("DEQUEUE").success(length=len(serial_cur))
             self.send_q.get()
         except socket.error as e:
-            context.get_context().cal.event("STOMP", "EXCEPTION", '1', {'msg':repr(e), 'green':'send'})
+            stomp_log.critical("EXCEPTION").failure(exc=repr(e), green='send')
             ml.ld2("Got exception {0!r}", e)
             # wait for socket ready again
             ml.ld2("run send clearing sock ready")
@@ -195,6 +183,7 @@ def _run_send(self):
             self.sock_broken.set()
             ml.ld2("run send Waiting for sock ready")
             self.sock_ready.wait()
+
 
 def _run_recv(self):
     ml.ld2("run recv waiting for sock ready")
@@ -206,7 +195,7 @@ def _run_recv(self):
             if cur.command == 'HEARTBEAT':
                 # discard
                 pass
-            #print "GOT", cur.command, "\n", cur.headers, "\n", cur.body
+            # print "GOT", cur.command, "\n", cur.headers, "\n", cur.body
             if cur.command == "MESSAGE":
                 if 'ack' in cur.headers:
                     ack = Frame("ACK", {})
@@ -220,10 +209,10 @@ def _run_recv(self):
         except socket.timeout as e:
             ml.ld2("Got exception {0!r}", e)
             pass  # expected if no traffic
-        
         except socket.error as e:
             ml.ld2("Got exception {0!r}", e)
-            context.get_context().cal.event("STOMP", "EXCEPTION", '1', {'msg':repr(e), 'green':'recv'})
+            stomp_log = context.get_context().log.get_logger('STOMP')
+            stomp_log.critical("EXCEPTION").failure(exc=repr(e), green='recv')
             # wait for socket to be ready again
             ml.ld2("run recv clearing sock ready")
             self.sock_ready.clear()
@@ -231,6 +220,7 @@ def _run_recv(self):
             self.sock_broken.set()
             ml.ld2("run recv Waiting for sock ready")
             self.sock_ready.wait()
+
 
 def _run_socket_fixer(self):
     last_time = 0.1
@@ -242,19 +232,21 @@ def _run_socket_fixer(self):
             last_time = 0.1
         except Exception as e:
             ml.ld2("Got exception {0!r}", e)
-            context.get_context().cal.event("STOMP", "EXCEPTION", '1', {'msg':repr(e), 'green':'fixer'})
+            stomp_log = context.get_context().log.get_logger('STOMP')
+            stomp_log.critical("EXCEPTION").failure(exc=repr(e), green='fixer')
             gevent.sleep(last_time + random.random())
             if last_time < 300 and self.send_q.qsize() == 0:
                 last_time = last_time * 2.0
             else:
                 last_time = 0.1
 
+
 def _killsock_later(sock_container):
     return lambda weak: async.killsock(sock_container[0])
 
 
 CLIENT_CMDS = set(["SEND", "SUBSCRIBE", "UNSUBSCRIBE", "BEGIN", "COMMIT",
-    "ABORT", "ACK", "NACK", "DISCONNECT", "CONNECT", "STOMP"])
+                   "ABORT", "ACK", "NACK", "DISCONNECT", "CONNECT", "STOMP"])
 
 SERVER_CMDS = set(["CONNECTED", "MESSAGE", "RECEIPT", "ERROR"])
 
@@ -355,7 +347,7 @@ class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
             raise ValueError("Excess data passed to stomp.Frame.parse(): "
                              + repr(data[bytes_consumed:])[:100])
         if frame is None:
-            raise ValueError("Incomplete frame passed to stomp.Frame.parse():. "
+            raise ValueError("Incomplete frame passed to stomp.Frame.parse(): "
                              "Consumed {0} bytes.".format(bytes_consumed))
         return frame
 
@@ -372,5 +364,3 @@ class Frame(collections.namedtuple("STOMP_Frame", "command headers body")):
         sock.recv(bytes_consumed)  # throw away consumed data
         ml.ld2("returning {0} from  parse from socket", bytes_consumed)
         return frame
-
- 

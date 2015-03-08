@@ -19,12 +19,13 @@ In addition, by routing all connections through ConnectionManager,
 future refactorings/modifications will be easier.  For example,
 fallbacks or IP multi-plexing.
 '''
-import socket
+
 import time
 import datetime
-import collections
-import weakref
+import socket
 import random
+import weakref
+import collections
 
 import gevent.socket
 import gevent.ssl
@@ -34,35 +35,47 @@ import gevent
 import async
 import context
 import socket_pool
+from crypto import SSLContext
 
 import ll
 
 ml = ll.LLogger()
 
 
+Address = collections.namedtuple('Address', 'ip port')
+
+
+KNOWN_KEYS = ("connect_timeout_ms", "response_timeout_ms", "max_connect_retry",
+              "transient_markdown_enabled", "markdown")
+ConnectInfo = collections.namedtuple("ConnectInfo", KNOWN_KEYS)
+DEFAULT_CONNECT_INFO = ConnectInfo(5000, 30000, 1, False, False)
+
+
 class ConnectionManager(object):
 
-    def __init__(self, address_groups=None, address_aliases=None, ops_config=None, protected=None):
-        self.sockpools = weakref.WeakKeyDictionary()  # one socket pool per protected
-        # self.sockpools = { weakref(protected) : {socket_type: [list of sockets]} }
+    def __init__(self,
+                 address_groups=None,
+                 address_aliases=None,
+                 ssl_context=None):
+        self.sockpools = weakref.WeakKeyDictionary()  # one socket pool per ssl
+        # self.sockpools = {weakref(ssl_ctx): {socket_type: [list of sockets]}}
         self.address_groups = address_groups
         self.address_aliases = address_aliases
-        self.ops_config = ops_config  # NOTE: how to update this?
-        self.protected = protected
+        self.ssl_context = ssl_context
         self.server_models = ServerModelDirectory()
         # map of user-level socket objects to MonitoredSocket instances
         self.user_socket_map = weakref.WeakKeyDictionary()
-        # do as I say, not as I do!  we need to use gevent.spawn instead of async.spawn
-        # because at the time the connection manager is constructed, the infra context
-        # is not yet fully initialized
+        # we need to use gevent.spawn instead of async.spawn because
+        # at the time the connection manager is constructed, the support
+        # context is not yet fully initialized
         self.culler = gevent.spawn(self.cull_loop)
 
     def get_connection(
             self, name_or_addr, ssl=False, sock_type=None, read_timeout=None):
         '''
-        name_or_addr - the logical name to connect to, e.g. "paymentreadserv" or "occ-ctoc"
+        name_or_addr - the logical name to connect to, e.g. "db-r"
         ssl - if set to True, wrap socket with context.protected;
-              if set to a protected.Protected object, wrap socket with that object
+              if set to an SSL context, wrap socket with that
         sock_type - a type to wrap the socket in; the intention here is for protocols
               that want to run asynchronous keep-alives, or higher level handshaking
               (strictly speaking, this is just a callable which accepts socket and
@@ -71,7 +84,7 @@ class ConnectionManager(object):
         '''
         ctx = context.get_context()
         address_aliases = self.address_aliases or ctx.address_aliases
-        ops_config = self.ops_config or ctx.ops_config
+        #ops_config = self.ops_config or ctx.ops_config
         #### POTENTIAL ISSUE: OPS CONFIG IS MORE SPECIFIC THAN ADDRESS (owch)
         if isinstance(gevent.get_hub().resolver, gevent.resolver_thread.Resolver):
             gevent.get_hub().resolver = _Resolver()  # avoid pointless thread dispatches
@@ -84,21 +97,21 @@ class ConnectionManager(object):
             address_list = self.get_all_addrs(name)
         else:
             address_list = [name_or_addr]
-            name = ctx.opscfg_revmap.get(name_or_addr)
-
-        if name:
-            sock_config = ops_config.get_endpoint_config(name)
-        else:
-            sock_config = ops_config.get_endpoint_config()
-
-        if name is None:  # default to a string-ification of ip for the name
+            # default to a string-ification of ip for the name
             name = address_list[0][0].replace('.', '-')
 
-        #ensure all DNS resolution is completed; past this point everything is in terms of
-        # ips
+        #if name:
+        #    sock_config = ops_config.get_endpoint_config(name)
+        #else:
+        #    sock_config = ops_config.get_endpoint_config()
+        sock_config = DEFAULT_CONNECT_INFO
+
+
+        # ensure all DNS resolution is completed; past this point
+        # everything is in terms of ips
         def get_gai(e):
             name = e[0].replace(".","-")
-            with ctx.cal.trans('DNS', name):
+            with ctx.log.info('DNS', name) as _log:
                 gai = gevent.socket.getaddrinfo(*e, family=gevent.socket.AF_INET)[0][4]
             context.get_context().name_cache[e] = (time.time(), gai)
             return gai
@@ -112,22 +125,24 @@ class ConnectionManager(object):
             else:
                 return get_gai(e)
 
-        with ctx.cal.trans('DNS-CACHE', name, msg = {'len': len(address_list)}):
+        with ctx.log.get_logger('DNS.CACHE').info(name) as _log:
+            _log['len'] = len(address_list)
             address_list = [cache_gai(e) for e in address_list]
 
-        with ctx.cal.trans('COMPACT', name):
+        with ctx.log.get_logger('COMPACT').info(name):
             self._compact(address_list, name)
 
         errors = []
         for address in address_list:
             try:
-                with ctx.cal.trans('CONNECT', name + ':' + address[0], ) as cal_t:
+                log_name = '%s:%s' % (name, address[0])
+                with ctx.log.get_logger('CONNECT').info(log_name) as _log:
                     s = self._connect_to_address(
                         name, ssl, sock_config, address, sock_type, read_timeout)
                     if hasattr(s, 'getsockname'):
-                        cal_t.msg["lport"] = s.getsockname()[1]
+                        _log["lport"] = s.getsockname()[1]
                     elif hasattr(s, '_sock'):
-                        cal_t.msg["lport"] = s._sock.getsockname()[1]
+                        _log["lport"] = s._sock.getsockname()[1]
                     return s
             except socket.error as err:
                 if len(address_list) == 1:
@@ -172,13 +187,12 @@ class ConnectionManager(object):
 
         if ssl:
             if ssl is True:
-                protected = self.protected or ctx.protected
-                if protected is None:
+                ssl_context = self.ssl_context or ctx.ssl_context
+                if ssl_context is None:
                     raise EnvironmentError("Unable to make protected connection to " +
                                            repr(name or "unknown") + " at " + repr(address) +
-                                           " with no protected loaded."
-                                           " (maybe you forgot to call infra.init()/infra.init_dev()?)")
-            elif isinstance(ssl, Protected):
+                                           " with no SSLContext loaded.")
+            elif isinstance(ssl, SSLContext):
                 protected = ssl
             elif ssl == PLAIN_SSL:
                 protected = PLAIN_SSL_PROTECTED
@@ -211,17 +225,19 @@ class ConnectionManager(object):
                 try:
                     ml.ld("CONNECTING...")
                     sock_state = ctx.markov_stats['socket.state.' + str(address)].make_transitor('connecting')
-                    with ctx.cal.atrans('CONNECT_TCP', str(address[0]) + ":" + str(address[1])):
+                    log_name = str(address[0]) + ":" + str(address[1])
+                    with ctx.log.get_logger('CONNECT.TCP').info(log_name) as _log:
                         timeout = sock_config.connect_timeout_ms / 1000.0
                         if internal:  # connect timeout of 50ms inside the data center
                             timeout = min(timeout, ctx.datacenter_connect_timeout)
                         sock = gevent.socket.create_connection(address, timeout)
+                        _log['timeout'] = timeout
                         sock_state.transition('connected')
                         new_sock = True
                         ml.ld("CONNECTED local port {0!r}/FD {1}", sock.getsockname(), sock.fileno())
                     if ssl:  # TODO: how should SSL failures interact with markdown & connect count?
                         sock_state.transition('ssl_handshaking')
-                        with ctx.cal.atrans('CONNECT_SSL', str(address[0]) + ":" + str(address[1])):
+                        with ctx.log.get_logger('CONNECT.SSL').info(log_name) as _log:
                             if ssl == PLAIN_SSL:
                                 sock = gevent.ssl.wrap_socket(sock)
                             else:
@@ -231,8 +247,6 @@ class ConnectionManager(object):
                 except socket.error as err:
                     if sock_state:
                         sock_state.transition('closed_error')
-                    if False:  # TODO: how to tell if this is an unrecoverable error
-                        raise
                     if failed >= sock_config.max_connect_retry:
                         server_model.last_error = time.time()
                         if sock_config.transient_markdown_enabled:
@@ -240,7 +254,9 @@ class ConnectionManager(object):
                             ctx.intervals['net.markdowns.' + str(name) + '.' +
                                           str(address[0]) + ':' + str(address[1])].tick()
                             ctx.intervals['net.markdowns'].tick()
-                            ctx.cal.event('ERROR', 'TMARKDOWN', '2', 'name=' + str(name) + '&addr=' + str(address))
+                            ctx.log.get_logger('error').critical('TMARKDOWN').error(name=str(name),
+                                                                                    addr=str(address))
+                            # was event: ('ERROR', 'TMARKDOWN', '2', 'name=' + str(name) + '&addr=' + str(address))
                         ml.ld("Connection err {0!r}, {1}, {2!r}", address, name, err)
                         raise
                     failed += 1
@@ -260,7 +276,8 @@ class ConnectionManager(object):
             sock.settimeout(sock_config.response_timeout_ms / 1000.0)
         else:
             sock.settimeout(read_timeout)
-        if msock and sock is not msock:  # if sock == msock, collection will not work
+        if msock and sock is not msock:
+            # if sock == msock, collection will not work
             self.user_socket_map[sock] = weakref.proxy(msock)
         self.user_socket_map.get(sock, sock).state.transition('in_use')
         sock.new_sock = new_sock
@@ -285,12 +302,14 @@ class ConnectionManager(object):
 
     def _compact(self, address_list, name):
         '''
-        try to compact and make room for a new socket connection to one of address_list
-        raises OutOfSockets() if unable to make room
+        try to compact and make room for a new socket connection to one of
+        address_list raises OutOfSockets() if unable to make room
         '''
         ctx = context.get_context()
+        sock_log = ctx.log.get_logger('NET.SOCKET')
         all_pools = sum([e.values() for e in self.sockpools.values()], [])
-        with context.get_context().cal.trans('CULL', name, msg={'len': len(all_pools)}):
+        with ctx.log.get_logger('CULL').info(name) as _log:
+            _log['len'] = len(all_pools)
             for pool in all_pools:
                 pool.cull()
 
@@ -298,8 +317,9 @@ class ConnectionManager(object):
                                 for model in self.server_models.values()])
 
         if total_num_in_use >= GLOBAL_MAX_CONNECTIONS:
-            ctx.cal.event('NET.SOCKET', 'GLOBAL_MAX', 0,
-                {'limit': GLOBAL_MAX_CONNECTIONS, 'in_use': total_num_in_use})
+            sock_log.critical('GLOBAL_MAX').success('culling sockets',
+                                                    limit=GLOBAL_MAX_CONNECTIONS,
+                                                    in_use=total_num_in_use)
             # try to cull sockets to make room
             made_room = False
             for pool in all_pools:
@@ -315,8 +335,11 @@ class ConnectionManager(object):
                           for address in address_list])
 
         if num_in_use >= MAX_CONNECTIONS:
-            ctx.cal.event('NET.SOCK', 'ADDR_MAX', 0,
-                {'limit': MAX_CONNECTIONS, 'in_use': num_in_use, 'addr': repr(address_list)})
+            sock_log.critical('ADDR_MAX').success('culling {addr} sockets',
+                                                  limit=GLOBAL_MAX_CONNECTIONS,
+                                                  in_use=total_num_in_use,
+                                                  addr=repr(address_list))
+
             # try to cull sockets
             made_room = False
             for pool in all_pools:
@@ -330,7 +353,7 @@ class ConnectionManager(object):
                 ctx.intervals['net.out_of_sockets.' + str(name)].tick()
                 raise OutOfSockets("maximum sockets for {0} already in use: {1}".format(
                     name, num_in_use))
-
+        return
 
 
 CULL_INTERVAL = 1.0
@@ -371,7 +394,7 @@ class _Resolver(gevent.resolver_thread.Resolver):
                 socket.inet_aton(args[0])
             except socket.error:
                 pass
-            else: # args is of form (ip_string, integer) which is close enough...
+            else:  # args is of form (ip_string, integer)
                 return socket.getaddrinfo(*args)
         return super(_Resolver, self).getaddrinfo(*args, **kwargs)
 
@@ -385,12 +408,14 @@ class ServerModelDirectory(dict):
 class ServerModel(object):
     '''
     This class represents an estimate of the state of a given "server".
-    ("Server" is defined here by whatever accepts the socket connections, which in practice
-        may be an entire pool of server machines/VMS, each of which has multiple worker thread/procs)
+    "Server" is defined here by whatever accepts the socket
+    connections, which in practice may be an entire pool of server
+    machines/VMS, each of which has multiple worker thread/procs.
 
-    For example:
-      * estimate how many connections are currently open
-         - (note: only an estimate, since the exact server-side state of the sockets is unknown)
+    For example, estimate how many connections are currently open
+    (note: only an estimate, since the exact server-side state of the
+    sockets is unknown)
+
     '''
     def __init__(self, address):
         self.last_error = 0
@@ -402,22 +427,20 @@ class ServerModel(object):
 
     def __repr__(self):
         if self.last_error:
-            last_error = datetime.datetime.fromtimestamp(int(self.last_error)).strftime('%Y-%m-%d %H:%M:%S')
+            dt = datetime.datetime.fromtimestamp(int(self.last_error))
+            last_error = dt.strftime('%Y-%m-%d %H:%M:%S')
         else:
             last_error = "(None)"
         return "<ServerModel {0} last_error={1} nconns={2}>".format(
             repr(self.address), last_error, len(self.active_connections))
 
 
-ConnectionConfig = collections.namedtuple("connect_timeout", ("response_timeout", "retries",
-    "markdown_time", "protected"))  # ?
-
-
 class MonitoredSocket(object):
     '''
     A socket proxy which allows socket lifetime to be monitored.
     '''
-    def __init__(self, sock, registry, protected, name=None, type=None, state=None):
+    def __init__(self, sock, registry, protected,
+                 name=None, type=None, state=None):
         self._msock = sock
         self._registry = registry  # TODO: better name for this
         self._spawned = time.time()
@@ -440,6 +463,7 @@ class MonitoredSocket(object):
         context.get_context().store_network_data(
             (self.name, self._msock.getpeername()),
             self.fileno(), "OUT", data)
+        return ret
 
     def recv(self, bufsize, flags=0):
         data = self._msock.recv(bufsize, flags)
@@ -467,25 +491,23 @@ class MonitoredSocket(object):
         return getattr(self._msock, attr)
 
 
-Address = collections.namedtuple('Address', 'ip port')
-
-
 class AddressGroup(object):
     '''
-    An address group represents the set of addresses known by a specific name
-    to a client at runtime.  That is, in a specific environment (stage, live, etc),
-    an address group represents the set of <ip, port> pairs to try.
+    An address group represents the set of addresses known by a
+    specific name to a client at runtime.  That is, in a specific
+    environment (stage, live, etc), an address group represents the
+    set of <ip, port> pairs to try.
 
-    An address group consists of tiers.
-    Each tier should be fully exhausted before moving on to the next.
-    (That is, tiers are "fallbacks".)
-    A tier consists of prioritized addresses.
-    Within a tier, the addresses should be tried in a priority weighted random order.
+    An address group consists of tiers. Each tier should be fully
+    exhausted before moving on to the next; tiers are "fallbacks".  A
+    tier consists of prioritized addresses.  Within a tier, the
+    addresses should be tried in a priority weighted random order.
 
-    The simplest way to use an address group is just to iterate over it, and try
-    each address in the order returned.
+    The simplest way to use an address group is just to iterate over
+    it, and try each address in the order returned.
 
     tiers: [ [(weight, (ip, port)), (weight, (ip, port)) ... ] ... ]
+
     '''
     def __init__(self, tiers):
         if not any(tiers):
@@ -495,8 +517,9 @@ class AddressGroup(object):
     def connect_ordering(self):
         plist = []
         for tier in self.tiers:
-            # Kodos says: "if you can think of a simpler way of achieving a weighted random
-            # ordering, I'd like to hear it"  (http://en.wikipedia.org/wiki/Kang_and_Kodos)
+            # Kodos says: "if you can think of a simpler way of
+            # achieving a weighted random ordering, I'd like to hear
+            # it" (http://en.wikipedia.org/wiki/Kang_and_Kodos)
             tlist = [(random.random() * e[0], e[1]) for e in tier]
             tlist.sort()
             plist.extend([e[1] for e in tlist])
@@ -522,19 +545,20 @@ class AddressGroupMap(dict):
                     newkey = k
                     break
             if newkey is not None:
-                # TODO: maybe do r1 / r2 fallback; however, given this is stage only
-                #  that use case is pretty slim
+                # TODO: maybe do r1 / r2 fallback; however, given this
+                # is stage only that use case is pretty slim
                 ports = [int(ctx.topos.get_port(newkey))]
-                val = AddressGroup( ([(1, (ctx.stage_ip, p)) for p in ports],) )
-                self.__dict__.setdefault("warnings", {}).setdefault("inferred_addresses", [])
-                self.warnings["inferred_addresses"].append((key, val))
+                val = AddressGroup(([(1, (ctx.stage_ip, p)) for p in ports],))
+                self.__dict__.setdefault("warnings", {})
+                self.setdefault("inferred_addresses", []).append((key, val))
                 self[key] = val
                 if key != newkey:
                     self.warnings["inferred_addresses"].append((newkey, val))
                 self[newkey] = val
                 return val
-        self.__dict__.setdefault("errors", {}).setdefault("unknown_addresses", set())
-        self.errors["unknown_addresses"].add(key)
+        self.__dict__.setdefault("errors", {})
+        self.errors.setdefault("unknown_addresses", set()).add(key)
+
         ctx.intervals["error.address.missing." + repr(key)].tick()
         ctx.intervals["error.address.missing"].tick()
         raise KeyError("unknown address requested " + repr(key))
@@ -557,17 +581,3 @@ class NameNotFound(socket.error):
 
 class MultiConnectFailure(socket.error):
     pass
-
-
-def get_opscfg(name, **kw):
-    return context.get_context().ops_config.get(name, **kw)
-
-
-def get_cfg_from_address(addr, **kw):
-    try:
-        name = context.get_context().opscfg_revmap.get(addr)
-        cfg = get_opscfg(name, **kw)
-        return cfg
-    except Exception as e:
-        ml.ld("Opscfg got exception: {0!r}", e)
-    return None

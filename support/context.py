@@ -15,18 +15,36 @@ from collections import defaultdict, deque
 from multiprocessing import cpu_count
 
 import gevent
+import sampro
 import greenlet
 import faststat
 import hyperloglog.hll
 
+
 import ll
 ml = ll.LLogger()
 
+from support import log
 from support import cache
 
 #NOTE: do not import anything else from support at context import time
 #this is a bit heavy-handed, but guarantees no circular import errors
 #which are otherwise very easy to create
+
+
+CONTEXT = None
+
+
+def get_context():
+    global CONTEXT
+    if CONTEXT is None:
+        CONTEXT = Context()
+    return CONTEXT
+
+
+def set_context(context):
+    global CONTEXT
+    CONTEXT = context
 
 
 class Context(object):
@@ -75,7 +93,6 @@ class Context(object):
                                                                     8888 if in dev and no topo
                                                                     entry found
 
-    cal                        the current infra.cal.Client() object (appname, '127.0.0.1', 1118)
     accept_queue_maxlen        the depth of the user-space accept
                                queue.  If the queue exceeds this
                                length, connections will be closed.   128
@@ -103,6 +120,7 @@ class Context(object):
         self.cpu_thread_enabled = True
 
         self.cal = None  # TODO
+        self.log = log.LoggingContext()
         self.greenlet_trans_stack = WeakKeyDictionary()
 
         # recent stuff
@@ -161,7 +179,8 @@ class Context(object):
         self.fpti_client = None  # set from contrib ?
 
         self.ops_config = None  # TODO
-        self.opscfg_revmap = None
+        self.opscfg_revmap = {}
+        self.address_aliases = {}
 
         self._serve_ufork = None
         self._serve_daemon = None
@@ -226,47 +245,16 @@ class Context(object):
             self.ops_config = None  # TODO
 
     def _update_addresses(self):
-        stage_path = '/x/web/' + self.hostname.upper() + '/topo/STAGE2.default.topo'
-        dev_path = os.path.expanduser('~/.pyinfra/topo/STAGE2.default.topo')
-        altus_path = '/x/web/LIVE/topo/STAGE2.default.topo'
+        import connection_mgr
+
         if self.topos:
             addresses = self.topos.get(self.appname) or {}
         else:
             addresses = {}
 
-        import connection_mgr
-
         self.address_groups = connection_mgr.AddressGroupMap(
             [(name, connection_mgr.AddressGroup((((1, address),),)))
              for name, address in addresses.items()])
-        # combine _r1, _r2, _r3... read backups into a single AddressGroup
-        read_backups = defaultdict(list)
-        for i in range(10):
-            suffix = "_r" + str(i)
-            for name, address in addresses.items():
-                if name.endswith(suffix):
-                    read_backups[name[:-3]].append( ((1, address),) )
-        for key, value in read_backups.items():
-            self.address_groups[key] = connection_mgr.AddressGroup(value)
-
-    def get_mayfly(self, name, namespace):
-        name2 = None
-        if name in self.address_groups:
-            name2 = name
-        else:
-            for prefix in ("mayflydirectoryserv", "mayfly"):
-                if not name.startswith(prefix):
-                    name2 = prefix + "-" + name
-                    if name2 in self.address_groups:
-                        break
-        if name2:
-            import mayfly
-            return mayfly.Client(name2, self.appname, namespace)
-        else:
-            raise ValueError('Unknown Mayfly: %r' % name)
-
-    def get_warnings(self):
-        return _find_warnings(self)
 
     # empirically tested to take ~ 2 microseconds;
     # keep an eye to make sure this can't blow up
@@ -278,14 +266,6 @@ class Context(object):
                 data = data.tobytes()
             ml.ld2("Network/SSL: Endpoint: {0}/FD {1}: {2}DATA: {{{3}}}",
                    name, fd, direction, data)
-
-    def get_feel(self):
-        if not hasattr(self, "_feel"):
-            import feel
-            self._feel = feel.LAR()
-            feel_addr = self._feel.lar.conn.address
-            self.cal.event("MSG", "INIT", '0', "server=%r" % feel_addr)
-        return self._feel
 
     @property
     def dev(self):
@@ -308,40 +288,6 @@ class Context(object):
         self._port = val
 
     @property
-    def admin_port(self):
-        if self._admin_port is not None:
-            return self._admin_port
-        for topo_key in ['admin_ssl_connector_port', 'admin_connector_port']:
-            if (self.topos and self.topos.get(self.appname) and
-                    topo_key in self.topos.get(self.appname)):
-                if int(self.topos.get(self.appname)[topo_key]) != self._port:
-                    return int(self.topos.get(self.appname)[topo_key])
-        if self.dev:
-            if self.port is not None:
-                return self.port + 1
-            return 8889
-        return None
-
-    @admin_port.setter
-    def admin_port(self, val):
-        self._admin_port = val
-
-    @property
-    def backdoor_port(self):
-        if self._backdoor_port is not None:
-            return self._backdoor_port
-        # TODO: should this come out of topos?
-        if self.dev:
-            if self.port is not None:
-                return self.port + 2
-            return 8890
-        return None
-
-    @backdoor_port.setter
-    def backdoor_port(self, val):
-        self._backdoor_port = val
-
-    @property
     def debug_errors(self):
         return self._debug_errors
 
@@ -357,7 +303,7 @@ class Context(object):
     def appname(self):
         if self.config:
             return self.config.appname
-        return "pyinfra"
+        return "support"
 
     #TODO: serve_ufork and serve_daemon should really be Config, not Context
     @property
@@ -377,30 +323,10 @@ class Context(object):
         self._serve_ufork = None
 
     @property
-    def serve_daemon(self):
-        if self._serve_daemon is None:
-            return not self.dev
-        return self._serve_daemon
-
-    @serve_daemon.setter
-    def serve_daemon(self, val):
-        self._serve_daemon = val
-
-    @serve_daemon.deleter
-    def serve_daemon(self):
-        self._serve_daemon = None
-
-    def set_default_timeout(self, secs):
-        import opscfg
-        opscfg.DEFAULT_CONNECT_INFO = opscfg.DEFAULT_CONNECT_INFO._replace(
-            response_timeout_ms=1000 * secs)
-
-    @property
     def sampling(self):
         return self.profiler is not None
 
     def set_sampling(self, val):
-        from sampro import sampro
         if val not in (True, False):
             raise ValueError("sampling may only be set to True or False")
         if val and not self.profiler:
@@ -438,8 +364,6 @@ class Context(object):
             self.profiler.stop()
         if self.server_group:
             self.server_group.stop()
-        if self.cal:
-            self.cal.close()
 
     @property
     def greenlet_settrace(self):
@@ -459,7 +383,7 @@ class Context(object):
             try:
                 greenlet.settrace(None)
             except AttributeError:
-                pass  # oh well
+                pass  # not the end of the world
 
     def get_connection(self, *a, **kw):
         return self.connection_mgr.get_connection(*a, **kw)
@@ -522,9 +446,8 @@ class _ThreadSpinMonitor(object):
             if dur > 150e6 and time.time() - self.last_cal_log > 1:
                 tid = self.main_thread_id
                 stack = _format_stack(sys._current_frames()[tid])
-                self.ctx.cal.event(
-                    'GEVENT', 'LONG_SPIN', '1',
-                    'time={0}ms&slow_green={1}'.format(dur / 1e6, stack))
+                self.ctx.log.info('LONG_SPIN').failure(time=dur/1e6,
+                                                       slow_green=stack)
                 self.last_cal_log = time.time()
 
 
@@ -623,10 +546,6 @@ def _sys_stats_monitor(context):
         tmp.stats['greenlets.active'].add(_get_hub().loop.activecnt)
         tmp.stats['greenlets.pending'].add(_get_hub().loop.pendingcnt)
         try:
-            tmp.stats['queues.cal.depth'].add(tmp.cal.actor.queue._qsize())
-        except AttributeError:
-            pass
-        try:
             tmp.stats['queues.cpu_bound.depth'].add(
                 len(tmp.thread_locals.cpu_bound_thread.in_q))
         except AttributeError:
@@ -661,35 +580,12 @@ def get_ip_from_hosts():
                 return line.split()[0]
 
 
-CONTEXT = None
-
-
-def get_context():
-    global CONTEXT
-    if CONTEXT is None:
-        CONTEXT = Context()
-    return CONTEXT
-
-
-def set_context(context):
-    global CONTEXT
-    CONTEXT = context
-
-
 def counted(f):
     @functools.wraps(f)
     def g(*a, **kw):
         get_context().intervals['decorator.' + f.__name__] += 1
         return f(*a, **kw)
     return g
-
-
-# see: https://confluence.paypal.com/cnfl/display/CAL/CAL+Quick+Links
-CAL_DEV_ADDRESSES = {
-    'cal-stage': ('10.57.2.159', 1118),  # cal-stage.qa.paypal.com
-    'cal-qa': ('10.57.2.152', 1118),  # cal-qa.qa.paypal.com
-    'cal-dev': ('10.57.2.157', 1118)  # cal-dev.qa.paypal.com
-}
 
 
 def summarize(data, size=64):

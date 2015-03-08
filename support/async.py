@@ -103,7 +103,7 @@ def staggered_retries(run, *a, **kw):
     ready = gevent.event.Event()
     ready.clear()
 
-    def call_back(source):
+    def callback(source):
         if source.successful():
             ready.set()
 
@@ -114,7 +114,7 @@ def staggered_retries(run, *a, **kw):
     if timeouts_secs[0] > 0:
         timeouts_secs.insert(0, 0)
     gs = gevent.spawn(run, *a, **kw)
-    gs.link_value(call_back)
+    gs.link_value(callback)
     running = [gs]
     for i in range(1, len(timeouts_secs)):
         this_timeout = timeouts_secs[i] - timeouts_secs[i - 1]
@@ -127,9 +127,11 @@ def staggered_retries(run, *a, **kw):
                 break
         except gevent.Timeout:
             ml.ld2("Timed out!")
-            ctx.cal.event('ASYNC-STAGGER', run.__name__, '0', {'timeout': this_timeout})
+            log_rec = ctx.log.critical('ASYNC.STAGGER', run.__name__)
+            log_rec.failure('timed out after {timeout}',
+                            timeout=this_timeout)
             gs = gevent.spawn(run, *a, **kw)
-            gs.link_value(call_back)
+            gs.link_value(callback)
             running.append(gs)
     vals = [l.value for l in running if l.successful()]
     for g in running:
@@ -423,15 +425,17 @@ def killsock(sock):
     except gevent.socket.error:
         pass  # just being nice to the server, don't care if it fails
     except Exception as e:
-        context.get_context().cal.event("INFO", "SOCKET", "0",
-                                        "unexpected error closing socket: " + repr(e))
+        log_rec = context.get_context().log.info("SOCKET", "SHUTDOWN")
+        log_rec.failure('error ({exc}) shutting down socket: {socket}',
+                        socket=sock, exc=e)
     try:
         sock.close()
     except gevent.socket.error:
         pass  # just being nice to the server, don't care if it fails
     except Exception as e:
-        context.get_context().cal.event("INFO", "SOCKET", "0",
-                                        "unexpected error closing socket: " + repr(e))
+        log_rec = context.get_context().log.info("SOCKET", "CLOSE")
+        log_rec.failure('error ({exc}) closing socket: {socket}',
+                        socket=sock, exc=e)
 
 
 PID = os.getpid()

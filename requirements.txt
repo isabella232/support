@@ -1,15 +1,23 @@
 cffi==0.8.6
-clastic==0.4.1
 cryptography==0.7.2
 enum34==1.0.4
-faststat==0.2.1
 gevent==1.0.1
 greenlet==0.4.5
 hyperloglog==0.0.9
--e git+git@github.com:mahmoud/lithoxyl.git@605debdb19e7ea888034e19622e9290a019966f4#egg=lithoxyl-master
+py==1.4.26
 pyasn1==0.1.7
 pycparser==2.10
 pyOpenSSL==0.14
+pytest==2.6.4
 six==1.9.0
--e git+https://github.com/doublereedkurt/ufork.git@533ab2a2458e8f749bf1713d578d14ca1356bbd9#egg=ufork-master
 Werkzeug==0.9.4
+
+clastic==0.4.1
+faststat==0.2.1
+pyjks>=0.1
+sampro==0.1
+boltons>=0.4.0
+-e git+git@github.com:mahmoud/lithoxyl.git@f28f1d6cadef5ee487d0a539e8d1823bb42809c7#egg=lithoxyl-master
+-e git+https://github.com/doublereedkurt/ufork.git@72996e395d1a6cc33887b392f3c54706f58f4765#egg=ufork-master
+
+-e git+git@github.com:paypal/support.git@afa73a377d42856efae5cd398d52b1d740f71855#egg=support-master

@@ -108,4 +108,17 @@ own network-level code, it is best to use gevent.socket directly. If
 you want gevent-incompatible libraries to work with gevent, best to
 use SuPPort's gevent-based threadpooling capabilities.
 
+#### Connection Management
+
+Errors happen in live environments.  DNS requests fail.  Packets are lost.
+Latency spikes.  TCP handshakes are slow.  SSL hanshakes are slower.
+Clients rarely handle these problems gracefully.  
+This is why SuPPort includes the connection manager, which provides a robust
+error handling code for all of these cases with consistent logging
+and monitoring.  It also provides a central
+point of configuration for timeouts, and host fallbacks.
+
+Small teams and companies can benefit from the lessons learned taking
+Python to 10s of millions of requests per day at PayPal.
+
 ### What's next
