@@ -13,7 +13,7 @@ def r(n=5, m=1, f=exceptions.current_code_list):
     if n:
         return r(n - 1, m)
     for i in range(m):
-        f()
+        return f()
 
 
 def inline(n=5, m=10000):
