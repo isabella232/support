@@ -305,7 +305,6 @@ class Context(object):
             return self.config.appname
         return "support"
 
-    #TODO: serve_ufork and serve_daemon should really be Config, not Context
     @property
     def serve_ufork(self):
         if self._serve_ufork is None:
