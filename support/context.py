@@ -10,6 +10,7 @@ import getpass
 import weakref
 import linecache
 import threading
+import cmd
 from weakref import WeakKeyDictionary
 from collections import defaultdict, deque
 from multiprocessing import cpu_count
@@ -444,9 +445,12 @@ class _ThreadSpinMonitor(object):
             # if time is greater than 150 ms
             if dur > 150e6 and time.time() - self.last_cal_log > 1:
                 tid = self.main_thread_id
-                stack = _format_stack(sys._current_frames()[tid])
-                self.ctx.log.info('LONG_SPIN').failure(time=dur/1e6,
-                                                       slow_green=stack)
+                frame = sys._current_frames()[tid]
+                # specifically dont log pdb
+                if frame.f_code is not cmd.Cmd.cmdloop.im_func.func_code:
+                    stack = _format_stack(frame)
+                    self.ctx.log.info('LONG_SPIN').failure(time=dur/1e6,
+                                                           slow_green=stack)
                 self.last_cal_log = time.time()
 
 
