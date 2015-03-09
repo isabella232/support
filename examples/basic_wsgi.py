@@ -1,7 +1,6 @@
 
 import platform
 
-import support
 from support import Group
 from support import meta_service
 from clastic import Application
@@ -14,17 +13,17 @@ def home_handler():
 
 def main():
     app = Application([
-    	('/', home_handler, render_basic),
-    	('/meta', meta_service.create_meta_app())])
+        ('/', home_handler, render_basic),
+        ('/meta', meta_service.create_meta_app())])
     apps = [(app, ('0.0.0.0', 8888), False)]
 
     if platform.system() == 'Windows':
-    	group = Group(apps)
+        group = Group(apps)
     else:
-	    group = Group(wsgi_apps=apps,
-	                  prefork=True,
-	                  num_workers=2,
-	                  daemonize=True)
+        group = Group(wsgi_apps=apps,
+                      prefork=True,
+                      num_workers=2,
+                      daemonize=True)
     group.serve_forever()
 
 
