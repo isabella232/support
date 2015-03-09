@@ -2,7 +2,6 @@
 import gc
 import os
 import sys
-import hashlib
 import datetime
 import traceback
 import collections
@@ -10,6 +9,7 @@ from collections import defaultdict
 
 import clastic
 from clastic import Response
+from clastic.render import BasicRender, TabularRender
 
 from support import ll
 from support import context
@@ -19,7 +19,7 @@ from support.meta_service import codeview
 
 
 def create_meta_app(additional_routes=None):
-    render = clastic.render.BasicRender()  # table_type=MetaTable)
+    render = BasicRender(tabular_render=TabularRender(table_type=MetaTable))
     ma = clastic.meta.MetaApplication()
     routes = [
         ('/', ma),
