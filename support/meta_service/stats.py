@@ -1,32 +1,54 @@
-
 import math
 import faststat
+
+import clastic
 
 from support import context
 
 
-def get_stats(the_stat=None):
-    every = {}
+def statgraphs(statname=''):
+    body_parts = []
+    for k, v in _filter_stats(statname).items():
+        if not isinstance(v, (faststat.Stats, faststat.Duration, faststat.Interval)):
+            continue
+        k = k.replace('.', '_').replace('(', '_').replace(')', '')
+        body_parts.append(
+            ('<h2>{0}</h2>\n'
+            '<div id="histogram-stat-{0}"></div>\n'
+            '<div id="time-stat-{0}"></div>\n').format(k))
+        body_parts.append(
+            ('<script type="text/javascript">'
+            '   stat_{0} = {1};\n'
+            '   faststat_histogram_chart(stat_{0}, "#histogram-stat-{0}");\n'
+            '   faststat_time_chart(stat_{0}, "#time-stat-{0}");\n'
+            '</script>').format(k, faststat.stat2json(v)))
+    return clastic.Response(
+        TEMPLATE.replace('==BODY==', ''.join(body_parts)), mimetype="text/html")
+
+
+def get_stats(the_stat=''):
+    matches = _filter_stats(the_stat)
+    brief = len(matches) > 1
+    return dict([(k, _any2dict(v, brief)) for k,v in matches.items()])
+
+
+def _any2dict(stat, brief=True):
+    if type(stat) is context.StreamSketch:
+        return _sketch2dict(stat, brief)
+    elif type(stat) is faststat.Markov:
+        return _markovstats2dict(stat, brief)
+    return _stats2dict(stat, brief)
+
+
+def _filter_stats(prefix):
     out = {}
     ctx = context.get_context()
     # pick up numerical stats
     stat_dict_names = (
-        "stats", "durations", "intervals", "volatile_stats", "markov_stats")
+        "stats", "durations", "intervals", "volatile_stats", "markov_stats", "sketches")
     for stat_dict_name in stat_dict_names:
         stats = getattr(ctx, stat_dict_name)
-        all_stats = stats.keys()
-        if the_stat:
-            all_stats = [e for e in all_stats if the_stat in e]
-        every[stat_dict_name] = all_stats
-    brief = sum([len(e) for e in every.values()]) > 1
-    for stat_dict_name, keys in every.items():
-        stats = getattr(context.get_context(), stat_dict_name)
-        out.update([(k, _stats2dict(stats[k], brief)) for k in keys])
-    # pick up sketches
-    all_stats = ctx.sketches.keys()
-    if the_stat:
-        all_stats = [e for e in all_stats if the_stat in e]
-    out.update([(k, _sketch2dict(ctx.sketches[k], brief)) for k in all_stats])
+        out.update([(k, v) for k,v in stats.items() if prefix in k])
     return out
 
 
@@ -128,14 +150,15 @@ def _sketch2dict(sketch, brief=True):
     }
 
 
-TEMPLATE = '''
+TEMPLATE = ('''
+<!DOCTYPE html>
 <html>
 <head>
-<script source="https://cdnjs.cloudflare.com/ajax/libs/d3/3.5.2/d3.min.js"></script>
-</head>
-
+    <meta charset="utf-8" />
+''' + faststat.JAVASCRIPT_HTML_HEAD +
+'''</head>
 <body>
-
+==BODY==
 </body>
-</html>
-'''
+</html>''')
+

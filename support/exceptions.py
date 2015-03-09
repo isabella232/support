@@ -4,15 +4,28 @@ that can be subclassed for user code or used in try/except blocks
 '''
 import sys
 import traceback
+import os
 
 import gevent
 
 
+def current_code_list():
+    'returns a code-list that can be formatted by code_list2trace_list'
+    f = sys._getframe().f_back
+    code_list = []
+    while f:
+        code_list.append(f.f_code)
+        code_list.append(f.f_lineno)
+        f = f.f_back
+    return code_list
+
+
 def code_list2trace_list(code_list):
     trace_list = []
-    for code, lineno in zip(code_list[0::2], code_list[1::2]):
+    for code, lineno in zip(code_list[-2::-2], code_list[-1::-2]):
         line = LINECACHE.getline(code.co_filename, lineno)
-        trace = '  File "{0}", line {1}, in {2}\n'.format(filename, lineno, code.co_name)
+        trace = '  File "{0}", line {1}, in {2}\n'.format(
+            code.co_filename, lineno, code.co_name)
         if line:
             trace += '    {0}\n'.format(line.strip())
         trace_list.append(trace)
@@ -26,7 +39,7 @@ class GLineCache(object):
 
     def getline(self, filename, lineno):
         if filename not in self.cache:
-            gevent.get_hub().threadpool.apply_e(self.update(filename))
+            gevent.get_hub().threadpool.apply(self.update, (filename,))
         lines = self.cache.get(filename, [])
         try:
             return lines[lineno]
@@ -34,23 +47,22 @@ class GLineCache(object):
             return ''
 
     def update(self, filename):
-        def trypath(path):
-            try:
-                with open(path, 'Ur') as f:
-                    return f.readlines()
-            except IOError:
-                return None
-
-        lines = trypath(filename)
-        if lines is None:
+        if not self._trypath(filename, filename):
             # TODO: is loader.getsource() important here?
             # ... in practice are there a significant number of libs
             # distributed in zip or other non-source-file form?
             for directory in sys.path:
-                lines = trypath(os.path.join(directory, filename))
-                if lines is not None:
+                path = os.path.join(directory, filename)
+                if self._trypath(filename, path):
                     break
-        self.cache[filename] = lines
+
+    def _trypath(self, filename, path):
+        try:
+            with open(path, 'Ur') as f:
+                self.cache[filename] = f.readlines()
+                return True
+        except IOError:
+            return False
 
 
 LINECACHE = GLineCache()

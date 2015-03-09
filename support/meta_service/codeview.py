@@ -1,35 +1,50 @@
-
-import cgi
 import sys
-import os.path
 import collections
+import cgi
+import os.path
+import json
 
 import clastic
 
-from support import context
+from .. import context
 
 
-def listmodules():
-    filename_leaf_samples, filename_branch_samples, total = _get_samples_by_file()
-
-    rows = []
-    for name, mod in sys.modules.items():
+def listmodules(sort_col=0):
+    total, rows = _listmodules(sort_col)
+    trows = []
+    for name, count, cum_count in rows:
         href = '<a href="/meta/showmodule/{0}">{0}</a><br />'.format(cgi.escape(name))
-        count = '?'
-        cum_count = '?'
-        if filename_leaf_samples and hasattr(mod, '__file__'):
-            fname = mod.__file__
-            if fname.endswith('.pyc'):
-                fname = fname[:-1]
-            count = str(filename_leaf_samples[fname])
-            cum_count = str(filename_branch_samples[fname])
-        rows.append('<tr><td>{0}</td><td>{1}</td><td>{2}</td></tr>'.format(
-            href, count, cum_count))
+        trows.append('<tr><td>{0}</td><td>{1}</td><td>{2}</td></tr>'.format(
+            href, str(count), str(cum_count)))
+
     return clastic.Response(
-        _LIST_MODULES_TEMPLATE.format(total, '\n'.join(rows)), mimetype="text/html")
+        _LIST_MODULES_TEMPLATE.format(total, '\n'.join(trows)), mimetype="text/html")
+
+
+def listmodules_json():
+    total, rows = _listmodules(1)
+    data = json.dumps({"total_samples": total, "module_counts": rows})
+    data.replace('],', '],\n')
+    return clastic.Response(data, mimetype="application/json")
 
 
 def showmodule(module_name):
+    lines = _showmodule(module_name)
+    rows = '\n'.join(
+        ['<tr><td><code>{0}</code></td>'
+         '<td><pre><code class="python">{1}</code></pre></td>'
+         '<td>{2}</td><td>{3}</td></tr>'.format(*e) for e in lines])
+    return clastic.Response(
+        _RENDER_MODULE_TEMPLATE.format(rows), mimetype="text/html")
+
+
+def showmodule_txt(module_name):
+    lines = _showmodule(module_name)
+    body = ''.join(['{1}\t{0}'.format(e[1], e[2]) for e in lines])
+    return clastic.Response(body, mimetype="text/plain")
+
+
+def _showmodule(module_name):
     module = sys.modules[module_name]
     if not hasattr(module, '__file__'):
         raise ValueError(
@@ -51,12 +66,28 @@ def showmodule(module_name):
             lines.append((
                 i + 1, cgi.escape(line),
                 leaf_count[i + 1], branch_count[i + 1]))
-    rows = '\n'.join(
-        ['<tr><td><code>{0}</code></td>'
-         '<td><pre><code class="python">{1}</code></pre></td>'
-         '<td>{2}</td><td>{3}</td></tr>'.format(*e) for e in lines])
-    return clastic.Response(
-        _RENDER_MODULE_TEMPLATE.format(rows), mimetype="text/html")
+    return lines
+
+
+def _listmodules(sort_col):
+    filename_leaf_samples, filename_branch_samples, total = _get_samples_by_file()
+
+    rows = []
+    for name, mod in sys.modules.items():
+        if mod is None:
+            continue
+        count = -1
+        cum_count = -1
+        if filename_leaf_samples and hasattr(mod, '__file__'):
+            fname = mod.__file__
+            if fname.endswith('.pyc'):
+                fname = fname[:-1]
+            count = filename_leaf_samples[fname]
+            cum_count = filename_branch_samples[fname]
+        rows.append((name, count, cum_count))
+
+    rows.sort(key=lambda e: e[sort_col], reverse=sort_col != 0)
+    return total, rows
 
 
 def _get_samples_by_file():
@@ -104,7 +135,10 @@ _LIST_MODULES_TEMPLATE = '''
 </head>
 <body>
     total samples {0}
-    <table><tr><th>Module</th><th>Count</th><th>Shared Count</th></tr>
+    <table><tr>
+        <th><a href="/meta/listmodules">Module</a></th>
+        <th><a href="/meta/listmodules/1">Count</a></th>
+        <th><a href="/meta/listmodules/2">Shared Count</a></th></tr>
     {1}
     </table>
 </body>
@@ -159,3 +193,11 @@ _RENDER_MODULE_TEMPLATE = '''
 </body>
 </html>
 '''
+
+
+
+
+
+
+
+
