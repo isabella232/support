@@ -43,7 +43,7 @@ if __name__ == '__main__':
           zip_safe=False,
           install_requires=['boltons==0.4.1',
                             'cffi==0.8.6',
-                            'clastic==0.4.1',
+                            'clastic==0.4.2',
                             'cryptography==0.7.2',
                             'enum34==1.0.4',
                             'faststat==0.3.1',

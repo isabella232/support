@@ -10,6 +10,7 @@ from collections import defaultdict
 import clastic
 from clastic import Response
 from clastic.render import BasicRender, TabularRender
+from clastic.static import StaticFileRoute
 
 from support import ll
 from support import context
@@ -17,10 +18,15 @@ from support import cache
 from support.meta_service import stats
 from support.meta_service import codeview
 
+CUR_PATH = os.path.dirname(os.path.abspath(__file__))
+SUPPORT_PATH = os.path.dirname(CUR_PATH)
+ASSETS_PATH = SUPPORT_PATH + '/assets'
+FAVICON_PATH = ASSETS_PATH + '/favicon/favicon.ico'
+
 
 def create_meta_app(additional_routes=None):
     render = BasicRender(tabular_render=TabularRender(table_type=MetaTable))
-    ma = clastic.meta.MetaApplication()
+    ma = clastic.meta.MetaApplication(page_title='SuPPort Meta Application')
     routes = [
         ('/', ma),
         ('/warnings', get_warnings, render),
@@ -58,6 +64,7 @@ def create_meta_app(additional_routes=None):
         ('/fd_info/<fd:int>', get_one_fd_info, rt_json_render_basic),
         ('/object', view_obj),
         ('/object/<obj_id:int>', view_obj),
+        StaticFileRoute('/favicon.ico', FAVICON_PATH)
     ] + (additional_routes or [])
 
     app = clastic.Application(routes)
