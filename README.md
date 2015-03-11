@@ -112,7 +112,7 @@ use SuPPort's gevent-based threadpooling capabilities.
 
 Errors happen in live environments.  DNS requests fail.  Packets are lost.
 Latency spikes.  TCP handshakes are slow.  SSL hanshakes are slower.
-Clients rarely handle these problems gracefully.  
+Clients rarely handle these problems gracefully.
 This is why SuPPort includes the connection manager, which provides a robust
 error handling code for all of these cases with consistent logging
 and monitoring.  It also provides a central
@@ -122,3 +122,12 @@ Small teams and companies can benefit from the lessons learned taking
 Python to 10s of millions of requests per day at PayPal.
 
 ### What's next
+
+
+### Appendix: What SuPPort is (and is not)
+
+* SuPPort is an architectural supplement to gevent
+* SuPPort is still under active development
+* SuPPort is built for robustness and development speed in the face of
+  a wide range of developer skill levels
+* SuPPort is not interested in being the next darling of microbenchmarkers
