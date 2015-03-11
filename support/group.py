@@ -722,27 +722,3 @@ class SimpleLogMiddleware(clastic.Middleware):
         with ctx.log.info('URL', url) as request_txn:
             request_txn.msg = {}
             return next(api_cal_trans=request_txn)
-
-
-class SimpleSupportApplication(object):
-
-    def __init__(self, routes_handlers, middlewares=None):
-        #from asf import meta_service
-        #from asf import _favicon
-
-        mw = [CALTransactionMiddleware()]
-        if middlewares:
-            mw.extend(middlewares)
-        pp_app = clastic.Application(routes_handlers,
-                                     middlewares=mw)
-        meta_subapp = meta_service.create_meta_app()
-        routes = [('/meta', meta_subapp),
-                  ('/meta/', meta_subapp),
-                  ('/favicon.ico', _favicon.create_app()),
-                  ('/admin/appInfo/', _app_info.create_app()),
-                  ('/admin/ecv/', _ecv.create_app())]
-        routes.append(('/', pp_app))
-        self.app = clastic.Application(routes)
-
-    def __call__(self, *args, **kwargs):
-        return self.app(*args, **kwargs)
