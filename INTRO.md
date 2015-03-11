@@ -111,13 +111,17 @@ paces. We confirmed at various points that the architecture:
 * Gracefully sheds traffic under load (no unbounded queues here)
 * Can and has run at 90%+ CPU load for days at a time
 * Is free from infrastructural memory leaks
-* Is robust to memory leakage within code written on top of the library
+* Is robust to memory leakage
 
-In fact, to illustrate that last point, there was a particular case
-when a user unexpectedly ended up out of the office with a major
-memory leak in their component. Despite being gone for weeks, thanks
-to worker cycling and general robustness, there was no major impact to
-their product.
+To illustrate, a live service handling millions of requests per
+day had a version of openssl installed which was leaking memory
+on every handshake.  Thanks to pre-emptive worker cycling on
+excessive memory, no intervention was required.
+The worker cycling was noted in the logs, the leak was traced
+to openssl, ops was notified.  The problem was fixed with the
+next regularly scheduled release rather than being handled as
+a crisis.
+
 
 #### Using threads with gevent
 
