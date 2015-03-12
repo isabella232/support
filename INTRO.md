@@ -174,6 +174,34 @@ idempotent. If you decorate a function that itself eventually calls a
 decorated function, performance won't pay the thread dispatch tax
 twice.
 
+##### ThreadedQueueServer
+
+The ThreadedQueueServer exists as an enhanced approach to pulling new
+connections off of a server's listening socket. It's SuPPort's way of
+incorporating an industry-standard practice, commonly associated with
+nginx and Apache, into the gevent WSGI server.
+
+If you've read this far into the post, you're probably familiar with
+the standard multi-worker preforking server architecture; a parent
+process opens a listening socket, forks one or more children that
+inherit the socket, and the kernel manages which worker gets which
+incoming client connection.
+
+The problem with this approach is that it generally results in
+inefficient distribution of connections, and can lead to some workers
+being overloaded while others have cycles to spare. Plus, all worker
+processes are woken up by the kernel in a race to accept a single
+inbound connection. The solution implemented here uses a thread that
+sleeps on accept, removing them from the kernel's listen queue as soon
+as possible, then pushing accepted connections to the main event
+loop. The ability to inspect this user-space connection queue enables
+not only even distribution but also intelligent behavior under high
+load, such as closing incoming connections when the backlog gets too
+long. This fail-fast approach prevents the kernel from holding open
+fully-established connections that cannot be reached in a reasonable
+amount of time. This backpressure takes the wait out of client failure
+scenarios leading to a more responsive system overall.
+
 ## What's next for SuPPort
 
 The features highlighted above are just a small selection of the
