@@ -1,7 +1,7 @@
 # SuPPort
 
 An evented server framework designed for building scalable
-and introspectable services. Built at PayPal, based on gevent.
+and introspectable services and clients. Built at PayPal, based on gevent.
 
 
 ## Introducing SuPPort: Evented Server Framework for Python

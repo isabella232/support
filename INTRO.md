@@ -1,20 +1,56 @@
 # Introducing SuPPort
 
-In our last post, [Ten Myths of Enterprise Python][ten_myths], we promised a deeper
-dive into our Python Infrastructure works here at PayPal and
-eBay. Thing is, there are only so many details we can cover, and at
-the end of the day, it's so much better to show than to say.
+In our last post, [Ten Myths of Enterprise Python][ten_myths], we
+promised a deeper dive into our Python Infrastructure works here at
+PayPal and eBay. Thing is, there are only so many details we can
+cover, and at the end of the day, it's so much better to show than to
+say.
 
 So without further ado, I'm pleased to introduce
-[SuPPort][support_github], an in-development distillation of our
-PayPal Python Infrastructure. Started in 2010, Python Infrastructure
-initially powered PayPal's internal price-setting interfaces, then
-payment orchestration interfaces, and now in 2015 supports dozens of
-projects at PayPal and eBay, having handled billions of
-production-critical requests and much more.
+[**SuPPort**][support_github], an in-development distillation of our
+PayPal Python Infrastructure.
 
 [ten_myths]: https://www.paypal-engineering.com/2014/12/10/10-myths-of-enterprise-python/
 [support_github]: https://github.com/paypal/support
+
+Started in 2010, Python Infrastructure initially powered PayPal's
+internal price-setting interfaces, then payment orchestration
+interfaces, and now in 2015 supports dozens of projects at PayPal and
+eBay, having handled billions of production-critical requests and much
+more. So what does it mean to distill this functionality into SuPPort?
+
+SuPPort is an evented server framework designed for building scalable
+and maintainable services and clients, built with several open-source
+technologies:
+
+  * [gevent][gevent_gh] - Performant networking with coroutines
+  * [greenlet][greenlet_gh] - Python's premiere userspace threading (greenthread) library
+  * [clastic][clastic_gh] - Lightweight web framework built on top of Werkzeug
+  * [werkzeug][werkzeug_gh] - The WSGI toolkit
+  * [faststat][faststat_gh] - Fast online statistics collection
+  * [hyperloglog][hyperlog_gh] - Efficient cardinality estimators
+  * [ufork][ufork_gh] - Minimal, programmatic preforking servers
+  * [lithoxyl][lithoxyl_gh] - Fast, transactional structured system instrumentation
+  * [sampro][sampro_gh] - Super simple [sampling profiler][sampling_prof_wp]
+  * [PyOpenSSL][pyopenssl_gh], [pyasn1][pyasn1_sf], [pyjks][pyjks_gh],
+    [boltons][boltons_gh], and [more][requirements_txt]
+
+[gevent_gh]: https://github.com/gevent/gevent
+[greenlet_gh]: https://github.com/python-greenlet/greenlet
+[clastic_gh]: https://github.com/mahmoud/clastic
+[werkzeug_gh]: https://github.com/mitsuhiko/werkzeug
+[faststat_gh]: https://github.com/doublereedkurt/faststat
+[hyperloglog_gh]: https://github.com/svpcom/hyperloglog
+[ufork_gh]: https://github.com/doublereedkurt/ufork
+[lithoxyl_gh]: https://github.com/mahmoud/lithoxyl
+[sampro_gh]: https://github.com/doublereedkurt/sampro
+[pyopenssl_gh]: https://github.com/pyca/pyopenssl
+[pyasn1_sf]: http://pyasn1.sourceforge.net/
+[pyjks_gh]: https://github.com/doublereedkurt/pyjks
+[boltons_gh]: https://github.com/mahmoud/boltons
+[requirements_txt]: https://github.com/paypal/support/blob/master/requirements.txt
+
+[sampling_prof_wp]: https://en.wikipedia.org/wiki/Profiling_%28computer_programming%29#Statistical_profilers
 
 ## Enterprise Ideals, Flexible Features
 
@@ -129,16 +165,20 @@ a crisis.
 gevent was to eliminate evil, evil threads," go the protests of
 countless strawmen.
 
-Greenlets are excellent and powerful, and we want to add that power to
-our process and thread-based world. There's no point running from
+Originating in [Stackless][stackless] and ported over by [PyPy][pypy]'s own Armin Rigo,
+greenlets are excellent and powerful, and we want to add that power to
+the process- and thread-based world. There's no point running from
 standard OS capabilities; threads still have their place. We decided
 we didn't want *n* threads, we wanted *k* threads. Many architectures
 adopt a thread-per-request or process-per-request model, but the last
 thing we want is the number of threads going up as load
 increases. Each thread brings adds a bit of contention to the mix, but
-in many environments the memory overhead alone, 4MB for 32-bit and 8MB
-for 64-bit, is significant. At just a few kilobytes apiece,
-greenthreads are three orders of magnitude less costly.
+in many environments the memory overhead alone, typically 4-8MB per
+thread. At just a few kilobytes apiece, greenthreads are three orders
+of magnitude less costly.
+
+[stackless]: http://www.stackless.com/
+[pypy]: http://pypy.org/
 
 Furthermore, thread usage in our architecture is hardly about
 parallelism; we use worker processes for that. In the SuPPort world,
@@ -230,3 +270,10 @@ and SuPPort aims to carry on that legacy as the open-source common
 core for both eBay and PayPal Python stacks.
 
 SuPPort is a living, codified set of concurrent software learnings.
+
+
+## TODO
+
+* Links
+  * link to worker/thread-per-request architecture
+  * link to lengthier preforked architecture description
