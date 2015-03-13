@@ -1,8 +1,8 @@
 # Introducing SuPPort
 
 In our last post, [Ten Myths of Enterprise Python][ten_myths], we
-promised a deeper dive into our Python Infrastructure works here at
-PayPal and eBay. Thing is, there are only so many details we can
+promised a deeper dive into how our Python Infrastructure works here
+at PayPal and eBay. Thing is, there are only so many details we can
 cover, and at the end of the day, it's so much better to show than to
 say.
 
@@ -68,7 +68,7 @@ their processes. This often results in a great cost in terms of both
 hardware and developer productivity. Fortunately, this is exactly
 where Python excels and can save the day.
 
-So let's take a stroll through a selection of SuPPort's featureset in
+So let's take a stroll through a selection of SuPPort's feature set in
 the context of these criteria!
 
 ### Interoperability
@@ -81,17 +81,18 @@ exposed in SuPPort.
 
 #### BufferedSocket
 
-Having had to implement over half a dozen network protocols for the
-PayPal environment can lead to a lot of duplicated code. The
-BufferedSocket class handles a lot of the nitty-gritty of making a
-socket into a parser-friendly data source, while retaining timeouts
-for keeping communications responsive. A must-have primitive for any
+PayPal has hundreds of services across several tiers. Interoperating
+between these means having to implement over half a dozen network
+protocols. The `BufferedSocket` type eliminated our inevitable code
+duplication, handling a lot of the nitty-gritty of making a socket
+into a parser-friendly data source, while retaining timeouts for
+keeping communications responsive. A must-have primitive for any
 gevent protocol implementer.
 
 #### ConnectionManager
 
 Errors happen in live environments. DNS requests fail. Packets are
-lost. Latency spikes. TCP handshakes are slow. SSL hanshakes are
+lost. Latency spikes. TCP handshakes are slow. SSL handshakes are
 slower. Clients rarely handle these problems gracefully. This is why
 SuPPort includes the `ConnectionManager`, which provides robust error
 handling code for all of these cases with consistent logging and
@@ -138,11 +139,11 @@ API full of useful runtime information.
 
 ### Infallibility
 
-At the end of the day, reliability over long periods of time are what
-actually earns a stack adoption and approval. At this point, the
-SuPPort architecture has a billion production requests under its belt
-here at PayPal, but on the way we put it through the proverbial
-paces. We confirmed at various points that the architecture:
+At the end of the day, reliability over long periods of time is what
+earns a stack approval and adoption. At this point, the SuPPort
+architecture has a billion production requests under its belt here at
+PayPal, but on the way we put it through the proverbial paces. We
+confirmed at various points that the architecture:
 
 * Gracefully sheds traffic under load (no unbounded queues here)
 * Can and has run at 90%+ CPU load for days at a time
@@ -172,7 +173,7 @@ standard OS capabilities; threads still have their place. We decided
 we didn't want *n* threads, we wanted *k* threads. Many architectures
 adopt a thread-per-request or process-per-request model, but the last
 thing we want is the number of threads going up as load
-increases. Each thread brings adds a bit of contention to the mix, but
+increases. Each thread adds a bit of contention to the mix, but
 in many environments the memory overhead alone, typically 4-8MB per
 thread. At just a few kilobytes apiece, greenthreads are three orders
 of magnitude less costly.
@@ -188,19 +189,21 @@ responsiveness.
 
 One excellent example of how threads provide this responsiveness is
 the `ThreadQueueServer` detailed below. But first, there are two
-built-in Threadpools with decorators worth highlighting, `io_bound` and
+built-in `Threadpools` with decorators worth highlighting, `io_bound` and
 `cpu_bound`:
 
 ##### io_bound
 
 Used to wrap opaque clients built without affordances for cooperative
 concurrent IO. We use this to wrap `cx_Oracle` and other C-based
-clients that are built for thread-based parallelization.
+clients that are built for thread-based parallelization. Other major
+use cases for `io_bound` is when getting input from standard input
+(`stdin`) and files.
 
 ##### cpu_bound
 
 Used to wrap expensive operations that would halt the event loop for
-too long. We use it to wrap long-running cryptiography and
+too long. We use it to wrap long-running cryptography and
 serialization tasks, such as decrypting private SSL certificates or
 loading huge blobs of XML and JSON. Because the majority of use cases'
 implementations do not release [the GIL][TODO], the `cpu_bound`
