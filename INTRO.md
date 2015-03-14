@@ -27,7 +27,7 @@ several open-source technologies:
 
   * [gevent][gevent_gh] - Performant networking with coroutines ([tutorial][gevent_tut])
   * [greenlet][greenlet_gh] - Python's premiere microthreading library
-  * [clastic][clastic_gh] - Lightweight web framework built on top of Werkzeug
+  * [clastic][clastic_gh] - Lightweight web framework free of global state
   * [werkzeug][werkzeug_gh] - Python's most popular WSGI toolkit
   * [faststat][faststat_gh] - Fast [streaming][streaming_wp] statistics collection
   * [hyperloglog][hyperloglog_gh] - Efficient cardinality estimators ([paper][hll_paper])
@@ -44,7 +44,7 @@ gevent and the libraries above have been used to build functional services
 and products with anywhere from 100 requests per day to 100 requests
 per second and beyond. Most of all, SuPPort aims to be an educational
 design entry for developers looking for practical and scalable
-service/client architectures.
+client-server architectures.
 
 [evented]: https://en.wikipedia.org/wiki/Event-driven_architecture
 [gevent_gh]: https://github.com/gevent/gevent
@@ -218,10 +218,12 @@ highlighting, `io_bound` and `cpu_bound`:
 ##### <a href="#io-bound" name="io-bound">`io_bound`</a>
 
 Used to wrap opaque clients built without affordances for cooperative
-concurrent IO. We use this to wrap `cx_Oracle` and other C-based
+concurrent IO. We use this to wrap [`cx_Oracle`][cx_oracle] and other C-based
 clients that are built for thread-based parallelization. Other major
 use cases for `io_bound` is when getting input from standard input
 (`stdin`) and files.
+
+[cx_oracle]: https://pypi.python.org/pypi/cx_Oracle
 
 ##### <a href="#cpu-bound" name="cpu-bound">`cpu_bound`</a>
 
@@ -265,16 +267,22 @@ The problem with this approach is that it generally results in
 inefficient distribution of connections, and can lead to some workers
 being overloaded while others have cycles to spare. Plus, all worker
 processes are woken up by the kernel in a race to accept a single
-inbound connection. The solution implemented here uses a thread that
-sleeps on accept, removing them from the kernel's listen queue as soon
-as possible, then pushing accepted connections to the main event
-loop. The ability to inspect this user-space connection queue enables
-not only even distribution but also intelligent behavior under high
-load, such as closing incoming connections when the backlog gets too
-long. This fail-fast approach prevents the kernel from holding open
-fully-established connections that cannot be reached in a reasonable
-amount of time. This backpressure takes the wait out of client failure
-scenarios leading to a more responsive system overall.
+inbound connection, in what's commonly referred to as
+[*the thundering herd*][thunder_herd].
+
+[thunder_herd]: https://en.wikipedia.org/wiki/Thundering_herd_problem
+
+The solution implemented here uses a thread that sleeps on accept,
+removing connections from the kernel's listen queue as soon as
+possible, then explicitly pushing accepted connections to the main
+event loop. The ability to inspect this user-space connection queue
+enables not only even distribution but also intelligent behavior under
+high load, such as closing incoming connections when the backlog gets
+too long. This fail-fast approach prevents the kernel from holding
+open fully-established connections that cannot be reached in a
+reasonable amount of time. This backpressure takes the wait out of
+client failure scenarios leading to a more responsive extrinsic
+system, as well.
 
 ## <a href="#whats-next" name="whats-next">What's next for SuPPort</a>
 
