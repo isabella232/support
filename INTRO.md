@@ -159,6 +159,18 @@ API full of useful runtime information.
 
 (Figure 2: see the examples of the MetaApplication in the static directory)
 
+As you can see above, there is a lot of information exposed through
+this default interface. This is partly because of restricted
+environments not allowing local login on machines, and another part is
+the relative convenience of a browser for most developers. Not
+pictured is the feature that the same information is available in JSON
+format for easy programmatic consumption. Because this application is
+such a rich source of information, we recommend using SuPPort to run
+it on a separate port which can be firewalled accordingly, as seen
+[in this example][basic_wsgi_example].
+
+[basic_wsgi_example]: https://github.com/paypal/support/blob/master/examples/basic_wsgi.py
+
 ### <a href="#infallibility" name="infallibility">Infallibility</a>
 
 At the end of the day, reliability over long periods of time is what
