@@ -2,9 +2,9 @@
 
 In our last post, [Ten Myths of Enterprise Python][ten_myths], we
 promised a deeper dive into how our Python Infrastructure works here
-at PayPal and eBay. Thing is, there are only so many details we can
-cover, and at the end of the day, it's so much better to show than to
-say.
+at PayPal and eBay. However, there are only so many details we can
+cover, and at the end of the day, it's just so much better to show
+than to tell.
 
 So without further ado, I'm pleased to introduce
 [**SuPPort**][support_gh], an in-development distillation of our
@@ -20,10 +20,10 @@ eBay, having handled billions of production-critical requests and much
 more. So what does it mean to distill this functionality into SuPPort?
 
 <a name="#open-source"></a>
-
 SuPPort is an [event-driven][evented] server framework designed for
 building scalable and maintainable services and clients, built with
-several open-source technologies:
+several open-source technologies, so before we get into the innards of
+SuPPort, we should acknowledge its foundations:
 
   * [gevent][gevent_gh] - Performant networking with coroutines ([tutorial][gevent_tut])
   * [greenlet][greenlet_gh] - Python's premiere microthreading library
@@ -245,6 +245,8 @@ use cases for `io_bound` is when getting input from standard input
 
 [cx_oracle]: https://pypi.python.org/pypi/cx_Oracle
 
+(Figure 3: see `worker_closeup.png` in the static directory)
+
 ##### <a href="#cpu-bound" name="cpu-bound">`cpu_bound`</a>
 
 Used to wrap expensive operations that would halt the event loop for
@@ -282,6 +284,8 @@ that inherit the socket, and the kernel manages which worker gets
 which incoming client connection.
 
 [stevens_models]: http://linuxgazette.net/129/saha.html
+
+(Figure 4: see `basic_prefork_workers.png` in the static directory)
 
 The problem with this approach is that it generally results in
 inefficient distribution of connections, and can lead to some workers
