@@ -149,7 +149,7 @@ functions. This has the added benefit of creating opportunities to
 centrally manage and monitor debugging data and statistics, made
 available through the MetaApplication below.
 
-(Figure 1: see the examples of charts in the the assets directory)
+(Figure 1: see the examples of charts in the the static directory)
 
 #### <a href="#metaapplication" name="metaapplication">`MetaApplication`</a>
 
@@ -157,7 +157,7 @@ While not strictly a web server framework, SuPPort leverages its
 strong roots in the web to provide both a web-based user interface and
 API full of useful runtime information.
 
-(Figure 2: see the examples of the MetaApplication in the assets directory)
+(Figure 2: see the examples of the MetaApplication in the static directory)
 
 ### <a href="#infallibility" name="infallibility">Infallibility</a>
 
