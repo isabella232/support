@@ -70,7 +70,8 @@ client-server architectures.
 <a name="#enterprise"></a>
 ## Enterprise Ideals, Flexible Features
 
-In any enterprise environment, you are looking to achieve the
+Many motivations went into building up a Python stack at PayPal, but
+as in any enterprise environment, we were looking to achieve the
 following:
 
   * [**Interoperability**](#interoperability)
@@ -146,7 +147,9 @@ SuPPort uses a system of contexts to explicitly manage nonlocal state,
 eliminating difficult-to-track implicit global state for many core
 functions. This has the added benefit of creating opportunities to
 centrally manage and monitor debugging data and statistics, made
-available through the MetaApplication below. (# TODO screenshot)
+available through the MetaApplication below.
+
+(Figure 1: see the examples of charts in the the assets directory)
 
 #### <a href="#metaapplication" name="metaapplication">`MetaApplication`</a>
 
@@ -154,7 +157,7 @@ While not strictly a web server framework, SuPPort leverages its
 strong roots in the web to provide both a web-based user interface and
 API full of useful runtime information.
 
-(# TODO screenshot)
+(Figure 2: see the examples of the MetaApplication in the assets directory)
 
 ### <a href="#infallibility" name="infallibility">Infallibility</a>
 
@@ -177,6 +180,23 @@ impacted. The worker cycling was noted in the logs, the leak was
 traced to OpenSSL, and operations was notified. The problem was fixed
 with the next regularly scheduled release rather than being handled as
 a crisis.
+
+#### <a href="#no-monkeypatching" name="no-monkeypatching">No monkeypatching</a>
+
+One of the first and sometimes only ways that people experience gevent
+is through [monkeypatching][monkeypatch_wp]. At the top of your main
+module [you issue a call to gevent][gevent_monkeypatch] that
+automatically swaps out virtually all system libraries with their
+cooperatively concurrent ones. This sort of magic is relatively rare
+in Python programming, and rightfully so. Implicit activities like
+this can have unexpected consequences. SuPPort is a no-monkeypatching
+approach to gevent. If you want to implement your own network-level
+code, it is best to use `gevent.socket` directly. If you want
+gevent-incompatible libraries to work with gevent, best to use
+SuPPort's gevent-based threadpooling capabilities.
+
+[gevent_monkeypatch]: http://www.gevent.org/intro.html#monkey-patching
+[monkeypatch_wp]: https://en.wikipedia.org/wiki/Monkey_patch
 
 #### <a href="#gevent-threads" name="gevent-threads">Using threads with gevent</a>
 
@@ -211,7 +231,7 @@ efficient overall, but sometimes you really do need guarantees about
 responsiveness.
 
 One excellent example of how threads provide this responsiveness is
-the [`ThreadQueueServer`](#threaded-queue-server) detailed below. But
+the [`ThreadQueueServer`](#thread-queue-server) detailed below. But
 first, there are two built-in `Threadpools` with decorators worth
 highlighting, `io_bound` and `cpu_bound`:
 
@@ -248,9 +268,9 @@ idempotent. If you decorate a function that itself eventually calls a
 decorated function, performance won't pay the thread dispatch tax
 twice.
 
-##### <a href="#threaded-queue-server" name="threaded-queue-server">`ThreadedQueueServer`</a>
+##### <a href="#thread-queue-server" name="thread-queue-server">`ThreadQueueServer`</a>
 
-The `ThreadedQueueServer` exists as an enhanced approach to pulling
+The `ThreadQueueServer` exists as an enhanced approach to pulling
 new connections off of a server's listening socket. It's SuPPort's way
 of incorporating an industry-standard practice, commonly associated
 with nginx and Apache, into the gevent WSGI server world.
@@ -297,10 +317,13 @@ particularly excited about:
   * Distributed online statistics collection
   * Additional generalizations for TCP client infrastructure
 
-Suffice to say, we're really looking forward to expanding our set of
-codified concurrent software learnings, and incorporating as much
-community feedback as possible, so don't forget to [subscribe to the
-blog][ppe_rss] and [the SuPPort repo on GitHub][support_gh].
+And of course, more tests! As soon as we get a couple more features
+distilled out, we'll start porting out more than the skeleton tests we
+have now. Suffice to say, we're really looking forward to expanding
+our set of codified concurrent software learnings, and incorporating
+as much community feedback as possible, so don't forget to
+[subscribe to the blog][ppe_rss] and
+[the SuPPort repo on GitHub][support_gh].
 
 [ppe_rss]: https://www.paypal-engineering.com/feed/
 
