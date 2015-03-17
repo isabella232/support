@@ -246,7 +246,7 @@ def _make_server_sock(address, socket_type=gevent.socket.socket):
             # we may fork, so protect ourselves
             flags = fcntl.fcntl(sock.fileno(), fcntl.F_GETFD)
             fcntl.fcntl(sock.fileno(), fcntl.F_SETFD, flags | fcntl.FD_CLOEXEC)
-        ml.la("Listen to {0!r} gave this socket {1!r}", address, sock)
+        #ml.la("Listen to {0!r} gave this socket {1!r}", address, sock)
         _log.success('Listen to {addr} gave {sock}', addr=address, sock=sock)
     return sock
 
