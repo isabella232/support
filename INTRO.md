@@ -2,9 +2,9 @@
 
 In our last post, [Ten Myths of Enterprise Python][ten_myths], we
 promised a deeper dive into how our Python Infrastructure works here
-at PayPal and eBay. However, there are only so many details we can
-cover, and at the end of the day, it's just so much better to show
-than to tell.
+at PayPal and eBay. There is a problem, though. There are only so many
+details we can cover, and at the end of the day, it's just so much
+better to show than to tell.
 
 So without further ado, I'm pleased to introduce
 [**SuPPort**][support_gh], an in-development distillation of our
@@ -14,16 +14,18 @@ PayPal Python Infrastructure.
 [support_gh]: https://github.com/paypal/support
 
 Started in 2010, Python Infrastructure initially powered PayPal's
-internal price-setting interfaces, then payment orchestration
-interfaces, and now in 2015 supports dozens of projects at PayPal and
-eBay, having handled billions of production-critical requests and much
-more. So what does it mean to distill this functionality into SuPPort?
+internal price-setting interfaces, then grew to support internal
+payment orchestration interfaces, and now in 2015 it supports dozens
+of projects at PayPal and eBay, having handled billions of
+production-critical requests for a wide range of teams and tiers. So
+what does it mean to distill this functionality into SuPPort?
 
 <a name="#open-source"></a>
+
 SuPPort is an [event-driven][evented] server framework designed for
-building scalable and maintainable services and clients, built with
-several open-source technologies, so before we get into the innards of
-SuPPort, we should acknowledge its foundations:
+building scalable and maintainable services and clients. It's built on
+top of several open-source technologies, so before we dig into the
+workings of SuPPort, we ought to showcase its foundations:
 
   * [gevent][gevent_gh] - Performant networking with coroutines ([tutorial][gevent_tut])
   * [greenlet][greenlet_gh] - Python's premiere microthreading library
@@ -37,14 +39,14 @@ SuPPort, we should acknowledge its foundations:
   * [PyOpenSSL][pyopenssl_gh], [pyasn1][pyasn1_sf], [pyjks][pyjks_gh],
     [boltons][boltons_gh], and [more...][requirements_txt]
 
-With power comes complexity, and while Python as a language strives
-for technical convergence, there are many ways to approach the problem
-of developing, scaling, and maintaining components. SuPPort is one way
-gevent and the libraries above have been used to build functional services
-and products with anywhere from 100 requests per day to 100 requests
-per second and beyond. Most of all, SuPPort aims to be an educational
-design entry for developers looking for practical and scalable
-client-server architectures.
+Some or all of these may be new to many developers, but all-in-all
+they comprise a powerful set of functionality. With power comes
+complexity, and while Python as a language strives for technical
+convergence, there are many ways to approach the problem of
+developing, scaling, and maintaining components. SuPPort is one way
+gevent and the libraries above have been used to build functional
+services and products with anywhere from 100 requests per day to 100
+requests per second and beyond.
 
 [evented]: https://en.wikipedia.org/wiki/Event-driven_architecture
 [gevent_gh]: https://github.com/gevent/gevent
@@ -70,9 +72,9 @@ client-server architectures.
 <a name="#enterprise"></a>
 ## Enterprise Ideals, Flexible Features
 
-Many motivations went into building up a Python stack at PayPal, but
-as in any enterprise environment, we were looking to achieve the
-following:
+Many motivations have gone into building up a Python stack at PayPal,
+but as in any enterprise environment, we continuously aim to achieve
+the following:
 
   * [**Interoperability**](#interoperability)
   * [**Introspectability**](#introspectability)
@@ -80,24 +82,25 @@ following:
 
 Of course organizations of all sizes want these features as well, but
 the key difference is that large organizations like PayPal usually end
-up building a higher degree of redundancy and risk mitigation into
-their processes. This often results in a great cost in terms of both
-hardware and developer productivity. Fortunately, this is exactly
-where Python excels and can save the day.
+up building ***more***. All while demanding a higher degree of
+redundancy and risk mitigation from their processes. This often
+results in great cost in terms of both hardware and developer
+productivity. Fortunately for us, Python can be very efficient in both
+respects.
 
 So, let's take a stroll through a selection of SuPPort's feature set
 in the context of these criteria! Note that if you're unfamiliar with
-evented programming, nonblocking sockets, and in a couple cases gevent
-in particular, some of this may seem quite foreign. [The gevent
-tutorial][gevent_tut] is a good entry point for the intermediate Python programmer.
+evented programming, nonblocking sockets, and gevent in particular,
+some of this may seem quite foreign. [The gevent tutorial][gevent_tut]
+is a good entry point for the intermediate Python programmer.
 
 ### <a href="#interoperability" name="interoperability">Interoperability</a>
 
 Python usage here at PayPal has spread to virtually every imaginable
-use case: admin interfaces, midtier services, operations automation,
-developer tools, batch jobs; you name it, Python has filled a gap in
-that area. This has resulted in a few rather interesting abstractions
-exposed in SuPPort.
+use case: administrative interfaces, midtier services, operations
+automation, developer tools, batch jobs; you name it, Python has
+filled a gap in that area. This legacy has resulted in a few rather
+interesting abstractions exposed in SuPPort.
 
 #### <a href="#buffered-socket" name="buffered-socket">`BufferedSocket`</a>
 
@@ -124,8 +127,8 @@ timeouts and host fallbacks.
 As part of a large organization, we can afford to add more machines,
 and are even required to keep a certain level of redundancy and idle
 hardware. And while DevOps is catching on in many larger-scale
-environments, there are many cases in enterprise environments where a
-developer is *not allowed* to attend to their production code.
+environments, there are many cases in enterprise environments where
+developers are *not allowed* to attend to their production code.
 
 SuPPort currently comes with all the same general-purpose
 introspection capabilities that PayPal Python developers enjoy,
@@ -143,7 +146,7 @@ process ID, or the VM-managed garbage collection counters. Others
 aspects are in our control, and best practice in concurrent
 programming is to keep these as well-managed as possible.
 
-SuPPort uses a system of contexts to explicitly manage nonlocal state,
+SuPPort uses a system of Contexts to explicitly manage nonlocal state,
 eliminating difficult-to-track implicit global state for many core
 functions. This has the added benefit of creating opportunities to
 centrally manage and monitor debugging data and statistics, made
@@ -153,7 +156,7 @@ available through the MetaApplication below.
 
 #### <a href="#metaapplication" name="metaapplication">`MetaApplication`</a>
 
-While not strictly a web server framework, SuPPort leverages its
+While not exclusively a web server framework, SuPPort leverages its
 strong roots in the web to provide both a web-based user interface and
 API full of useful runtime information.
 
@@ -177,12 +180,14 @@ At the end of the day, reliability over long periods of time is what
 earns a stack approval and adoption. At this point, the SuPPort
 architecture has a billion production requests under its belt here at
 PayPal, but on the way we put it through the proverbial paces. At
-various points, we have tested and confirmed these edge behaviors:
+various points, we have tested and confirmed these edge
+behaviors. Here are just a few key characteristics of a well-behaved
+application:
 
   * **Gracefully sheds traffic** under load (no unbounded queues here)
   * Can and has run at **90%+ CPU load for days** at a time
-  * Is free from **framework** memory leaks
-  * Is robust to memory leakage in **user code**
+  * Is **free** from framework memory leaks
+  * Is **robust to** memory leakage in user code
 
 To illustrate, a live service handling millions of requests per day
 had a version of OpenSSL installed which was leaking memory on every
@@ -205,7 +210,7 @@ this can have unexpected consequences. SuPPort is a no-monkeypatching
 approach to gevent. If you want to implement your own network-level
 code, it is best to use `gevent.socket` directly. If you want
 gevent-incompatible libraries to work with gevent, best to use
-SuPPort's gevent-based threadpooling capabilities.
+SuPPort's gevent-based threadpooling capabilities, detailed below:
 
 [gevent_monkeypatch]: http://www.gevent.org/intro.html#monkey-patching
 [monkeypatch_wp]: https://en.wikipedia.org/wiki/Monkey_patch
@@ -225,7 +230,7 @@ capabilities; threads have their place. Many architectures adopt a
 [thread-per-request or process-per-request model][server_models], but
 the last thing we want is the number of threads going up as load
 increases. Threads are expensive; each thread adds a bit of contention
-to the mix, but in many environments the memory overhead alone,
+to the mix, and in many environments the memory overhead alone,
 typically 4-8MB per thread, presents a problem. At just a few
 kilobytes apiece, greenlet's microthreads are three orders of
 magnitude less costly.
@@ -249,11 +254,11 @@ highlighting, `io_bound` and `cpu_bound`:
 
 ##### <a href="#io-bound" name="io-bound">`io_bound`</a>
 
-Used to wrap opaque clients built without affordances for cooperative
-concurrent IO. We use this to wrap [`cx_Oracle`][cx_oracle] and other C-based
-clients that are built for thread-based parallelization. Other major
-use cases for `io_bound` is when getting input from standard input
-(`stdin`) and files.
+This decorator is primarily used to wrap opaque clients built without
+affordances for cooperative concurrent IO. We use this to wrap
+[`cx_Oracle`][cx_oracle] and other C-based clients that are built for
+thread-based parallelization. Other major use cases for `io_bound` is
+when getting input from standard input (`stdin`) and files.
 
 [cx_oracle]: https://pypi.python.org/pypi/cx_Oracle
 
@@ -261,14 +266,14 @@ use cases for `io_bound` is when getting input from standard input
 
 ##### <a href="#cpu-bound" name="cpu-bound">`cpu_bound`</a>
 
-Used to wrap expensive operations that would halt the event loop for
-too long. We use it to wrap long-running cryptography and
-serialization tasks, such as decrypting private SSL certificates or
-loading huge blobs of XML and JSON. Because the majority of use cases'
-implementations do not release the Global Interpreter Lock, the
-`cpu_bound` ThreadPool is actually just a pool of one thread, to
-minimize CPU contention from multiple unparallelizable CPU-intensive
-tasks.
+The `cpu_bound` decorator is used to wrap expensive operations that
+would halt the event loop for too long. We use it to wrap long-running
+cryptography and serialization tasks, such as decrypting private SSL
+certificates or loading huge blobs of XML and JSON. Because the
+majority of use cases' implementations do not release the Global
+Interpreter Lock, the `cpu_bound` ThreadPool is actually just a pool
+of one thread, to minimize CPU contention from multiple
+unparallelizable CPU-intensive tasks.
 
 It's worth noting that some deserialization tasks are not worth the
 overhead of dispatching to a separate thread. If the data to be
