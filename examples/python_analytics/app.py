@@ -51,6 +51,8 @@ def main():
                       prefork=True,
                       daemonize=True)
         group.serve_forever()
+    # stop a daemonized server using the .pgrp file:
+    # kill -15 -$(cat support.pgrp)
 
 
 # known weakness of the path approach is that the dictionaries cannot
