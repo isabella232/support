@@ -8,6 +8,7 @@ gevent==1.0.1
 greenlet==0.4.5
 hyperloglog==0.0.9
 lithoxyl>=0.1.0
+psutil==2.2.1
 py==1.4.26
 pyasn1==0.1.7
 pycparser==2.10
@@ -18,5 +19,3 @@ sampro==0.1
 ufork>=0.0.1
 six==1.9.0
 Werkzeug==0.9.4
-
--e git+git@github.com:paypal/support.git@80392699bcc885ad6f496e019b29089721a82e64#egg=support-master
