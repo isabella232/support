@@ -51,6 +51,7 @@ if __name__ == '__main__':
                             'greenlet==0.4.5',
                             'hyperloglog==0.0.9',
                             'lithoxyl>=0.1.0',
+                            'psutil==2.2.1',
                             'py==1.4.26',
                             'pyasn1==0.1.7',
                             'pycparser==2.10',
