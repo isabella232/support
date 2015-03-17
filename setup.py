@@ -17,7 +17,7 @@ from setuptools import setup
 
 
 __author__ = 'Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane'
-__version__ = '0.0.1dev'
+__version__ = '0.0.1'
 __contact__ = 'mahmoud@paypal.com'
 __url__ = 'https://github.com/paypal/support'
 __license__ = 'BSD'
@@ -65,6 +65,7 @@ if __name__ == '__main__':
           license=__license__,
           platforms='any',
           classifiers=[
+              'Development Status :: 4 - Beta',
               'Intended Audience :: Developers',
               'Topic :: Internet :: WWW/HTTP :: HTTP Servers',
               'Topic :: Internet :: WWW/HTTP :: WSGI',
