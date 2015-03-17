@@ -92,7 +92,11 @@ So, let's take a stroll through a selection of SuPPort's feature set
 in the context of these criteria! Note that if you're unfamiliar with
 evented programming, nonblocking sockets, and gevent in particular,
 some of this may seem quite foreign. [The gevent tutorial][gevent_tut]
-is a good entry point for the intermediate Python programmer.
+is a good entry point for the intermediate Python programmer, which
+can be supplemented with [this well-illustrated introduction to server
+architectures][intro_server_archs].
+
+[intro_server_archs]: http://berb.github.io/diploma-thesis/original/042_serverarch.html
 
 ### <a href="#interoperability" name="interoperability">Interoperability</a>
 
