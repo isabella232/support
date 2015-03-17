@@ -169,7 +169,7 @@ suit a wide variety of environments from development to production.
 Python famously has no global scope: all values are namespaced in
 module scope. But there are still plenty of aspects of the runtime
 that are global. Some are out of our control, like the OS-assigned
-process ID, or the VM-managed garbage collection counters. Others
+process ID, or the VM-managed garbage collection counters. Other
 aspects are in our control, and best practice in concurrent
 programming is to keep these as well-managed as possible.
 
