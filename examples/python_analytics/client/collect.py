@@ -28,7 +28,7 @@ except:
 
 HAVE_UCS4 = getattr(sys, 'maxunicode', 0) > 65536
 
-# TODO: readable time
+
 TIME_INFO = {'utc': str(datetime.datetime.utcnow()),
              'std_utc_offset': -time.timezone / 3600.0}
 
