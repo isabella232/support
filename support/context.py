@@ -20,7 +20,7 @@ import sampro
 import greenlet
 import faststat
 import hyperloglog.hll
-
+import functools
 
 import ll
 ml = ll.LLogger()
@@ -28,9 +28,9 @@ ml = ll.LLogger()
 from support import log
 from support import cache
 
-#NOTE: do not import anything else from support at context import time
-#this is a bit heavy-handed, but guarantees no circular import errors
-#which are otherwise very easy to create
+# NOTE: do not import anything else from support at context import time
+# this is a bit heavy-handed, but guarantees no circular import errors
+# which are otherwise very easy to create
 
 
 CONTEXT = None
