@@ -20,7 +20,7 @@ import sampro
 import greenlet
 import faststat
 import hyperloglog.hll
-
+import functools
 
 import ll
 ml = ll.LLogger()
@@ -28,9 +28,9 @@ ml = ll.LLogger()
 from support import log
 from support import cache
 
-#NOTE: do not import anything else from support at context import time
-#this is a bit heavy-handed, but guarantees no circular import errors
-#which are otherwise very easy to create
+# NOTE: do not import anything else from support at context import time
+# this is a bit heavy-handed, but guarantees no circular import errors
+# which are otherwise very easy to create
 
 
 CONTEXT = None
@@ -115,7 +115,6 @@ class Context(object):
 
         #ASYNC RELATED STUFF
         self.greenlet_ancestors = WeakKeyDictionary()
-        self.greenlet_correlation_ids = WeakKeyDictionary()
         self.exception_traces = WeakKeyDictionary()
         self.thread_locals = threading.local()
         self.cpu_thread_enabled = True
@@ -193,7 +192,6 @@ class Context(object):
         self.dev_cal_print_logs = True
         self.dev_use_reloader = False
         # whether a greenlet REPL should be started when a server is run in dev mode
-        self.asf_server = None
         self.cryptoclient_ping_time_secs = 180
         self.sockpool_enabled = True
 

@@ -34,10 +34,6 @@ from gevent import socket
 from gevent import ssl
 
 
-_CORR_ID_HEADERS = ['correlation-id',
-                    'x-pp-corrid',
-                    "x-paypal-correlation-id"]  # also in asf/server.py
-
 # TODO: make and use a better HTTP library instead of wrapping httplib.
 # hopefully this is at least a pretty stable abstraction that can migrate over
 # ... if nothing else, much better than shrugging our shoulders when someone
@@ -162,9 +158,6 @@ def request(method, url, body=None, headers=None,
             timeout=socket._GLOBAL_DEFAULT_TIMEOUT):
     '''\
     A function to issue HTTP requests.
-
-    **NB: If you want to issue ASF requests, you should be using
-    idealclient!**
 
     :param method: the `HTTP method`_ for this request. Case
       insensitive.
