@@ -11,7 +11,7 @@ following:
 
 Of course organizations of all sizes want these features as well, but
 the key difference is that large organizations like PayPal usually end
-up building ***more***. All while demanding a higher degree of
+up building **more**. All while demanding a higher degree of
 redundancy and risk mitigation from their processes. This often results
 in great cost in terms of both hardware and developer productivity.
 Fortunately for us, Python can be very efficient in both respects.
@@ -128,8 +128,8 @@ without actually requiring login privileges. Of course almost every
 aspect of this is configurable, to suit a wide variety of environments
 from development to production.
 
-\ ``Context`` management
-^^^^^^^^^^^^^^^^^^^^^^^^
+``Context`` management
+~~~~~~~~~~~~~~~~~~~~~~
 
 Python famously has no global scope: all values are namespaced in module
 scope. But there are still plenty of aspects of the runtime that are
@@ -144,17 +144,37 @@ functions. This has the added benefit of creating opportunities to
 centrally manage and monitor debugging data and statistics, made
 available through the MetaApplication below.
 
-(Figure 1: see the examples of charts in the the static directory)
+.. figure:: https://raw.githubusercontent.com/paypal/support/master/static/images/meta_accept_ssl_charts.png
+   :width: 400px
 
-\ ``MetaApplication``\
-^^^^^^^^^^^^^^^^^^^^^^^
+   *Figure 1.* Charting quantiles and recent timings for incoming SSL
+   connections from a remote service.
+
+.. figure:: https://raw.githubusercontent.com/paypal/support/master/static/images/meta_stats_table.png
+   :width: 400px
+
+   *Figure 2.* Values are also available in table-based and JSON
+   formats, for easy human and machine readability.
+
+``MetaApplication``
+~~~~~~~~~~~~~~~~~~~
 
 While not exclusively a web server framework, SuPPort leverages its
 strong roots in the web to provide both a web-based user interface and
 API full of useful runtime information.
 
-(Figure 2: see the examples of the MetaApplication in the static
-directory)
+.. figure:: https://raw.githubusercontent.com/paypal/support/master/static/images/meta_app_1.png
+   :width: 400px
+
+   *Figure 3.* A screenshot of the MetaApplication, showing load
+   averages and other basic information, as well as subroutes to
+   further info.
+
+.. figure:: https://raw.githubusercontent.com/paypal/support/master/static/images/meta_app_2.png
+   :width: 400px
+
+   *Figure 4.* Another shot of the MetaApplication, showing process
+   and runtime information.
 
 As you can see above, there is a lot of information exposed through this
 default interface. This is partly because of restricted environments not
@@ -164,6 +184,8 @@ feature that the same information is available in JSON format for easy
 programmatic consumption. Because this application is such a rich source
 of information, we recommend using SuPPort to run it on a separate port
 which can be firewalled accordingly, as seen `in this example`_.
+
+.. _in this example: https://github.com/paypal/support/blob/master/examples/basic_wsgi.py
 
 .. _infallibility:
 
@@ -191,7 +213,7 @@ to OpenSSL, and operations was notified. The problem was fixed with the
 next regularly scheduled release rather than being handled as a crisis.
 
 No monkeypatching
-^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~
 
 One of the first and sometimes only ways that people experience gevent
 is through `monkeypatching`_. At the top of your main module `you issue
@@ -204,19 +226,16 @@ network-level code, it is best to use ``gevent.socket`` directly. If you
 want gevent-incompatible libraries to work with gevent, best to use
 SuPPort's gevent-based threadpooling capabilities, detailed below:
 
+.. _monkeypatching: https://en.wikipedia.org/wiki/Monkey_patch
+.. _you issue a call to gevent: http://www.gevent.org/intro.html#monkey-patching
+
 Using threads with gevent
-^^^^^^^^^^^^^^^^^^^^^^^^^
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. raw:: html
+   "Threads? In my gevent? I thought the whole point of greenlets and
+   gevent was to eliminate evil, evil threads!"
 
-   <blockquote>
-
-"Threads? In my gevent? I thought the whole point of greenlets and
-gevent was to eliminate evil, evil threads!" --Countless strawmen
-
-.. raw:: html
-
-   </blockquote>
+   --Countless strawmen
 
 Originating in `Stackless`_ and ported over in 2004 by `Armin Rigo`_ (of
 `PyPy`_ fame), `greenlets`_ are mature and powerful concurrency
@@ -237,23 +256,38 @@ efficient overall, but sometimes you really do need guarantees about
 responsiveness.
 
 One excellent example of how threads provide this responsiveness is the
-```ThreadQueueServer```_ detailed below. But first, there are two
+`ThreadQueueServer`_ detailed below. But first, there are two
 built-in ``Threadpools`` with decorators worth highlighting,
 ``io_bound`` and ``cpu_bound``:
 
-\ ``io_bound``\
-''''''''''''''''
+.. _Stackless: http://www.stackless.com/
+.. _Armin Rigo: http://pyvideo.org/speaker/334/armin-rigo
+.. _PyPy: http://pypy.org/
+.. _greenlets: https://greenlet.readthedocs.org/en/latest/
+.. _thread-per-request or process-per-request model: https://www.usenix.org/legacy/publications/library/proceedings/osdi99/full_papers/banga/banga_html/node3.html
+
+
+``io_bound``
+''''''''''''
 
 This decorator is primarily used to wrap opaque clients built without
 affordances for cooperative concurrent IO. We use this to wrap
-```cx_Oracle```_ and other C-based clients that are built for
+`cx_Oracle`_ and other C-based clients that are built for
 thread-based parallelization. Other major use cases for ``io_bound`` is
 when getting input from standard input (``stdin``) and files.
 
-(Figure 3: see ``worker_closeup.png`` in the static directory)
+.. figure:: https://raw.githubusercontent.com/paypal/support/master/static/images/worker_closeup.png
+   :width: 550px
 
-\ ``cpu_bound``\
-'''''''''''''''''
+   *Figure 5.* A rough sketch of what threads inside a worker look
+   like. The outer box is a process, inner boxes are
+   threads/threadpools, and each text label refers to a
+   coroutine/greenlet.
+
+.. _cx_Oracle: https://pypi.python.org/pypi/cx_Oracle
+
+``cpu_bound``
+'''''''''''''
 
 The ``cpu_bound`` decorator is used to wrap expensive operations that
 would halt the event loop for too long. We use it to wrap long-running
@@ -275,8 +309,8 @@ Also note that both of these decorators are reentrant, making dispatch
 idempotent. If you decorate a function that itself eventually calls a
 decorated function, performance won't pay the thread dispatch tax twice.
 
-\ ``ThreadQueueServer``\
-'''''''''''''''''''''''''
+``ThreadQueueServer``
+'''''''''''''''''''''
 
 The ``ThreadQueueServer`` exists as an enhanced approach to pulling new
 connections off of a server's listening socket. It's SuPPort's way of
@@ -289,7 +323,11 @@ process opens a listening socket, forks one or more children that
 inherit the socket, and the kernel manages which worker gets which
 incoming client connection.
 
-(Figure 4: see ``basic_prefork_workers.png`` in the static directory)
+.. figure:: https://raw.githubusercontent.com/paypal/support/master/static/images/basic_prefork_workers.png
+   :width: 400px
+
+   *Figure 6.* Basic preforking architecture. The kernel balances
+   traffic between workers, monitored by an arbiter.
 
 The problem with this approach is that it generally results in
 inefficient distribution of connections, and can lead to some workers
@@ -308,3 +346,6 @@ fail-fast approach prevents the kernel from holding open
 fully-established connections that cannot be reached in a reasonable
 amount of time. This backpressure takes the wait out of client failure
 scenarios leading to a more responsive extrinsic system, as well.
+
+.. _the standard multi-worker preforking server architecture: http://linuxgazette.net/129/saha.html
+.. _*the thundering herd*: https://en.wikipedia.org/wiki/Thundering_herd_problem
