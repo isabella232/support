@@ -1,5 +1,0 @@
-POST /analytics/v1/on_init HTTP/1.0
-Host: python.corp.ebay.com
-Content-Length: 590
-
-{"username": "mahmoud", "uuid": "0dedaf4b-4581-480a-ad36-79d3b4c0fe8f", "python": {"bin": "/usr/bin/python", "build_date": "Mar 22 2014 22:59:56", "have_ucs4": true, "version_info": [2, 7, 6, "final", 0], "argv": ["collect.py"], "have_readline": true, "version": "2.7.6 (default, Mar 22 2014, 22:59:56) \n[GCC 4.8.2]", "is_64bit": true, "compiler": "GCC 4.8.2"}, "hostname": "feldspar", "uname": ["Linux", "feldspar", "3.13.0-30-generic", "#54-Ubuntu SMP Mon Jun 9 22:45:01 UTC 2014", "x86_64", "x86_64"], "time": {"std_utc_offset": -8.0, "epoch": 1407542833.75788}, "hostfqdn": "feldspar"}
