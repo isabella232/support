@@ -1,0 +1,532 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>support.http_client &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../index.html">SuPPort 0.0.1 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for support.http_client</h1><div class="highlight"><pre>
+<span class="sd">&quot;&quot;&quot;A simple HTTP client which mixes httplib with gevent and PayPal protecteds.</span>
+
+<span class="sd">It provides convenience functions for the standard set of `HTTP methods`_:</span>
+
+<span class="sd">&gt;&gt;&gt; http_client.get(&#39;http://example.com/foo&#39;) # doctest: +SKIP</span>
+
+<span class="sd">which are just shortcuts for the corresponding :py:func:`request` call:</span>
+
+<span class="sd">&gt;&gt;&gt; http_client.request(&quot;get&quot;, &quot;http://example.com/foo&quot;) # doctest: +SKIP</span>
+
+<span class="sd">.. _HTTP Methods: http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods</span>
+
+<span class="sd">If you don&#39;t intend to read the response&#39;s body, you should use a</span>
+<span class="sd">context manager:</span>
+
+<span class="sd">&gt;&gt;&gt; with http_client.get(&#39;http://www.example.com&#39;) as response: # doctest: +SKIP</span>
+<span class="sd">...    assert response.status == 200</span>
+
+<span class="sd">This will release the underlying socket back to the socket pool.</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">import</span> <span class="nn">httplib</span>
+<span class="kn">from</span> <span class="nn">urlparse</span> <span class="kn">import</span> <span class="n">urlparse</span><span class="p">,</span> <span class="n">urlunparse</span>
+<span class="kn">import</span> <span class="nn">functools</span>
+<span class="kn">import</span> <span class="nn">urllib2</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">json</span>
+
+<span class="kn">import</span> <span class="nn">context</span>
+<span class="kn">import</span> <span class="nn">connection_mgr</span>
+
+<span class="kn">import</span> <span class="nn">async</span>
+<span class="kn">from</span> <span class="nn">gevent</span> <span class="kn">import</span> <span class="n">socket</span>
+<span class="kn">from</span> <span class="nn">gevent</span> <span class="kn">import</span> <span class="n">ssl</span>
+
+
+<span class="c"># TODO: make and use a better HTTP library instead of wrapping httplib.</span>
+<span class="c"># hopefully this is at least a pretty stable abstraction that can migrate over</span>
+<span class="c"># ... if nothing else, much better than shrugging our shoulders when someone</span>
+<span class="c"># asks how to make an http request</span>
+
+
+<span class="k">class</span> <span class="nc">_GHTTPConnection</span><span class="p">(</span><span class="n">httplib</span><span class="o">.</span><span class="n">HTTPConnection</span><span class="p">):</span>
+
+    <span class="n">default_port</span> <span class="o">=</span> <span class="n">httplib</span><span class="o">.</span><span class="n">HTTP_PORT</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">host</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">timeout</span><span class="o">=</span><span class="n">socket</span><span class="o">.</span><span class="n">_GLOBAL_DEFAULT_TIMEOUT</span><span class="p">,</span>
+                 <span class="n">protected</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">httplib</span><span class="o">.</span><span class="n">HTTPConnection</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">host</span><span class="p">,</span> <span class="n">port</span><span class="p">,</span> <span class="n">strict</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">protected</span> <span class="o">=</span> <span class="n">protected</span>
+
+    <span class="k">def</span> <span class="nf">connect</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sock</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">connection_mgr</span><span class="o">.</span><span class="n">get_connection</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">host</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">port</span><span class="p">),</span>
+                                                      <span class="bp">self</span><span class="o">.</span><span class="n">protected</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tunnel_host</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_tunnel</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">release_sock</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># print self._HTTPConnection__state, self.sock</span>
+        <span class="k">if</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_HTTPConnection__state</span> <span class="o">==</span> <span class="n">httplib</span><span class="o">.</span><span class="n">_CS_IDLE</span>
+           <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">_HTTPConnection__response</span> <span class="ow">is</span> <span class="bp">None</span>
+           <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="p">):</span>
+            <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">connection_mgr</span><span class="o">.</span><span class="n">release_connection</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sock</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">_set_content_length</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">body</span><span class="p">):</span>
+        <span class="c"># Set the content-length based on the body.</span>
+        <span class="n">thelen</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">thelen</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">body</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">TypeError</span><span class="p">:</span>
+            <span class="c"># If this is a file-like object, try to</span>
+            <span class="c"># fstat its file descriptor</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">thelen</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">fstat</span><span class="p">(</span><span class="n">body</span><span class="o">.</span><span class="n">fileno</span><span class="p">())</span><span class="o">.</span><span class="n">st_size</span><span class="p">)</span>
+            <span class="k">except</span> <span class="p">(</span><span class="ne">AttributeError</span><span class="p">,</span> <span class="ne">OSError</span><span class="p">):</span>
+                <span class="c"># TODO</span>
+                <span class="c"># Don&#39;t send a length if this failed</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">debuglevel</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="k">print</span> <span class="s">&quot;Cannot stat file-type HTTP body.&quot;</span>
+
+        <span class="k">if</span> <span class="n">thelen</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">putheader</span><span class="p">(</span><span class="s">&#39;Content-Length&#39;</span><span class="p">,</span> <span class="n">thelen</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">__del__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">release_sock</span><span class="p">()</span>
+
+
+<span class="k">class</span> <span class="nc">_GHTTPSConnection</span><span class="p">(</span><span class="n">_GHTTPConnection</span><span class="p">):</span>
+
+    <span class="n">default_port</span> <span class="o">=</span> <span class="n">httplib</span><span class="o">.</span><span class="n">HTTPS_PORT</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">host</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">strict</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">timeout</span><span class="o">=</span><span class="n">socket</span><span class="o">.</span><span class="n">_GLOBAL_DEFAULT_TIMEOUT</span><span class="p">):</span>
+        <span class="n">_GHTTPConnection</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">host</span><span class="p">,</span> <span class="n">port</span><span class="p">,</span> <span class="n">strict</span><span class="p">,</span> <span class="n">timeout</span><span class="p">,</span>
+                                  <span class="n">protected</span><span class="o">=</span><span class="n">connection_mgr</span><span class="o">.</span><span class="n">PLAIN_SSL</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">connect</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tunnel_host</span><span class="p">:</span>
+            <span class="c"># we need to issue CONNECT *prior* to doing any SSL.  so</span>
+            <span class="c"># start off by asking for a plain socket...</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sock</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">connection_mgr</span><span class="o">.</span><span class="n">get_connection</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">host</span><span class="p">,</span>
+                                                           <span class="bp">self</span><span class="o">.</span><span class="n">port</span><span class="p">),</span>
+                                                          <span class="n">ssl</span><span class="o">=</span><span class="bp">None</span><span class="p">)</span>
+            <span class="c"># ...then issue the CONNECT...</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_tunnel</span><span class="p">()</span>
+            <span class="c"># ...finally, replace the underlying socket on the</span>
+            <span class="c"># monitored socket with an SSL wrapped socket that matches</span>
+            <span class="c"># the kind specified by self.protected.  note that this is</span>
+            <span class="c"># copy-pasted from connection_mgr.py</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">_msock</span> <span class="o">=</span> <span class="p">(</span><span class="n">ssl</span><span class="o">.</span><span class="n">wrap_socket</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">_msock</span><span class="p">)</span>
+                                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">protected</span> <span class="o">==</span> <span class="n">connection_mgr</span><span class="o">.</span><span class="n">PLAIN_SSL</span>
+                                <span class="k">else</span>
+                                <span class="n">async</span><span class="o">.</span><span class="n">wrap_socket_context</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">_msock</span><span class="p">,</span>
+                                                          <span class="bp">self</span><span class="o">.</span><span class="n">protected</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c"># if we don&#39;t need to issue a connect, then the super</span>
+            <span class="c"># class will do the right thing</span>
+            <span class="n">_GHTTPConnection</span><span class="o">.</span><span class="n">connect</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="urllib2_request"><a class="viewcode-back" href="../../http_client.html#support.http_client.urllib2_request">[docs]</a><span class="k">def</span> <span class="nf">urllib2_request</span><span class="p">(</span><span class="n">u2req</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+    <span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">    Translate a urllib2.Request to something we can pass to our</span>
+<span class="sd">    request() function, and translate our Response to a</span>
+<span class="sd">    urllib2.addinfourl object</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c"># TODO: proxy support?</span>
+    <span class="n">method</span> <span class="o">=</span> <span class="n">u2req</span><span class="o">.</span><span class="n">get_method</span><span class="p">()</span>
+    <span class="n">url</span> <span class="o">=</span> <span class="n">u2req</span><span class="o">.</span><span class="n">_Request__original</span>
+    <span class="n">body</span> <span class="o">=</span> <span class="n">u2req</span><span class="o">.</span><span class="n">get_data</span><span class="p">()</span>
+    <span class="n">headers</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="n">u2req</span><span class="o">.</span><span class="n">unredirected_hdrs</span><span class="p">)</span>
+    <span class="n">headers</span><span class="o">.</span><span class="n">update</span><span class="p">((</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">u2req</span><span class="o">.</span><span class="n">headers</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                   <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">headers</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="n">timeout</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">kwargs</span><span class="p">[</span><span class="s">&#39;timeout&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">timeout</span>
+        <span class="n">resp</span> <span class="o">=</span> <span class="n">request</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">body</span><span class="p">,</span> <span class="n">headers</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+        <span class="n">hr</span> <span class="o">=</span> <span class="n">resp</span><span class="o">.</span><span class="n">http_response</span>
+        <span class="n">hr</span><span class="o">.</span><span class="n">recv</span> <span class="o">=</span> <span class="n">hr</span><span class="o">.</span><span class="n">read</span>
+        <span class="n">fp</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">_fileobject</span><span class="p">(</span><span class="n">hr</span><span class="p">,</span> <span class="n">close</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+        <span class="n">aiu</span> <span class="o">=</span> <span class="n">urllib2</span><span class="o">.</span><span class="n">addinfourl</span><span class="p">(</span><span class="n">fp</span><span class="o">=</span><span class="n">fp</span><span class="p">,</span>
+                                 <span class="n">headers</span><span class="o">=</span><span class="n">hr</span><span class="o">.</span><span class="n">msg</span><span class="p">,</span>
+                                 <span class="n">url</span><span class="o">=</span><span class="n">resp</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">url</span><span class="p">)</span>
+        <span class="n">aiu</span><span class="o">.</span><span class="n">code</span> <span class="o">=</span> <span class="n">hr</span><span class="o">.</span><span class="n">status</span>
+        <span class="n">aiu</span><span class="o">.</span><span class="n">msg</span> <span class="o">=</span> <span class="n">hr</span><span class="o">.</span><span class="n">reason</span>
+        <span class="k">return</span> <span class="n">aiu</span>
+    <span class="k">except</span> <span class="ne">ValueError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="n">urllib2</span><span class="o">.</span><span class="n">URLError</span><span class="p">(</span><span class="n">e</span><span class="o">.</span><span class="n">msg</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="request"><a class="viewcode-back" href="../../http_client.html#support.http_client.request">[docs]</a><span class="k">def</span> <span class="nf">request</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">body</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+            <span class="n">literal</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">use_protected</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span>
+            <span class="n">timeout</span><span class="o">=</span><span class="n">socket</span><span class="o">.</span><span class="n">_GLOBAL_DEFAULT_TIMEOUT</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;\</span>
+<span class="sd">    A function to issue HTTP requests.</span>
+
+<span class="sd">    :param method: the `HTTP method`_ for this request. Case</span>
+<span class="sd">      insensitive.</span>
+
+<span class="sd">    :param url: the URL to request. Must include a protocol</span>
+<span class="sd">      (e.g. `http`, `https`).</span>
+
+<span class="sd">    :param body: the body of the request, if applicable</span>
+
+<span class="sd">    :type body: a string or file-like object (i.e, an object that has</span>
+<span class="sd">      a ``read`` method).  It could also be a dict, in which case</span>
+<span class="sd">      it is stringified, and the header set to application/json</span>
+
+<span class="sd">    :param headers: A dictionary of request headers</span>
+
+<span class="sd">    :type headers: :py:class:`dict`</span>
+
+<span class="sd">    :param literal: if true, instruct</span>
+<span class="sd">      :py:class:`~httplib.HTTPConnection` **not** to set the ``Host`` or</span>
+<span class="sd">      ``Accept-Encoding`` headers automatically.  Useful for testing</span>
+
+<span class="sd">    :param use_protected: if true, use the appropriate protected for</span>
+<span class="sd">      this call.</span>
+
+<span class="sd">    :param timeout: connection timeout for this request.</span>
+
+<span class="sd">    :returns: a :py:class:`Response` object.</span>
+
+<span class="sd">    An example, calling up google with a custom host header:</span>
+
+<span class="sd">    &gt;&gt;&gt; request(&#39;get&#39;,</span>
+<span class="sd">    ...         &#39;http://google.com&#39;,</span>
+<span class="sd">    ...         headers={&#39;Host&#39;: &#39;www.google.com&#39;},</span>
+<span class="sd">    ...         literal=True)</span>
+<span class="sd">    &lt;http_client.Response (200) GET http://google.com&gt;</span>
+
+<span class="sd">    .. _HTTP Method: http://en.wikipedia.org/wiki/\</span>
+<span class="sd">    Hypertext_Transfer_Protocol#Request_methods</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">method</span> <span class="o">=</span> <span class="n">method</span><span class="o">.</span><span class="n">upper</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">method</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">_HTTP_METHODS</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;invalid http method {0}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">method</span><span class="p">))</span>
+
+    <span class="n">parsed</span> <span class="o">=</span> <span class="n">urlparse</span><span class="p">(</span><span class="n">url</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">parsed</span><span class="o">.</span><span class="n">scheme</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="s">&#39;http&#39;</span><span class="p">,</span> <span class="s">&#39;https&#39;</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;unknown protocol </span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">parsed</span><span class="o">.</span><span class="n">scheme</span><span class="p">)</span>
+    <span class="n">domain</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">port</span> <span class="o">=</span> <span class="n">parsed</span><span class="o">.</span><span class="n">netloc</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="s">&#39;:&#39;</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">port</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">port</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ValueError</span><span class="p">:</span>
+        <span class="n">port</span> <span class="o">=</span> <span class="mi">80</span> <span class="k">if</span> <span class="n">parsed</span><span class="o">.</span><span class="n">scheme</span> <span class="o">==</span> <span class="s">&#39;http&#39;</span> <span class="k">else</span> <span class="mi">443</span>
+
+    <span class="n">protected</span> <span class="o">=</span> <span class="p">(</span><span class="n">parsed</span><span class="o">.</span><span class="n">scheme</span> <span class="o">==</span> <span class="s">&#39;https&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="bp">True</span> <span class="k">if</span> <span class="n">use_protected</span>
+                                                <span class="k">else</span> <span class="s">&quot;PLAIN_SSL&quot;</span><span class="p">)</span>
+    <span class="n">conn</span> <span class="o">=</span> <span class="n">_GHTTPConnection</span><span class="p">(</span><span class="n">domain</span><span class="p">,</span> <span class="n">port</span><span class="p">,</span> <span class="n">protected</span><span class="o">=</span><span class="n">protected</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span>
+
+    <span class="n">selector</span> <span class="o">=</span> <span class="n">urlunparse</span><span class="p">(</span><span class="n">parsed</span><span class="o">.</span><span class="n">_replace</span><span class="p">(</span><span class="n">scheme</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">,</span> <span class="n">netloc</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">))</span>
+
+    <span class="n">skips</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;skip_host&#39;</span><span class="p">:</span> <span class="bp">True</span><span class="p">,</span>
+             <span class="s">&#39;skip_accept_encoding&#39;</span><span class="p">:</span> <span class="bp">True</span><span class="p">}</span> <span class="k">if</span> <span class="n">literal</span> <span class="k">else</span> <span class="p">{}</span>
+
+    <span class="k">if</span> <span class="n">headers</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">headers</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">literal</span><span class="p">:</span>
+        <span class="n">headers</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s">&#39;User-Agent&#39;</span><span class="p">,</span> <span class="s">&#39;python&#39;</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">body</span><span class="p">,</span> <span class="nb">dict</span><span class="p">):</span>
+        <span class="n">body</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">body</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s">&#39;Content-Type&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">headers</span><span class="p">:</span>
+            <span class="n">headers</span><span class="p">[</span><span class="s">&#39;Content-Type&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="s">&#39;application/json&#39;</span>
+    <span class="n">conn</span><span class="o">.</span><span class="n">putrequest</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">selector</span><span class="p">,</span> <span class="o">**</span><span class="n">skips</span><span class="p">)</span>
+    <span class="c"># OMD!</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">literal</span> <span class="ow">and</span> <span class="n">body</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="s">&#39;Content-Length&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">headers</span><span class="p">:</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">_set_content_length</span><span class="p">(</span><span class="n">body</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">header</span><span class="p">,</span> <span class="n">value</span> <span class="ow">in</span> <span class="n">headers</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+        <span class="k">if</span> <span class="nb">type</span><span class="p">(</span><span class="n">value</span><span class="p">)</span> <span class="ow">is</span> <span class="nb">list</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">subvalue</span> <span class="ow">in</span> <span class="n">value</span><span class="p">:</span>
+                <span class="n">conn</span><span class="o">.</span><span class="n">putheader</span><span class="p">(</span><span class="n">header</span><span class="p">,</span> <span class="n">subvalue</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">conn</span><span class="o">.</span><span class="n">putheader</span><span class="p">(</span><span class="n">header</span><span class="p">,</span> <span class="n">value</span><span class="p">)</span>
+
+    <span class="n">conn</span><span class="o">.</span><span class="n">endheaders</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">body</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">conn</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">body</span><span class="p">)</span>
+    <span class="n">raw</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">getresponse</span><span class="p">()</span>    <span class="c"># does NOT hold a reference to the</span>
+                                <span class="c"># HTTPConnection</span>
+    <span class="n">raw</span><span class="o">.</span><span class="n">_connection</span> <span class="o">=</span> <span class="n">conn</span>      <span class="c"># so the finalizer doesn&#39;t get called</span>
+                                <span class="c"># until the request has died</span>
+    <span class="k">return</span> <span class="n">Response</span><span class="p">(</span>
+        <span class="n">Request</span><span class="p">(</span><span class="n">method</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">headers</span><span class="p">,</span> <span class="n">body</span><span class="p">),</span>
+        <span class="n">raw</span><span class="o">.</span><span class="n">status</span><span class="p">,</span> <span class="n">raw</span><span class="o">.</span><span class="n">msg</span><span class="p">,</span> <span class="n">raw</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="Request"><a class="viewcode-back" href="../../http_client.html#support.http_client.Request">[docs]</a><span class="k">class</span> <span class="nc">Request</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;\</span>
+<span class="sd">    A simple wrapper for HTTP Requests</span>
+
+<span class="sd">    .. py:attribute:: method</span>
+
+<span class="sd">       The method used for this request (e.g., `POST`, `GET`).</span>
+
+<span class="sd">    .. py:attribute:: url</span>
+
+<span class="sd">       The requested URL.</span>
+
+<span class="sd">    .. py:attribute:: headers</span>
+
+<span class="sd">       The request headers (a :py:class:`list` of two-item :py:class:`tuples`)</span>
+
+<span class="sd">    .. py:attribute:: body</span>
+
+<span class="sd">       The body if present, otherwise `None`.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">method</span><span class="p">,</span> <span class="n">url</span><span class="p">,</span> <span class="n">headers</span><span class="p">,</span> <span class="n">body</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">method</span> <span class="o">=</span> <span class="n">method</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">url</span> <span class="o">=</span> <span class="n">url</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">headers</span> <span class="o">=</span> <span class="n">headers</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">body</span> <span class="o">=</span> <span class="n">body</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;http_client.Request {0} {1}&gt;&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">method</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">url</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="Response"><a class="viewcode-back" href="../../http_client.html#support.http_client.Response">[docs]</a><span class="k">class</span> <span class="nc">Response</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">r&#39;&#39;&#39;\</span>
+<span class="sd">    A simple wrapper for HTTP responses.</span>
+
+<span class="sd">    .. py:attribute:: request</span>
+
+<span class="sd">      the :py:class:`Request` object that lead to this response</span>
+
+<span class="sd">    .. py:attribute:: status</span>
+
+<span class="sd">      the numeric status code for this Response</span>
+
+<span class="sd">    .. py:attribute:: headers</span>
+
+<span class="sd">      an :py:class:`~httplib.HTTPMessage` object containing this</span>
+<span class="sd">      response&#39;s headers.  You can treat this as a dictionary: for</span>
+<span class="sd">      example, you can get the value for the ``Host`` header with</span>
+<span class="sd">      ``msg[&#39;Host&#39;]``.  **You should, however, be careful with</span>
+<span class="sd">      duplicate headers.**</span>
+
+<span class="sd">      Consider the following headers:</span>
+
+<span class="sd">      &gt;&gt;&gt; headers = &#39;\r\n&#39;.join([&#39;X-First-Header: First, Value&#39;,</span>
+<span class="sd">      ...                       &#39;X-First-Header: Second, Value&#39;,</span>
+<span class="sd">      ...                       &#39;X-Second-Header: Final, Value&#39;,</span>
+<span class="sd">      ...                       &#39;&#39;])</span>
+
+<span class="sd">      Note that the header ``X-First-Header`` appears twice.</span>
+
+<span class="sd">      &gt;&gt;&gt; from StringIO import StringIO</span>
+<span class="sd">      &gt;&gt;&gt; from httplib import HTTPMessage</span>
+<span class="sd">      &gt;&gt;&gt; msg = HTTPMessage(StringIO(headers))</span>
+<span class="sd">      &gt;&gt;&gt; msg[&#39;X-First-Header&#39;]</span>
+<span class="sd">      &#39;First, Value, Second, Value&#39;</span>
+
+<span class="sd">      :py:class:`HTTPMessage` has *concatenated* the two values we</span>
+<span class="sd">      provided for `X-First-Header` (`First, Value` and `Second,</span>
+<span class="sd">      Value`) with a comma.  Unfortunately both of these values</span>
+<span class="sd">      contain a comma.  That means a simple :py:meth:`str.split` can&#39;t</span>
+<span class="sd">      Recover the original values:</span>
+
+<span class="sd">      &gt;&gt;&gt; msg[&#39;X-First-Header&#39;].split(&#39;, &#39;)</span>
+<span class="sd">      [&#39;First&#39;, &#39;Value&#39;, &#39;Second&#39;, &#39;Value&#39;]</span>
+
+<span class="sd">      The same behavior occurs with :meth:`HTTPMessage.items`:</span>
+
+<span class="sd">      &gt;&gt;&gt; msg.items() # doctest: +NORMALIZE_WHITESPACE</span>
+<span class="sd">      [(&#39;x-second-header&#39;, &#39;Final, Value&#39;),</span>
+<span class="sd">       (&#39;x-first-header&#39;, &#39;First, Value, Second, Value&#39;)]</span>
+
+<span class="sd">      To correctly recover values from duplicated header fields, use</span>
+<span class="sd">      :meth:`HTTPMessage.getheaders`:</span>
+
+<span class="sd">      &gt;&gt;&gt; msg.getheaders(&#39;X-First-Header&#39;)</span>
+<span class="sd">      [&#39;First, Value&#39;, &#39;Second, Value&#39;]</span>
+
+<span class="sd">    .. py:attribute:: http_response</span>
+
+<span class="sd">       the underlying :py:class:`~httplib.HTTPResponse` object for</span>
+<span class="sd">       this response.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">status</span><span class="p">,</span> <span class="n">headers</span><span class="p">,</span> <span class="n">http_response</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">request</span> <span class="o">=</span> <span class="n">request</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">status</span> <span class="o">=</span> <span class="n">status</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">headers</span> <span class="o">=</span> <span class="n">headers</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">http_response</span> <span class="o">=</span> <span class="n">http_response</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_body</span> <span class="o">=</span> <span class="bp">None</span>
+
+<div class="viewcode-block" id="Response.close"><a class="viewcode-back" href="../../http_client.html#support.http_client.Response.close">[docs]</a>    <span class="k">def</span> <span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;Release the underlying socket back to the connection pool.  This</span>
+<span class="sd">        will be automatically called by :attribute:`~Response.body`</span>
+<span class="sd">        after the body has been read.  You should arrange to have this called (</span>
+
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">http_response</span><span class="p">,</span> <span class="s">&#39;_connection&#39;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">http_response</span><span class="o">.</span><span class="n">_connection</span><span class="o">.</span><span class="n">release_sock</span><span class="p">()</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">http_response</span><span class="o">.</span><span class="n">_connection</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">http_response</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</div>
+    <span class="k">def</span> <span class="nf">__enter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span>
+
+    <span class="k">def</span> <span class="nf">__exit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">exc_info</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">body</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;the body of the request, if applicable.</span>
+
+<span class="sd">        Since this value is lazily loaded, if you never access it the</span>
+<span class="sd">        response&#39;s body will never be downloaded.  Once loaded it&#39;s</span>
+<span class="sd">        stored locally, so repeated accesses won&#39;t trigger repeated</span>
+<span class="sd">        network calls.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">with</span> <span class="bp">self</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_body</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">http_response</span><span class="o">.</span><span class="n">read</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_body</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;http_client.Response ({0}) {1} {2}&gt;&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">status</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">method</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">request</span><span class="o">.</span><span class="n">url</span><span class="p">)</span>
+
+
+<span class="c">#http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods</span></div>
+<span class="n">_HTTP_METHODS</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;GET&#39;</span><span class="p">,</span> <span class="s">&#39;HEAD&#39;</span><span class="p">,</span> <span class="s">&#39;POST&#39;</span><span class="p">,</span> <span class="s">&#39;PUT&#39;</span><span class="p">,</span> <span class="s">&#39;DELETE&#39;</span><span class="p">,</span> <span class="s">&#39;TRACE&#39;</span><span class="p">,</span> <span class="s">&#39;OPTIONS&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;CONNECT&#39;</span><span class="p">,</span> <span class="s">&#39;PATCH&#39;</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_init_methods</span><span class="p">():</span>
+    <span class="n">g</span> <span class="o">=</span> <span class="nb">globals</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="n">_HTTP_METHODS</span><span class="p">:</span>
+        <span class="n">g</span><span class="p">[</span><span class="n">m</span><span class="o">.</span><span class="n">lower</span><span class="p">()]</span> <span class="o">=</span> <span class="n">functools</span><span class="o">.</span><span class="n">partial</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">m</span><span class="p">)</span>
+
+<span class="n">_init_methods</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="../../index.html">
+    <img class="logo" src="../../_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../async.html">Asynchronous Helpers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../buffered_socket.html">Buffered Socket</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../connection_mgr.html">Managed Connections</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../context.html">Context Management</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../crypto.html">Cryptography and Security</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../exceptions.html">Exceptions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../group.html">Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../http_client.html">HTTP Client</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../meta_service.html">MetaService</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>

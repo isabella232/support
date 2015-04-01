@@ -1,0 +1,709 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>support.connection_mgr &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../index.html">SuPPort 0.0.1 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for support.connection_mgr</h1><div class="highlight"><pre>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">This module provides the capability to from an abstract Paypal name,</span>
+<span class="sd">such as &quot;paymentserv&quot;, or &quot;occ-conf&quot; to an open connection.</span>
+
+<span class="sd">The main entry point is the ConnectionManager.get_connection().</span>
+<span class="sd">This function will promptly either:</span>
+<span class="sd">   1- raise an Exception which is a subclass of socket.error</span>
+<span class="sd">   2- return a socket</span>
+
+<span class="sd">ConnectionManagers provide the following services:</span>
+
+<span class="sd">1- name resolution (&quot;paymentserv&quot; to actual ip/port from topos)</span>
+<span class="sd">2- transient markdown (keeping track of connection failures)</span>
+<span class="sd">3- socket throttling (keeping track of total open sockets)</span>
+<span class="sd">4- timeouts (connection and read timeouts from opscfg)</span>
+<span class="sd">5- protecteds</span>
+
+<span class="sd">In addition, by routing all connections through ConnectionManager,</span>
+<span class="sd">future refactorings/modifications will be easier.  For example,</span>
+<span class="sd">fallbacks or IP multi-plexing.</span>
+<span class="sd">&#39;&#39;&#39;</span>
+
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">datetime</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">random</span>
+<span class="kn">import</span> <span class="nn">weakref</span>
+<span class="kn">import</span> <span class="nn">collections</span>
+
+<span class="kn">import</span> <span class="nn">gevent.socket</span>
+<span class="kn">import</span> <span class="nn">gevent.ssl</span>
+<span class="kn">import</span> <span class="nn">gevent.resolver_thread</span>
+<span class="kn">import</span> <span class="nn">gevent</span>
+
+<span class="kn">import</span> <span class="nn">async</span>
+<span class="kn">import</span> <span class="nn">context</span>
+<span class="kn">import</span> <span class="nn">socket_pool</span>
+<span class="kn">from</span> <span class="nn">crypto</span> <span class="kn">import</span> <span class="n">SSLContext</span>
+
+<span class="kn">import</span> <span class="nn">ll</span>
+
+<span class="n">ml</span> <span class="o">=</span> <span class="n">ll</span><span class="o">.</span><span class="n">LLogger</span><span class="p">()</span>
+
+
+<span class="n">Address</span> <span class="o">=</span> <span class="n">collections</span><span class="o">.</span><span class="n">namedtuple</span><span class="p">(</span><span class="s">&#39;Address&#39;</span><span class="p">,</span> <span class="s">&#39;ip port&#39;</span><span class="p">)</span>
+
+
+<span class="n">KNOWN_KEYS</span> <span class="o">=</span> <span class="p">(</span><span class="s">&quot;connect_timeout_ms&quot;</span><span class="p">,</span> <span class="s">&quot;response_timeout_ms&quot;</span><span class="p">,</span> <span class="s">&quot;max_connect_retry&quot;</span><span class="p">,</span>
+              <span class="s">&quot;transient_markdown_enabled&quot;</span><span class="p">,</span> <span class="s">&quot;markdown&quot;</span><span class="p">)</span>
+<span class="n">ConnectInfo</span> <span class="o">=</span> <span class="n">collections</span><span class="o">.</span><span class="n">namedtuple</span><span class="p">(</span><span class="s">&quot;ConnectInfo&quot;</span><span class="p">,</span> <span class="n">KNOWN_KEYS</span><span class="p">)</span>
+<span class="n">DEFAULT_CONNECT_INFO</span> <span class="o">=</span> <span class="n">ConnectInfo</span><span class="p">(</span><span class="mi">5000</span><span class="p">,</span> <span class="mi">30000</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="bp">False</span><span class="p">,</span> <span class="bp">False</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="ConnectionManager"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.ConnectionManager">[docs]</a><span class="k">class</span> <span class="nc">ConnectionManager</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span>
+                 <span class="n">address_groups</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">address_aliases</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span>
+                 <span class="n">ssl_context</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sockpools</span> <span class="o">=</span> <span class="n">weakref</span><span class="o">.</span><span class="n">WeakKeyDictionary</span><span class="p">()</span>  <span class="c"># one socket pool per ssl</span>
+        <span class="c"># self.sockpools = {weakref(ssl_ctx): {socket_type: [list of sockets]}}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">address_groups</span> <span class="o">=</span> <span class="n">address_groups</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">address_aliases</span> <span class="o">=</span> <span class="n">address_aliases</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ssl_context</span> <span class="o">=</span> <span class="n">ssl_context</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">server_models</span> <span class="o">=</span> <span class="n">ServerModelDirectory</span><span class="p">()</span>
+        <span class="c"># map of user-level socket objects to MonitoredSocket instances</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">user_socket_map</span> <span class="o">=</span> <span class="n">weakref</span><span class="o">.</span><span class="n">WeakKeyDictionary</span><span class="p">()</span>
+        <span class="c"># we need to use gevent.spawn instead of async.spawn because</span>
+        <span class="c"># at the time the connection manager is constructed, the support</span>
+        <span class="c"># context is not yet fully initialized</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">culler</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cull_loop</span><span class="p">)</span>
+
+<div class="viewcode-block" id="ConnectionManager.get_connection"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.ConnectionManager.get_connection">[docs]</a>    <span class="k">def</span> <span class="nf">get_connection</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span> <span class="n">name_or_addr</span><span class="p">,</span> <span class="n">ssl</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">sock_type</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">read_timeout</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        name_or_addr - the logical name to connect to, e.g. &quot;db-r&quot;</span>
+<span class="sd">        ssl - if set to True, wrap socket with context.protected;</span>
+<span class="sd">              if set to an SSL context, wrap socket with that</span>
+<span class="sd">        sock_type - a type to wrap the socket in; the intention here is for protocols</span>
+<span class="sd">              that want to run asynchronous keep-alives, or higher level handshaking</span>
+<span class="sd">              (strictly speaking, this is just a callable which accepts socket and</span>
+<span class="sd">               returns the thing that should be pooled, but for must uses it will</span>
+<span class="sd">               probably be a class)</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+        <span class="n">address_aliases</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">address_aliases</span> <span class="ow">or</span> <span class="n">ctx</span><span class="o">.</span><span class="n">address_aliases</span>
+        <span class="c">#ops_config = self.ops_config or ctx.ops_config</span>
+        <span class="c">#### POTENTIAL ISSUE: OPS CONFIG IS MORE SPECIFIC THAN ADDRESS (owch)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">gevent</span><span class="o">.</span><span class="n">get_hub</span><span class="p">()</span><span class="o">.</span><span class="n">resolver</span><span class="p">,</span> <span class="n">gevent</span><span class="o">.</span><span class="n">resolver_thread</span><span class="o">.</span><span class="n">Resolver</span><span class="p">):</span>
+            <span class="n">gevent</span><span class="o">.</span><span class="n">get_hub</span><span class="p">()</span><span class="o">.</span><span class="n">resolver</span> <span class="o">=</span> <span class="n">_Resolver</span><span class="p">()</span>  <span class="c"># avoid pointless thread dispatches</span>
+
+        <span class="k">if</span> <span class="n">name_or_addr</span> <span class="ow">in</span> <span class="n">address_aliases</span><span class="p">:</span>
+            <span class="n">name_or_addr</span> <span class="o">=</span> <span class="n">address_aliases</span><span class="p">[</span><span class="n">name_or_addr</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">name_or_addr</span><span class="p">,</span> <span class="nb">basestring</span><span class="p">):</span>  <span class="c"># string means a name</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">name_or_addr</span>
+            <span class="n">address_list</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_all_addrs</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">address_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">name_or_addr</span><span class="p">]</span>
+            <span class="c"># default to a string-ification of ip for the name</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">address_list</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">,</span> <span class="s">&#39;-&#39;</span><span class="p">)</span>
+
+        <span class="c">#if name:</span>
+        <span class="c">#    sock_config = ops_config.get_endpoint_config(name)</span>
+        <span class="c">#else:</span>
+        <span class="c">#    sock_config = ops_config.get_endpoint_config()</span>
+        <span class="n">sock_config</span> <span class="o">=</span> <span class="n">DEFAULT_CONNECT_INFO</span>
+
+
+        <span class="c"># ensure all DNS resolution is completed; past this point</span>
+        <span class="c"># everything is in terms of ips</span>
+        <span class="k">def</span> <span class="nf">get_gai</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
+            <span class="n">name</span> <span class="o">=</span> <span class="n">e</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&quot;.&quot;</span><span class="p">,</span><span class="s">&quot;-&quot;</span><span class="p">)</span>
+            <span class="k">with</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s">&#39;DNS&#39;</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span> <span class="k">as</span> <span class="n">_log</span><span class="p">:</span>
+                <span class="n">gai</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">socket</span><span class="o">.</span><span class="n">getaddrinfo</span><span class="p">(</span><span class="o">*</span><span class="n">e</span><span class="p">,</span> <span class="n">family</span><span class="o">=</span><span class="n">gevent</span><span class="o">.</span><span class="n">socket</span><span class="o">.</span><span class="n">AF_INET</span><span class="p">)[</span><span class="mi">0</span><span class="p">][</span><span class="mi">4</span><span class="p">]</span>
+            <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">name_cache</span><span class="p">[</span><span class="n">e</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span> <span class="n">gai</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">gai</span>
+
+        <span class="k">def</span> <span class="nf">cache_gai</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">name_cache</span><span class="o">.</span><span class="n">has_key</span><span class="p">(</span><span class="n">e</span><span class="p">):</span>
+                <span class="n">age</span><span class="p">,</span> <span class="n">value</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">name_cache</span><span class="p">[</span><span class="n">e</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">age</span> <span class="o">&gt;</span> <span class="mi">600</span><span class="p">:</span>
+                    <span class="n">async</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">get_gai</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">value</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">get_gai</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">get_logger</span><span class="p">(</span><span class="s">&#39;DNS.CACHE&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">as</span> <span class="n">_log</span><span class="p">:</span>
+            <span class="n">_log</span><span class="p">[</span><span class="s">&#39;len&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">address_list</span><span class="p">)</span>
+            <span class="n">address_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">cache_gai</span><span class="p">(</span><span class="n">e</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">address_list</span><span class="p">]</span>
+
+        <span class="k">with</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">get_logger</span><span class="p">(</span><span class="s">&#39;COMPACT&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">name</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_compact</span><span class="p">(</span><span class="n">address_list</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+
+        <span class="n">errors</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">address</span> <span class="ow">in</span> <span class="n">address_list</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">log_name</span> <span class="o">=</span> <span class="s">&#39;</span><span class="si">%s</span><span class="s">:</span><span class="si">%s</span><span class="s">&#39;</span> <span class="o">%</span> <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">address</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="k">with</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">get_logger</span><span class="p">(</span><span class="s">&#39;CONNECT&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">log_name</span><span class="p">)</span> <span class="k">as</span> <span class="n">_log</span><span class="p">:</span>
+                    <span class="n">s</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_connect_to_address</span><span class="p">(</span>
+                        <span class="n">name</span><span class="p">,</span> <span class="n">ssl</span><span class="p">,</span> <span class="n">sock_config</span><span class="p">,</span> <span class="n">address</span><span class="p">,</span> <span class="n">sock_type</span><span class="p">,</span> <span class="n">read_timeout</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="s">&#39;getsockname&#39;</span><span class="p">):</span>
+                        <span class="n">_log</span><span class="p">[</span><span class="s">&quot;lport&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">getsockname</span><span class="p">()[</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="k">elif</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="s">&#39;_sock&#39;</span><span class="p">):</span>
+                        <span class="n">_log</span><span class="p">[</span><span class="s">&quot;lport&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">s</span><span class="o">.</span><span class="n">_sock</span><span class="o">.</span><span class="n">getsockname</span><span class="p">()[</span><span class="mi">1</span><span class="p">]</span>
+                    <span class="k">return</span> <span class="n">s</span>
+            <span class="k">except</span> <span class="n">socket</span><span class="o">.</span><span class="n">error</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">address_list</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="k">raise</span>
+                <span class="n">ml</span><span class="o">.</span><span class="n">ld</span><span class="p">(</span><span class="s">&quot;Connection err {0!r}, {1}, {2!r}&quot;</span><span class="p">,</span> <span class="n">address</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">err</span><span class="p">)</span>
+                <span class="n">errors</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">address</span><span class="p">,</span> <span class="n">err</span><span class="p">))</span>
+        <span class="k">raise</span> <span class="n">MultiConnectFailure</span><span class="p">(</span><span class="n">errors</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ConnectionManager.get_all_addrs"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.ConnectionManager.get_all_addrs">[docs]</a>    <span class="k">def</span> <span class="nf">get_all_addrs</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        returns the all addresses which the logical name would resolve to,</span>
+<span class="sd">        or raises NameNotFound if there is no known address for the given name</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+        <span class="n">address_groups</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">address_groups</span> <span class="ow">or</span> <span class="n">ctx</span><span class="o">.</span><span class="n">address_groups</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">address_list</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">address_groups</span><span class="p">[</span><span class="n">name</span><span class="p">])</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="n">err_str</span> <span class="o">=</span> <span class="s">&quot;no address found for name {0}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">stage_ip</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="n">err_str</span> <span class="o">+=</span> <span class="s">&quot; (no stage communication configured; did you forget?)&quot;</span>
+            <span class="k">raise</span> <span class="n">NameNotFound</span><span class="p">(</span><span class="n">err_str</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">address_list</span>
+</div>
+<div class="viewcode-block" id="ConnectionManager.get_addr"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.ConnectionManager.get_addr">[docs]</a>    <span class="k">def</span> <span class="nf">get_addr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        returns the first address which the logical name would resolve to,</span>
+<span class="sd">        equivalent to get_all_addrs(name)[0]</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_all_addrs</span><span class="p">(</span><span class="n">name</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+</div>
+    <span class="k">def</span> <span class="nf">_connect_to_address</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">ssl</span><span class="p">,</span> <span class="n">sock_config</span><span class="p">,</span> <span class="n">address</span><span class="p">,</span> <span class="n">sock_type</span><span class="p">,</span> <span class="n">read_timeout</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        internal helper function that does all the complex bits of establishing</span>
+<span class="sd">        a connection, keeping statistics on connections, handling markdowns</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">address</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">server_models</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">server_models</span><span class="p">[</span><span class="n">address</span><span class="p">]</span> <span class="o">=</span> <span class="n">ServerModel</span><span class="p">(</span><span class="n">address</span><span class="p">)</span>
+        <span class="n">server_model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">server_models</span><span class="p">[</span><span class="n">address</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">ssl</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">ssl</span> <span class="ow">is</span> <span class="bp">True</span><span class="p">:</span>
+                <span class="n">ssl_context</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssl_context</span> <span class="ow">or</span> <span class="n">ctx</span><span class="o">.</span><span class="n">ssl_context</span>
+                <span class="k">if</span> <span class="n">ssl_context</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">EnvironmentError</span><span class="p">(</span><span class="s">&quot;Unable to make protected connection to &quot;</span> <span class="o">+</span>
+                                           <span class="nb">repr</span><span class="p">(</span><span class="n">name</span> <span class="ow">or</span> <span class="s">&quot;unknown&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="s">&quot; at &quot;</span> <span class="o">+</span> <span class="nb">repr</span><span class="p">(</span><span class="n">address</span><span class="p">)</span> <span class="o">+</span>
+                                           <span class="s">&quot; with no SSLContext loaded.&quot;</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ssl</span><span class="p">,</span> <span class="n">SSLContext</span><span class="p">):</span>
+                <span class="n">protected</span> <span class="o">=</span> <span class="n">ssl</span>
+            <span class="k">elif</span> <span class="n">ssl</span> <span class="o">==</span> <span class="n">PLAIN_SSL</span><span class="p">:</span>
+                <span class="n">protected</span> <span class="o">=</span> <span class="n">PLAIN_SSL_PROTECTED</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">protected</span> <span class="o">=</span> <span class="n">NULL_PROTECTED</span>  <span class="c"># something falsey and weak-refable</span>
+
+        <span class="k">if</span> <span class="n">protected</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">sockpools</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sockpools</span><span class="p">[</span><span class="n">protected</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">if</span> <span class="n">sock_type</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">sockpools</span><span class="p">[</span><span class="n">protected</span><span class="p">]:</span>
+            <span class="n">idle_timeout</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">sock_type</span><span class="p">,</span> <span class="s">&quot;idle_timeout&quot;</span><span class="p">,</span> <span class="mf">0.25</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sockpools</span><span class="p">[</span><span class="n">protected</span><span class="p">][</span><span class="n">sock_type</span><span class="p">]</span> <span class="o">=</span> <span class="n">socket_pool</span><span class="o">.</span><span class="n">SocketPool</span><span class="p">(</span><span class="n">timeout</span><span class="o">=</span><span class="n">idle_timeout</span><span class="p">)</span>
+
+        <span class="n">sock</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sockpools</span><span class="p">[</span><span class="n">protected</span><span class="p">][</span><span class="n">sock_type</span><span class="p">]</span><span class="o">.</span><span class="n">acquire</span><span class="p">(</span><span class="n">address</span><span class="p">)</span>
+        <span class="n">msock</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">new_sock</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">sock</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">sock_config</span><span class="o">.</span><span class="n">transient_markdown_enabled</span><span class="p">:</span>
+                <span class="n">last_error</span> <span class="o">=</span> <span class="n">server_model</span><span class="o">.</span><span class="n">last_error</span>
+                <span class="k">if</span> <span class="n">last_error</span> <span class="ow">and</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">last_error</span> <span class="o">&lt;</span> <span class="n">TRANSIENT_MARKDOWN_DURATION</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">MarkedDownError</span><span class="p">()</span>
+
+            <span class="n">failed</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">sock_state</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="c"># is the connection within the data-center?</span>
+            <span class="c"># use tighter timeouts if so; using the presence of a</span>
+            <span class="c"># protected connection as a rough heuristic for now</span>
+            <span class="n">internal</span> <span class="o">=</span> <span class="p">(</span><span class="n">ssl</span> <span class="ow">and</span> <span class="n">ssl</span> <span class="o">!=</span> <span class="n">PLAIN_SSL</span><span class="p">)</span> <span class="ow">or</span> <span class="s">&#39;mayfly&#39;</span> <span class="ow">in</span> <span class="n">name</span>
+            <span class="n">new_sock</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">ml</span><span class="o">.</span><span class="n">ld</span><span class="p">(</span><span class="s">&quot;CONNECTING...&quot;</span><span class="p">)</span>
+                    <span class="n">sock_state</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">markov_stats</span><span class="p">[</span><span class="s">&#39;socket.state.&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">address</span><span class="p">)]</span><span class="o">.</span><span class="n">make_transitor</span><span class="p">(</span><span class="s">&#39;connecting&#39;</span><span class="p">)</span>
+                    <span class="n">log_name</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">address</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">+</span> <span class="s">&quot;:&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">address</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                    <span class="k">with</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">get_logger</span><span class="p">(</span><span class="s">&#39;CONNECT.TCP&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">log_name</span><span class="p">)</span> <span class="k">as</span> <span class="n">_log</span><span class="p">:</span>
+                        <span class="n">timeout</span> <span class="o">=</span> <span class="n">sock_config</span><span class="o">.</span><span class="n">connect_timeout_ms</span> <span class="o">/</span> <span class="mf">1000.0</span>
+                        <span class="k">if</span> <span class="n">internal</span><span class="p">:</span>  <span class="c"># connect timeout of 50ms inside the data center</span>
+                            <span class="n">timeout</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">timeout</span><span class="p">,</span> <span class="n">ctx</span><span class="o">.</span><span class="n">datacenter_connect_timeout</span><span class="p">)</span>
+                        <span class="n">sock</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">socket</span><span class="o">.</span><span class="n">create_connection</span><span class="p">(</span><span class="n">address</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span>
+                        <span class="n">_log</span><span class="p">[</span><span class="s">&#39;timeout&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">timeout</span>
+                        <span class="n">sock_state</span><span class="o">.</span><span class="n">transition</span><span class="p">(</span><span class="s">&#39;connected&#39;</span><span class="p">)</span>
+                        <span class="n">new_sock</span> <span class="o">=</span> <span class="bp">True</span>
+                        <span class="n">ml</span><span class="o">.</span><span class="n">ld</span><span class="p">(</span><span class="s">&quot;CONNECTED local port {0!r}/FD {1}&quot;</span><span class="p">,</span> <span class="n">sock</span><span class="o">.</span><span class="n">getsockname</span><span class="p">(),</span> <span class="n">sock</span><span class="o">.</span><span class="n">fileno</span><span class="p">())</span>
+                    <span class="k">if</span> <span class="n">ssl</span><span class="p">:</span>  <span class="c"># TODO: how should SSL failures interact with markdown &amp; connect count?</span>
+                        <span class="n">sock_state</span><span class="o">.</span><span class="n">transition</span><span class="p">(</span><span class="s">&#39;ssl_handshaking&#39;</span><span class="p">)</span>
+                        <span class="k">with</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">get_logger</span><span class="p">(</span><span class="s">&#39;CONNECT.SSL&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">log_name</span><span class="p">)</span> <span class="k">as</span> <span class="n">_log</span><span class="p">:</span>
+                            <span class="k">if</span> <span class="n">ssl</span> <span class="o">==</span> <span class="n">PLAIN_SSL</span><span class="p">:</span>
+                                <span class="n">sock</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">ssl</span><span class="o">.</span><span class="n">wrap_socket</span><span class="p">(</span><span class="n">sock</span><span class="p">)</span>
+                            <span class="k">else</span><span class="p">:</span>
+                                <span class="n">sock</span> <span class="o">=</span> <span class="n">async</span><span class="o">.</span><span class="n">wrap_socket_context</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">protected</span><span class="o">.</span><span class="n">ssl_client_context</span><span class="p">)</span>
+                        <span class="n">sock_state</span><span class="o">.</span><span class="n">transition</span><span class="p">(</span><span class="s">&#39;ssl_established&#39;</span><span class="p">)</span>
+                    <span class="k">break</span>
+                <span class="k">except</span> <span class="n">socket</span><span class="o">.</span><span class="n">error</span> <span class="k">as</span> <span class="n">err</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">sock_state</span><span class="p">:</span>
+                        <span class="n">sock_state</span><span class="o">.</span><span class="n">transition</span><span class="p">(</span><span class="s">&#39;closed_error&#39;</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">failed</span> <span class="o">&gt;=</span> <span class="n">sock_config</span><span class="o">.</span><span class="n">max_connect_retry</span><span class="p">:</span>
+                        <span class="n">server_model</span><span class="o">.</span><span class="n">last_error</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+                        <span class="k">if</span> <span class="n">sock_config</span><span class="o">.</span><span class="n">transient_markdown_enabled</span><span class="p">:</span>
+                            <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+                            <span class="n">ctx</span><span class="o">.</span><span class="n">intervals</span><span class="p">[</span><span class="s">&#39;net.markdowns.&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="o">+</span> <span class="s">&#39;.&#39;</span> <span class="o">+</span>
+                                          <span class="nb">str</span><span class="p">(</span><span class="n">address</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">+</span> <span class="s">&#39;:&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">address</span><span class="p">[</span><span class="mi">1</span><span class="p">])]</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
+                            <span class="n">ctx</span><span class="o">.</span><span class="n">intervals</span><span class="p">[</span><span class="s">&#39;net.markdowns&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
+                            <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">get_logger</span><span class="p">(</span><span class="s">&#39;error&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">critical</span><span class="p">(</span><span class="s">&#39;TMARKDOWN&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">),</span>
+                                                                                    <span class="n">addr</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">address</span><span class="p">))</span>
+                            <span class="c"># was event: (&#39;ERROR&#39;, &#39;TMARKDOWN&#39;, &#39;2&#39;, &#39;name=&#39; + str(name) + &#39;&amp;addr=&#39; + str(address))</span>
+                        <span class="n">ml</span><span class="o">.</span><span class="n">ld</span><span class="p">(</span><span class="s">&quot;Connection err {0!r}, {1}, {2!r}&quot;</span><span class="p">,</span> <span class="n">address</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">err</span><span class="p">)</span>
+                        <span class="k">raise</span>
+                    <span class="n">failed</span> <span class="o">+=</span> <span class="mi">1</span>
+
+            <span class="n">msock</span> <span class="o">=</span> <span class="n">MonitoredSocket</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">server_model</span><span class="o">.</span><span class="n">active_connections</span><span class="p">,</span> <span class="n">protected</span><span class="p">,</span>
+                                    <span class="n">name</span><span class="p">,</span> <span class="n">sock_type</span><span class="p">,</span> <span class="n">sock_state</span><span class="p">)</span>
+            <span class="n">server_model</span><span class="o">.</span><span class="n">sock_in_use</span><span class="p">(</span><span class="n">msock</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">sock_type</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">sock_type</span><span class="p">,</span> <span class="s">&quot;wants_protected&quot;</span><span class="p">,</span> <span class="bp">False</span><span class="p">):</span>
+                    <span class="n">sock</span> <span class="o">=</span> <span class="n">sock_type</span><span class="p">(</span><span class="n">msock</span><span class="p">,</span> <span class="n">protected</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">sock</span> <span class="o">=</span> <span class="n">sock_type</span><span class="p">(</span><span class="n">msock</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">sock</span> <span class="o">=</span> <span class="n">msock</span>
+        <span class="k">if</span> <span class="n">read_timeout</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">sock</span><span class="o">.</span><span class="n">settimeout</span><span class="p">(</span><span class="n">sock_config</span><span class="o">.</span><span class="n">response_timeout_ms</span> <span class="o">/</span> <span class="mf">1000.0</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">sock</span><span class="o">.</span><span class="n">settimeout</span><span class="p">(</span><span class="n">read_timeout</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">msock</span> <span class="ow">and</span> <span class="n">sock</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">msock</span><span class="p">:</span>
+            <span class="c"># if sock == msock, collection will not work</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">user_socket_map</span><span class="p">[</span><span class="n">sock</span><span class="p">]</span> <span class="o">=</span> <span class="n">weakref</span><span class="o">.</span><span class="n">proxy</span><span class="p">(</span><span class="n">msock</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">user_socket_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">sock</span><span class="p">)</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">transition</span><span class="p">(</span><span class="s">&#39;in_use&#39;</span><span class="p">)</span>
+        <span class="n">sock</span><span class="o">.</span><span class="n">new_sock</span> <span class="o">=</span> <span class="n">new_sock</span>
+        <span class="k">return</span> <span class="n">sock</span>
+
+<div class="viewcode-block" id="ConnectionManager.release_connection"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.ConnectionManager.release_connection">[docs]</a>    <span class="k">def</span> <span class="nf">release_connection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sock</span><span class="p">):</span>
+        <span class="c"># fetch MonitoredSocket</span>
+        <span class="n">msock</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">user_socket_map</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">sock</span><span class="p">)</span>
+        <span class="c"># check the connection for updating of SSL cert (?)</span>
+        <span class="n">msock</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">transition</span><span class="p">(</span><span class="s">&#39;pooled&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">sockpool_enabled</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sockpools</span><span class="p">[</span><span class="n">msock</span><span class="o">.</span><span class="n">_protected</span><span class="p">][</span><span class="n">msock</span><span class="o">.</span><span class="n">_type</span><span class="p">]</span><span class="o">.</span><span class="n">release</span><span class="p">(</span><span class="n">sock</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">async</span><span class="o">.</span><span class="n">killsock</span><span class="p">(</span><span class="n">sock</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ConnectionManager.cull_loop"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.ConnectionManager.cull_loop">[docs]</a>    <span class="k">def</span> <span class="nf">cull_loop</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">while</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">pool</span> <span class="ow">in</span> <span class="nb">sum</span><span class="p">([</span><span class="n">e</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">sockpools</span><span class="o">.</span><span class="n">values</span><span class="p">()],</span> <span class="p">[]):</span>
+                <span class="n">async</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">CULL_INTERVAL</span><span class="p">)</span>
+                <span class="n">pool</span><span class="o">.</span><span class="n">cull</span><span class="p">()</span>
+            <span class="n">async</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="n">CULL_INTERVAL</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">_compact</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">address_list</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        try to compact and make room for a new socket connection to one of</span>
+<span class="sd">        address_list raises OutOfSockets() if unable to make room</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+        <span class="n">sock_log</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">get_logger</span><span class="p">(</span><span class="s">&#39;NET.SOCKET&#39;</span><span class="p">)</span>
+        <span class="n">all_pools</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">([</span><span class="n">e</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">sockpools</span><span class="o">.</span><span class="n">values</span><span class="p">()],</span> <span class="p">[])</span>
+        <span class="k">with</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">get_logger</span><span class="p">(</span><span class="s">&#39;CULL&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">name</span><span class="p">)</span> <span class="k">as</span> <span class="n">_log</span><span class="p">:</span>
+            <span class="n">_log</span><span class="p">[</span><span class="s">&#39;len&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_pools</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">pool</span> <span class="ow">in</span> <span class="n">all_pools</span><span class="p">:</span>
+                <span class="n">pool</span><span class="o">.</span><span class="n">cull</span><span class="p">()</span>
+
+        <span class="n">total_num_in_use</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">active_connections</span><span class="p">)</span>
+                                <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">server_models</span><span class="o">.</span><span class="n">values</span><span class="p">()])</span>
+
+        <span class="k">if</span> <span class="n">total_num_in_use</span> <span class="o">&gt;=</span> <span class="n">GLOBAL_MAX_CONNECTIONS</span><span class="p">:</span>
+            <span class="n">sock_log</span><span class="o">.</span><span class="n">critical</span><span class="p">(</span><span class="s">&#39;GLOBAL_MAX&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">success</span><span class="p">(</span><span class="s">&#39;culling sockets&#39;</span><span class="p">,</span>
+                                                    <span class="n">limit</span><span class="o">=</span><span class="n">GLOBAL_MAX_CONNECTIONS</span><span class="p">,</span>
+                                                    <span class="n">in_use</span><span class="o">=</span><span class="n">total_num_in_use</span><span class="p">)</span>
+            <span class="c"># try to cull sockets to make room</span>
+            <span class="n">made_room</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="k">for</span> <span class="n">pool</span> <span class="ow">in</span> <span class="n">all_pools</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">pool</span><span class="o">.</span><span class="n">total_sockets</span><span class="p">:</span>
+                    <span class="n">made_room</span> <span class="o">=</span> <span class="bp">True</span>
+                    <span class="n">gevent</span><span class="o">.</span><span class="n">joinall</span><span class="p">(</span><span class="n">pool</span><span class="o">.</span><span class="n">reduce_size</span><span class="p">(</span><span class="n">pool</span><span class="o">.</span><span class="n">total_sockets</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">made_room</span><span class="p">:</span>
+                <span class="n">ctx</span><span class="o">.</span><span class="n">intervals</span><span class="p">[</span><span class="s">&#39;net.out_of_sockets&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
+                <span class="k">raise</span> <span class="n">OutOfSockets</span><span class="p">(</span><span class="s">&quot;maximum global socket limit {0} hit: {1}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                    <span class="n">GLOBAL_MAX_CONNECTIONS</span><span class="p">,</span> <span class="n">total_num_in_use</span><span class="p">))</span>
+
+        <span class="n">num_in_use</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">([</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">server_models</span><span class="p">[</span><span class="n">address</span><span class="p">]</span><span class="o">.</span><span class="n">active_connections</span><span class="p">)</span>
+                          <span class="k">for</span> <span class="n">address</span> <span class="ow">in</span> <span class="n">address_list</span><span class="p">])</span>
+
+        <span class="k">if</span> <span class="n">num_in_use</span> <span class="o">&gt;=</span> <span class="n">MAX_CONNECTIONS</span><span class="p">:</span>
+            <span class="n">sock_log</span><span class="o">.</span><span class="n">critical</span><span class="p">(</span><span class="s">&#39;ADDR_MAX&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">success</span><span class="p">(</span><span class="s">&#39;culling {addr} sockets&#39;</span><span class="p">,</span>
+                                                  <span class="n">limit</span><span class="o">=</span><span class="n">GLOBAL_MAX_CONNECTIONS</span><span class="p">,</span>
+                                                  <span class="n">in_use</span><span class="o">=</span><span class="n">total_num_in_use</span><span class="p">,</span>
+                                                  <span class="n">addr</span><span class="o">=</span><span class="nb">repr</span><span class="p">(</span><span class="n">address_list</span><span class="p">))</span>
+
+            <span class="c"># try to cull sockets</span>
+            <span class="n">made_room</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="k">for</span> <span class="n">pool</span> <span class="ow">in</span> <span class="n">all_pools</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">address</span> <span class="ow">in</span> <span class="n">address_list</span><span class="p">:</span>
+                    <span class="n">num_pooled</span> <span class="o">=</span> <span class="n">pool</span><span class="o">.</span><span class="n">socks_pooled_for_addr</span><span class="p">(</span><span class="n">address</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">num_pooled</span><span class="p">:</span>
+                        <span class="n">gevent</span><span class="o">.</span><span class="n">joinall</span><span class="p">(</span><span class="n">pool</span><span class="o">.</span><span class="n">reduce_addr_size</span><span class="p">(</span><span class="n">address</span><span class="p">,</span> <span class="n">num_pooled</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span>
+                        <span class="n">made_room</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">made_room</span><span class="p">:</span>
+                <span class="n">ctx</span><span class="o">.</span><span class="n">intervals</span><span class="p">[</span><span class="s">&#39;net.out_of_sockets&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
+                <span class="n">ctx</span><span class="o">.</span><span class="n">intervals</span><span class="p">[</span><span class="s">&#39;net.out_of_sockets.&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">)]</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
+                <span class="k">raise</span> <span class="n">OutOfSockets</span><span class="p">(</span><span class="s">&quot;maximum sockets for {0} already in use: {1}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                    <span class="n">name</span><span class="p">,</span> <span class="n">num_in_use</span><span class="p">))</span>
+        <span class="k">return</span>
+
+</div>
+<span class="n">CULL_INTERVAL</span> <span class="o">=</span> <span class="mf">1.0</span>
+
+<span class="c"># something falsey, and weak-ref-able</span>
+<span class="n">NULL_PROTECTED</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="s">&quot;NullProtected&quot;</span><span class="p">,</span> <span class="p">(</span><span class="nb">object</span><span class="p">,),</span> <span class="p">{</span><span class="s">&#39;__nonzero__&#39;</span><span class="p">:</span> <span class="k">lambda</span> <span class="bp">self</span><span class="p">:</span> <span class="bp">False</span><span class="p">})()</span>
+<span class="c"># a marker for doing plain ssl with no protected</span>
+<span class="n">PLAIN_SSL</span> <span class="o">=</span> <span class="s">&quot;PLAIN_SSL&quot;</span>
+<span class="n">PLAIN_SSL_PROTECTED</span> <span class="o">=</span> <span class="nb">type</span><span class="p">(</span><span class="s">&quot;PlainSslProtected&quot;</span><span class="p">,</span> <span class="p">(</span><span class="nb">object</span><span class="p">,),</span> <span class="p">{})()</span>
+
+<span class="c"># TODO: better sources for this?</span>
+<span class="n">TRANSIENT_MARKDOWN_DURATION</span> <span class="o">=</span> <span class="mf">10.0</span>  <span class="c"># seconds</span>
+<span class="k">try</span><span class="p">:</span>
+    <span class="kn">import</span> <span class="nn">resource</span>
+    <span class="n">MAX_CONNECTIONS</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="mf">0.8</span> <span class="o">*</span> <span class="n">resource</span><span class="o">.</span><span class="n">getrlimit</span><span class="p">(</span><span class="n">resource</span><span class="o">.</span><span class="n">RLIMIT_NOFILE</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="n">GLOBAL_MAX_CONNECTIONS</span> <span class="o">=</span> <span class="n">MAX_CONNECTIONS</span>
+<span class="k">except</span><span class="p">:</span>
+    <span class="n">MAX_CONNECTIONS</span> <span class="o">=</span> <span class="mi">800</span>
+    <span class="n">GLOBAL_MAX_CONNECTIONS</span> <span class="o">=</span> <span class="mi">800</span>
+<span class="c"># At least, move these to context object for now</span>
+
+
+<span class="k">class</span> <span class="nc">_Resolver</span><span class="p">(</span><span class="n">gevent</span><span class="o">.</span><span class="n">resolver_thread</span><span class="o">.</span><span class="n">Resolver</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    See gevent.resolver_thread module.  This is a way to avoid thread</span>
+<span class="sd">    dispatch for getaddrinfo called on (ip, port) tuples, since that is</span>
+<span class="sd">    such a common case and the thread dispatch seems to occassionally go</span>
+<span class="sd">    off the rails in high-load environments like stage2.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="nf">getaddrinfo</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        only short-cut for one very specific case which is extremely</span>
+<span class="sd">        common in our code; don\&#39;t worry about short-cutting the thread</span>
+<span class="sd">        dispatch for all possible cases</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">args</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span> <span class="ow">and</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">long</span><span class="p">)):</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">socket</span><span class="o">.</span><span class="n">inet_aton</span><span class="p">(</span><span class="n">args</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">except</span> <span class="n">socket</span><span class="o">.</span><span class="n">error</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">else</span><span class="p">:</span>  <span class="c"># args is of form (ip_string, integer)</span>
+                <span class="k">return</span> <span class="n">socket</span><span class="o">.</span><span class="n">getaddrinfo</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">_Resolver</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">getaddrinfo</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="ServerModelDirectory"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.ServerModelDirectory">[docs]</a><span class="k">class</span> <span class="nc">ServerModelDirectory</span><span class="p">(</span><span class="nb">dict</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__missing__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="bp">self</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">ServerModel</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="p">[</span><span class="n">key</span><span class="p">]</span>
+
+</div>
+<div class="viewcode-block" id="ServerModel"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.ServerModel">[docs]</a><span class="k">class</span> <span class="nc">ServerModel</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    This class represents an estimate of the state of a given &quot;server&quot;.</span>
+<span class="sd">    &quot;Server&quot; is defined here by whatever accepts the socket</span>
+<span class="sd">    connections, which in practice may be an entire pool of server</span>
+<span class="sd">    machines/VMS, each of which has multiple worker thread/procs.</span>
+
+<span class="sd">    For example, estimate how many connections are currently open</span>
+<span class="sd">    (note: only an estimate, since the exact server-side state of the</span>
+<span class="sd">    sockets is unknown)</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">address</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_error</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">active_connections</span> <span class="o">=</span> <span class="n">weakref</span><span class="o">.</span><span class="n">WeakKeyDictionary</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">address</span> <span class="o">=</span> <span class="n">address</span>
+
+<div class="viewcode-block" id="ServerModel.sock_in_use"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.ServerModel.sock_in_use">[docs]</a>    <span class="k">def</span> <span class="nf">sock_in_use</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sock</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">active_connections</span><span class="p">[</span><span class="n">sock</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+</div>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_error</span><span class="p">:</span>
+            <span class="n">dt</span> <span class="o">=</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">last_error</span><span class="p">))</span>
+            <span class="n">last_error</span> <span class="o">=</span> <span class="n">dt</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s">&#39;%Y-%m-</span><span class="si">%d</span><span class="s"> %H:%M:%S&#39;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">last_error</span> <span class="o">=</span> <span class="s">&quot;(None)&quot;</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;ServerModel {0} last_error={1} nconns={2}&gt;&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">address</span><span class="p">),</span> <span class="n">last_error</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">active_connections</span><span class="p">))</span>
+
+</div>
+<div class="viewcode-block" id="MonitoredSocket"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.MonitoredSocket">[docs]</a><span class="k">class</span> <span class="nc">MonitoredSocket</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    A socket proxy which allows socket lifetime to be monitored.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sock</span><span class="p">,</span> <span class="n">registry</span><span class="p">,</span> <span class="n">protected</span><span class="p">,</span>
+                 <span class="n">name</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">state</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_msock</span> <span class="o">=</span> <span class="n">sock</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_registry</span> <span class="o">=</span> <span class="n">registry</span>  <span class="c"># TODO: better name for this</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_spawned</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_protected</span> <span class="o">=</span> <span class="n">protected</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_type</span> <span class="o">=</span> <span class="nb">type</span>
+        <span class="c"># alias some functions through for improved performance</span>
+        <span class="c">#  (__getattr__ is pretty slow compared to normal attribute access)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">state</span>
+
+<div class="viewcode-block" id="MonitoredSocket.send"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.MonitoredSocket.send">[docs]</a>    <span class="k">def</span> <span class="nf">send</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">flags</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_msock</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">flags</span><span class="p">)</span>
+        <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">store_network_data</span><span class="p">(</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_msock</span><span class="o">.</span><span class="n">getpeername</span><span class="p">()),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fileno</span><span class="p">(),</span> <span class="s">&quot;OUT&quot;</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ret</span>
+</div>
+<div class="viewcode-block" id="MonitoredSocket.sendall"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.MonitoredSocket.sendall">[docs]</a>    <span class="k">def</span> <span class="nf">sendall</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">flags</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_msock</span><span class="o">.</span><span class="n">sendall</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">flags</span><span class="p">)</span>
+        <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">store_network_data</span><span class="p">(</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_msock</span><span class="o">.</span><span class="n">getpeername</span><span class="p">()),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fileno</span><span class="p">(),</span> <span class="s">&quot;OUT&quot;</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ret</span>
+</div>
+<div class="viewcode-block" id="MonitoredSocket.recv"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.MonitoredSocket.recv">[docs]</a>    <span class="k">def</span> <span class="nf">recv</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">bufsize</span><span class="p">,</span> <span class="n">flags</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_msock</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="n">bufsize</span><span class="p">,</span> <span class="n">flags</span><span class="p">)</span>
+        <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">store_network_data</span><span class="p">(</span>
+            <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_msock</span><span class="o">.</span><span class="n">getpeername</span><span class="p">()),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fileno</span><span class="p">(),</span> <span class="s">&quot;IN&quot;</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">data</span>
+</div>
+<div class="viewcode-block" id="MonitoredSocket.close"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.MonitoredSocket.close">[docs]</a>    <span class="k">def</span> <span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_registry</span><span class="p">:</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_registry</span><span class="p">[</span><span class="bp">self</span><span class="p">]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">state</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">transition</span><span class="p">(</span><span class="s">&#39;closed&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_msock</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="MonitoredSocket.shutdown"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.MonitoredSocket.shutdown">[docs]</a>    <span class="k">def</span> <span class="nf">shutdown</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">how</span><span class="p">):</span>  <span class="c"># not going to bother tracking half-open sockets</span>
+        <span class="k">if</span> <span class="bp">self</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_registry</span><span class="p">:</span>  <span class="c"># (unlikely they will ever be used)</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">_registry</span><span class="p">[</span><span class="bp">self</span><span class="p">]</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_msock</span><span class="o">.</span><span class="n">shutdown</span><span class="p">(</span><span class="n">how</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;MonitoredSocket &quot;</span> <span class="o">+</span> <span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_msock</span><span class="p">)</span> <span class="o">+</span> <span class="s">&quot;&gt;&quot;</span>
+
+    <span class="k">def</span> <span class="nf">__getattr__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attr</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_msock</span><span class="p">,</span> <span class="n">attr</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="AddressGroup"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.AddressGroup">[docs]</a><span class="k">class</span> <span class="nc">AddressGroup</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    An address group represents the set of addresses known by a</span>
+<span class="sd">    specific name to a client at runtime.  That is, in a specific</span>
+<span class="sd">    environment (stage, live, etc), an address group represents the</span>
+<span class="sd">    set of &lt;ip, port&gt; pairs to try.</span>
+
+<span class="sd">    An address group consists of tiers. Each tier should be fully</span>
+<span class="sd">    exhausted before moving on to the next; tiers are &quot;fallbacks&quot;.  A</span>
+<span class="sd">    tier consists of prioritized addresses.  Within a tier, the</span>
+<span class="sd">    addresses should be tried in a priority weighted random order.</span>
+
+<span class="sd">    The simplest way to use an address group is just to iterate over</span>
+<span class="sd">    it, and try each address in the order returned.</span>
+
+<span class="sd">    tiers: [ [(weight, (ip, port)), (weight, (ip, port)) ... ] ... ]</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tiers</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">tiers</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;no addresses provided for address group&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tiers</span> <span class="o">=</span> <span class="n">tiers</span>
+
+<div class="viewcode-block" id="AddressGroup.connect_ordering"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.AddressGroup.connect_ordering">[docs]</a>    <span class="k">def</span> <span class="nf">connect_ordering</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">plist</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">tier</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">tiers</span><span class="p">:</span>
+            <span class="c"># Kodos says: &quot;if you can think of a simpler way of</span>
+            <span class="c"># achieving a weighted random ordering, I&#39;d like to hear</span>
+            <span class="c"># it&quot; (http://en.wikipedia.org/wiki/Kang_and_Kodos)</span>
+            <span class="n">tlist</span> <span class="o">=</span> <span class="p">[(</span><span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">()</span> <span class="o">*</span> <span class="n">e</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">e</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">tier</span><span class="p">]</span>
+            <span class="n">tlist</span><span class="o">.</span><span class="n">sort</span><span class="p">()</span>
+            <span class="n">plist</span><span class="o">.</span><span class="n">extend</span><span class="p">([</span><span class="n">e</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">tlist</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">plist</span>
+</div>
+    <span class="k">def</span> <span class="nf">__iter__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">iter</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">connect_ordering</span><span class="p">())</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;AddressGroup &quot;</span> <span class="o">+</span> <span class="nb">repr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tiers</span><span class="p">)</span> <span class="o">+</span> <span class="s">&quot;&gt;&quot;</span>
+
+</div>
+<div class="viewcode-block" id="AddressGroupMap"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.AddressGroupMap">[docs]</a><span class="k">class</span> <span class="nc">AddressGroupMap</span><span class="p">(</span><span class="nb">dict</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    For dev mode, will lazily pull in additional addresses.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="nf">__missing__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">key</span><span class="p">):</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">stage_ip</span> <span class="ow">and</span> <span class="n">ctx</span><span class="o">.</span><span class="n">topos</span><span class="p">:</span>
+            <span class="n">newkey</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="p">(</span><span class="n">key</span><span class="p">,</span> <span class="n">key</span> <span class="o">+</span> <span class="s">&quot;_r1&quot;</span><span class="p">,</span> <span class="n">key</span> <span class="o">+</span> <span class="s">&quot;_ca&quot;</span><span class="p">,</span> <span class="n">key</span> <span class="o">+</span> <span class="s">&quot;_r1_ca&quot;</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">ctx</span><span class="o">.</span><span class="n">topos</span><span class="o">.</span><span class="n">apps</span><span class="p">:</span>
+                    <span class="n">newkey</span> <span class="o">=</span> <span class="n">k</span>
+                    <span class="k">break</span>
+            <span class="k">if</span> <span class="n">newkey</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+                <span class="c"># TODO: maybe do r1 / r2 fallback; however, given this</span>
+                <span class="c"># is stage only that use case is pretty slim</span>
+                <span class="n">ports</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">topos</span><span class="o">.</span><span class="n">get_port</span><span class="p">(</span><span class="n">newkey</span><span class="p">))]</span>
+                <span class="n">val</span> <span class="o">=</span> <span class="n">AddressGroup</span><span class="p">(([(</span><span class="mi">1</span><span class="p">,</span> <span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">stage_ip</span><span class="p">,</span> <span class="n">p</span><span class="p">))</span> <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">ports</span><span class="p">],))</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s">&quot;warnings&quot;</span><span class="p">,</span> <span class="p">{})</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s">&quot;inferred_addresses&quot;</span><span class="p">,</span> <span class="p">[])</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">key</span><span class="p">,</span> <span class="n">val</span><span class="p">))</span>
+                <span class="bp">self</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
+                <span class="k">if</span> <span class="n">key</span> <span class="o">!=</span> <span class="n">newkey</span><span class="p">:</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">warnings</span><span class="p">[</span><span class="s">&quot;inferred_addresses&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">newkey</span><span class="p">,</span> <span class="n">val</span><span class="p">))</span>
+                <span class="bp">self</span><span class="p">[</span><span class="n">newkey</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
+                <span class="k">return</span> <span class="n">val</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">__dict__</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s">&quot;errors&quot;</span><span class="p">,</span> <span class="p">{})</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">errors</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="s">&quot;unknown_addresses&quot;</span><span class="p">,</span> <span class="nb">set</span><span class="p">())</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">key</span><span class="p">)</span>
+
+        <span class="n">ctx</span><span class="o">.</span><span class="n">intervals</span><span class="p">[</span><span class="s">&quot;error.address.missing.&quot;</span> <span class="o">+</span> <span class="nb">repr</span><span class="p">(</span><span class="n">key</span><span class="p">)]</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">intervals</span><span class="p">[</span><span class="s">&quot;error.address.missing&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
+        <span class="k">raise</span> <span class="ne">KeyError</span><span class="p">(</span><span class="s">&quot;unknown address requested &quot;</span> <span class="o">+</span> <span class="nb">repr</span><span class="p">(</span><span class="n">key</span><span class="p">))</span>
+</div>
+<span class="n">_ADDRESS_SUFFIXES</span> <span class="o">=</span> <span class="p">[</span><span class="s">&quot;_r&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">)]</span>
+<span class="n">_ADDRESS_SUFFIXES</span> <span class="o">=</span> <span class="p">(</span><span class="s">&quot;_ca&quot;</span><span class="p">,)</span> <span class="o">+</span> <span class="nb">tuple</span><span class="p">([</span><span class="s">&quot;_r&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10</span><span class="p">)])</span>
+
+
+<div class="viewcode-block" id="MarkedDownError"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.MarkedDownError">[docs]</a><span class="k">class</span> <span class="nc">MarkedDownError</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">error</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+</div>
+<div class="viewcode-block" id="OutOfSockets"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.OutOfSockets">[docs]</a><span class="k">class</span> <span class="nc">OutOfSockets</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">error</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+</div>
+<div class="viewcode-block" id="NameNotFound"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.NameNotFound">[docs]</a><span class="k">class</span> <span class="nc">NameNotFound</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">error</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+</div>
+<div class="viewcode-block" id="MultiConnectFailure"><a class="viewcode-back" href="../../connection_mgr.html#support.connection_mgr.MultiConnectFailure">[docs]</a><span class="k">class</span> <span class="nc">MultiConnectFailure</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">error</span><span class="p">):</span>
+    <span class="k">pass</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="../../index.html">
+    <img class="logo" src="../../_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../async.html">Asynchronous Helpers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../buffered_socket.html">Buffered Socket</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../connection_mgr.html">Managed Connections</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../context.html">Context Management</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../crypto.html">Cryptography and Security</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../exceptions.html">Exceptions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../group.html">Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../http_client.html">HTTP Client</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../meta_service.html">MetaService</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>

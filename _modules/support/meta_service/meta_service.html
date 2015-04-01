@@ -1,0 +1,588 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>support.meta_service.meta_service &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../../',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../../_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="../../../index.html" />
+    <link rel="up" title="Module code" href="../../index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../../index.html">SuPPort 0.0.1 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for support.meta_service.meta_service</h1><div class="highlight"><pre>
+<span class="kn">import</span> <span class="nn">gc</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">datetime</span>
+<span class="kn">import</span> <span class="nn">traceback</span>
+<span class="kn">import</span> <span class="nn">collections</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span>
+
+<span class="kn">import</span> <span class="nn">clastic</span>
+<span class="kn">from</span> <span class="nn">clastic</span> <span class="kn">import</span> <span class="n">Response</span>
+<span class="kn">from</span> <span class="nn">clastic.render</span> <span class="kn">import</span> <span class="n">BasicRender</span><span class="p">,</span> <span class="n">TabularRender</span>
+<span class="kn">from</span> <span class="nn">clastic.static</span> <span class="kn">import</span> <span class="n">StaticFileRoute</span>
+
+<span class="kn">from</span> <span class="nn">support</span> <span class="kn">import</span> <span class="n">ll</span>
+<span class="kn">from</span> <span class="nn">support</span> <span class="kn">import</span> <span class="n">context</span>
+<span class="kn">from</span> <span class="nn">support</span> <span class="kn">import</span> <span class="n">cache</span>
+<span class="kn">from</span> <span class="nn">support.meta_service</span> <span class="kn">import</span> <span class="n">stats</span>
+<span class="kn">from</span> <span class="nn">support.meta_service</span> <span class="kn">import</span> <span class="n">codeview</span>
+
+<span class="n">CUR_PATH</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">__file__</span><span class="p">))</span>
+<span class="n">SUPPORT_PATH</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">dirname</span><span class="p">(</span><span class="n">CUR_PATH</span><span class="p">)</span>
+<span class="n">ASSETS_PATH</span> <span class="o">=</span> <span class="n">SUPPORT_PATH</span> <span class="o">+</span> <span class="s">&#39;/assets&#39;</span>
+<span class="n">FAVICON_PATH</span> <span class="o">=</span> <span class="n">ASSETS_PATH</span> <span class="o">+</span> <span class="s">&#39;/favicon/favicon.ico&#39;</span>
+
+
+<span class="k">def</span> <span class="nf">create_meta_app</span><span class="p">(</span><span class="n">additional_routes</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+<div class="viewcode-block" id="create_meta_app"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.create_meta_app">[docs]</a>    <span class="n">render</span> <span class="o">=</span> <span class="n">BasicRender</span><span class="p">(</span><span class="n">tabular_render</span><span class="o">=</span><span class="n">TabularRender</span><span class="p">(</span><span class="n">table_type</span><span class="o">=</span><span class="n">MetaTable</span><span class="p">))</span>
+    <span class="n">ma</span> <span class="o">=</span> <span class="n">clastic</span><span class="o">.</span><span class="n">meta</span><span class="o">.</span><span class="n">MetaApplication</span><span class="p">(</span><span class="n">page_title</span><span class="o">=</span><span class="s">&#39;SuPPort Meta Application&#39;</span><span class="p">)</span>
+    <span class="n">routes</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">,</span> <span class="n">ma</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/warnings&#39;</span><span class="p">,</span> <span class="n">get_warnings</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/warnings/&lt;path&gt;&#39;</span><span class="p">,</span> <span class="n">get_warnings</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/pytypes&#39;</span><span class="p">,</span> <span class="n">get_pytypes</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/py_lens&#39;</span><span class="p">,</span> <span class="n">get_pytypes_len</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/py_dump_id/&lt;in_id&gt;&#39;</span><span class="p">,</span> <span class="n">dump_id</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/context&#39;</span><span class="p">,</span> <span class="n">get_context_dict</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/threads&#39;</span><span class="p">,</span> <span class="n">get_thread_stacks</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/psutil&#39;</span><span class="p">,</span> <span class="n">get_psutil_data</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/debug_logs&#39;</span><span class="p">,</span> <span class="n">get_logs</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/wsgi_logs&#39;</span><span class="p">,</span> <span class="n">get_web_logs</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/debug_level/&lt;level&gt;&#39;</span><span class="p">,</span> <span class="n">set_level</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/greenlets&#39;</span><span class="p">,</span> <span class="n">get_greenlets</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/connections&#39;</span><span class="p">,</span> <span class="n">get_connections</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/reset_stats&#39;</span><span class="p">,</span> <span class="n">reset_stats</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/statvars&#39;</span><span class="p">,</span> <span class="n">stats</span><span class="o">.</span><span class="n">get_stats</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/statvars/&lt;the_stat&gt;&#39;</span><span class="p">,</span> <span class="n">stats</span><span class="o">.</span><span class="n">get_stats</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/statgraphs&#39;</span><span class="p">,</span> <span class="n">stats</span><span class="o">.</span><span class="n">statgraphs</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/statgraphs/&lt;statname&gt;&#39;</span><span class="p">,</span> <span class="n">stats</span><span class="o">.</span><span class="n">statgraphs</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/recent_tcp&#39;</span><span class="p">,</span> <span class="n">get_recent_tcp</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/recent_tcp/&lt;name&gt;&#39;</span><span class="p">,</span> <span class="n">get_recent_tcp</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/recent/&#39;</span><span class="p">,</span> <span class="n">get_recent</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/recent/&lt;thing1&gt;&#39;</span><span class="p">,</span> <span class="n">get_recent</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/recent/&lt;thing1&gt;/&lt;thing2&gt;&#39;</span><span class="p">,</span> <span class="n">get_recent</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/samples&#39;</span><span class="p">,</span> <span class="n">get_sampro_data</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/environment&#39;</span><span class="p">,</span> <span class="n">get_environment</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/listmodules&#39;</span><span class="p">,</span> <span class="n">codeview</span><span class="o">.</span><span class="n">listmodules</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/listmodules/&lt;sort_col:int&gt;&#39;</span><span class="p">,</span> <span class="n">codeview</span><span class="o">.</span><span class="n">listmodules</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/listmodules_json&#39;</span><span class="p">,</span> <span class="n">codeview</span><span class="o">.</span><span class="n">listmodules_json</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/showmodule/&lt;module_name&gt;&#39;</span><span class="p">,</span> <span class="n">codeview</span><span class="o">.</span><span class="n">showmodule</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/showmodule_txt/&lt;module_name&gt;&#39;</span><span class="p">,</span> <span class="n">codeview</span><span class="o">.</span><span class="n">showmodule_txt</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/connection_mgr&#39;</span><span class="p">,</span> <span class="n">get_connection_mgr</span><span class="p">,</span> <span class="n">render</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/fd_info&#39;</span><span class="p">,</span> <span class="n">get_fd_info</span><span class="p">,</span> <span class="n">rt_json_render_basic</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/fd_info/&lt;fd:int&gt;&#39;</span><span class="p">,</span> <span class="n">get_one_fd_info</span><span class="p">,</span> <span class="n">rt_json_render_basic</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/object&#39;</span><span class="p">,</span> <span class="n">view_obj</span><span class="p">),</span>
+        <span class="p">(</span><span class="s">&#39;/object/&lt;obj_id:int&gt;&#39;</span><span class="p">,</span> <span class="n">view_obj</span><span class="p">),</span>
+        <span class="n">StaticFileRoute</span><span class="p">(</span><span class="s">&#39;/favicon.ico&#39;</span><span class="p">,</span> <span class="n">FAVICON_PATH</span><span class="p">)</span>
+    <span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="n">additional_routes</span> <span class="ow">or</span> <span class="p">[])</span>
+
+    <span class="n">app</span> <span class="o">=</span> <span class="n">clastic</span><span class="o">.</span><span class="n">Application</span><span class="p">(</span><span class="n">routes</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">app</span>
+
+
+<span class="k">def</span> <span class="nf">rt_json_render_basic</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">context</span><span class="p">,</span> <span class="n">_route</span><span class="p">):</span></div>
+<div class="viewcode-block" id="rt_json_render_basic"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.rt_json_render_basic">[docs]</a>    <span class="kn">import</span> <span class="nn">json</span>
+    <span class="n">rjd</span> <span class="o">=</span> <span class="n">clastic</span><span class="o">.</span><span class="n">render_json_dev</span>
+    <span class="n">new_context</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">(</span><span class="n">rjd</span><span class="o">.</span><span class="n">json_encoder</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="n">context</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">clastic</span><span class="o">.</span><span class="n">render_basic</span><span class="p">(</span><span class="n">request</span><span class="o">=</span><span class="n">request</span><span class="p">,</span>
+                                <span class="n">context</span><span class="o">=</span><span class="n">new_context</span><span class="p">,</span>
+                                <span class="n">_route</span><span class="o">=</span><span class="n">_route</span><span class="p">)</span>
+
+
+<span class="k">class</span> <span class="nc">MetaTable</span><span class="p">(</span><span class="n">clastic</span><span class="o">.</span><span class="n">render</span><span class="o">.</span><span class="n">Table</span><span class="p">):</span></div>
+<div class="viewcode-block" id="MetaTable"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.MetaTable">[docs]</a>    <span class="k">def</span> <span class="nf">get_cell_html</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+<div class="viewcode-block" id="MetaTable.get_cell_html"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.MetaTable.get_cell_html">[docs]</a>        <span class="n">inner</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">MetaTable</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">get_cell_html</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">gc</span><span class="o">.</span><span class="n">is_tracked</span><span class="p">(</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">return</span> <span class="n">inner</span>
+        <span class="k">return</span> <span class="s">&#39;&lt;a href=&quot;/object/{0}&quot;&gt;{1}&lt;/a&gt;&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="n">value</span><span class="p">),</span> <span class="n">inner</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_config_dict</span><span class="p">():</span></div></div>
+<div class="viewcode-block" id="get_config_dict"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_config_dict">[docs]</a>    <span class="s">&#39;returns information about the current environment in a dictionary&#39;</span>
+    <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">keys_handled_directly</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;protected&#39;</span><span class="p">,</span> <span class="s">&#39;ssl_contexts&#39;</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">ctx</span><span class="o">.</span><span class="n">__dict__</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">keys_handled_directly</span><span class="p">:</span>
+            <span class="n">data</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">k</span><span class="p">,</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">ctx</span><span class="p">,</span> <span class="n">k</span><span class="p">)])</span>
+    <span class="c"># TODO: log and ssl_context info</span>
+
+    <span class="k">return</span> <span class="nb">dict</span><span class="p">([(</span><span class="n">e</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">e</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">data</span><span class="p">])</span>
+
+
+<span class="k">def</span> <span class="nf">get_environment</span><span class="p">():</span></div>
+<div class="viewcode-block" id="get_environment"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_environment">[docs]</a>    <span class="k">return</span> <span class="nb">dict</span><span class="p">((</span><span class="n">k</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="p">[</span><span class="n">k</span><span class="p">])</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span> <span class="k">if</span> <span class="s">&quot;AUTHC&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">k</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_context_dict</span><span class="p">():</span></div>
+<div class="viewcode-block" id="get_context_dict"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_context_dict">[docs]</a>    <span class="n">data</span> <span class="o">=</span> <span class="n">get_config_dict</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">data</span>
+
+
+<span class="k">def</span> <span class="nf">get_thread_stacks</span><span class="p">():</span></div>
+<div class="viewcode-block" id="get_thread_stacks"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_thread_stacks">[docs]</a>    <span class="k">return</span> <span class="nb">dict</span><span class="p">([(</span><span class="n">k</span><span class="p">,</span> <span class="n">traceback</span><span class="o">.</span><span class="n">format_stack</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
+                 <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">_current_frames</span><span class="p">()</span><span class="o">.</span><span class="n">items</span><span class="p">()])</span>
+
+
+<span class="k">def</span> <span class="nf">get_connections</span><span class="p">():</span></div>
+<div class="viewcode-block" id="get_connections"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_connections">[docs]</a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+    <span class="n">ret</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">ctx</span><span class="o">.</span><span class="n">connection_mgr</span><span class="o">.</span><span class="n">server_models</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+        <span class="n">ret</span><span class="p">[</span><span class="n">model</span><span class="o">.</span><span class="n">address</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s">&quot;last_error&quot;</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">datetime</span><span class="o">.</span><span class="n">fromtimestamp</span><span class="p">(</span>
+                <span class="nb">int</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">last_error</span><span class="p">))</span><span class="o">.</span><span class="n">strftime</span><span class="p">(</span><span class="s">&#39;%Y-%m-</span><span class="si">%d</span><span class="s"> %H:%M:%S&#39;</span><span class="p">),</span>
+            <span class="s">&quot;sockets&quot;</span><span class="p">:</span> <span class="p">[</span><span class="nb">repr</span><span class="p">(</span><span class="n">s</span><span class="p">)</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">model</span><span class="o">.</span><span class="n">active_connections</span><span class="o">.</span><span class="n">values</span><span class="p">()]</span>
+        <span class="p">}</span>
+    <span class="k">return</span> <span class="n">ret</span>
+
+
+<span class="k">def</span> <span class="nf">get_pytypes</span><span class="p">():</span></div>
+<div class="viewcode-block" id="get_pytypes"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_pytypes">[docs]</a>    <span class="n">answer</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">ob</span> <span class="ow">in</span> <span class="n">gc</span><span class="o">.</span><span class="n">get_objects</span><span class="p">():</span>
+            <span class="n">answer</span><span class="p">[</span><span class="nb">repr</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">ob</span><span class="p">))]</span> <span class="o">+=</span> <span class="mi">1</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="k">return</span> <span class="n">answer</span>
+
+
+<span class="k">def</span> <span class="nf">get_pytypes_len</span><span class="p">():</span></div>
+<div class="viewcode-block" id="get_pytypes_len"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_pytypes_len">[docs]</a>    <span class="k">return</span> <span class="n">Response</span><span class="p">(</span><span class="n">get_pytypes_len_gen</span><span class="p">(),</span> <span class="n">mimetype</span><span class="o">=</span><span class="s">&quot;application/json&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_pytypes_len_gen</span><span class="p">():</span></div>
+<div class="viewcode-block" id="get_pytypes_len_gen"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_pytypes_len_gen">[docs]</a>    <span class="k">try</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="s">&quot;{</span><span class="se">\n</span><span class="s">&quot;</span>
+
+        <span class="k">def</span> <span class="nf">get_total_size</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="p">:</span>
+                <span class="k">return</span> <span class="mi">0</span>
+            <span class="n">obj_len</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="s">&#39;__len__&#39;</span><span class="p">,</span> <span class="bp">False</span><span class="p">)):</span>
+                    <span class="n">obj_len</span> <span class="o">+=</span> <span class="nb">int</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">__len__</span><span class="p">())</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">gc</span><span class="o">.</span><span class="n">get_referents</span><span class="p">(</span><span class="n">obj</span><span class="p">):</span>
+                <span class="n">obj_len</span> <span class="o">+=</span> <span class="n">get_total_size</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">obj_len</span>
+
+        <span class="k">for</span> <span class="n">ob</span> <span class="ow">in</span> <span class="n">gc</span><span class="o">.</span><span class="n">get_objects</span><span class="p">():</span>
+            <span class="k">if</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">ob</span><span class="p">,</span> <span class="s">&#39;__len__&#39;</span><span class="p">,</span> <span class="bp">False</span><span class="p">):</span>
+                <span class="k">yield</span> <span class="s">&quot;</span><span class="se">\&quot;</span><span class="s">&quot;</span> <span class="o">+</span> <span class="nb">repr</span><span class="p">(</span><span class="nb">type</span><span class="p">(</span><span class="n">ob</span><span class="p">))</span> <span class="o">+</span> <span class="s">&quot;:&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="n">ob</span><span class="p">))</span> <span class="o">+</span> <span class="s">&quot;</span><span class="se">\&quot;</span><span class="s">: [&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ob</span><span class="p">))</span> \
+                      <span class="o">+</span> <span class="s">&quot;, &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">get_total_size</span><span class="p">(</span><span class="n">ob</span><span class="p">))</span> <span class="o">+</span> <span class="s">&quot;]</span><span class="se">\n</span><span class="s">&quot;</span>
+
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="k">yield</span> <span class="s">&quot;</span><span class="se">\&quot;</span><span class="s">error</span><span class="se">\&quot;</span><span class="s">:</span><span class="se">\&quot;</span><span class="s">&quot;</span> <span class="o">+</span> <span class="nb">repr</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\&quot;</span><span class="s">&quot;</span><span class="p">,</span> <span class="s">&quot;</span><span class="se">\\\&quot;</span><span class="s">&quot;</span><span class="p">)</span> <span class="o">+</span> <span class="s">&quot;</span><span class="se">\&quot;\n</span><span class="s">&quot;</span>
+    <span class="k">yield</span> <span class="s">&quot;}</span><span class="se">\n</span><span class="s">&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">dump_id</span><span class="p">(</span><span class="n">in_id</span><span class="p">):</span></div>
+<div class="viewcode-block" id="dump_id"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.dump_id">[docs]</a>    <span class="n">answer</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">def</span> <span class="nf">get_total_size</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">0</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="mi">10</span><span class="p">:</span>
+                <span class="k">return</span> <span class="mi">0</span>
+            <span class="n">obj_len</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">obj_len</span> <span class="o">+=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">ob</span><span class="p">,</span> <span class="s">&#39;__len__&#39;</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="n">gc</span><span class="o">.</span><span class="n">get_referents</span><span class="p">(</span><span class="n">obj</span><span class="p">):</span>
+                <span class="n">obj_len</span> <span class="o">+=</span> <span class="n">get_total_size</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">obj_len</span>
+
+        <span class="k">for</span> <span class="n">ob</span> <span class="ow">in</span> <span class="n">gc</span><span class="o">.</span><span class="n">get_objects</span><span class="p">():</span>
+            <span class="k">if</span> <span class="nb">id</span><span class="p">(</span><span class="n">ob</span><span class="p">)</span> <span class="o">==</span> <span class="nb">int</span><span class="p">(</span><span class="n">in_id</span><span class="p">):</span>
+                <span class="n">answer</span><span class="p">[</span><span class="s">&#39;ob&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">ob</span>
+                <span class="n">answer</span><span class="p">[</span><span class="s">&#39;repr&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">repr</span><span class="p">(</span><span class="n">ob</span><span class="p">)</span>
+                <span class="n">answer</span><span class="p">[</span><span class="s">&#39;dir&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">dir</span><span class="p">(</span><span class="n">ob</span><span class="p">)</span>
+                <span class="n">answer</span><span class="p">[</span><span class="s">&#39;total_lens&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">get_total_size</span><span class="p">(</span><span class="n">ob</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">answer</span><span class="p">[</span><span class="s">&#39;error&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">repr</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">answer</span>
+
+
+<span class="k">def</span> <span class="nf">get_greenlets</span><span class="p">():</span></div>
+<div class="viewcode-block" id="get_greenlets"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_greenlets">[docs]</a>    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span> <span class="nn">traceback</span>
+        <span class="kn">from</span> <span class="nn">greenlet</span> <span class="kn">import</span> <span class="n">greenlet</span>
+        <span class="n">answer</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">ob</span> <span class="ow">in</span> <span class="n">gc</span><span class="o">.</span><span class="n">get_objects</span><span class="p">():</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ob</span><span class="p">,</span> <span class="n">greenlet</span><span class="p">):</span>
+                <span class="k">continue</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">ob</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">answer</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">traceback</span><span class="o">.</span><span class="n">format_stack</span><span class="p">(</span><span class="n">ob</span><span class="o">.</span><span class="n">gr_frame</span><span class="p">))</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="kn">from</span> <span class="nn">gevent.hub</span> <span class="kn">import</span> <span class="n">_get_hub</span>
+        <span class="n">answer</span><span class="o">.</span><span class="n">append</span><span class="p">([</span><span class="n">_get_hub</span><span class="p">()</span><span class="o">.</span><span class="n">loop</span><span class="o">.</span><span class="n">activecnt</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">answer</span>
+
+
+<span class="k">def</span> <span class="nf">get_psutil_data</span><span class="p">():</span></div>
+<div class="viewcode-block" id="get_psutil_data"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_psutil_data">[docs]</a>    <span class="n">answer</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span> <span class="nn">psutil</span>
+        <span class="kn">import</span> <span class="nn">os</span>
+        <span class="n">answer</span> <span class="o">=</span> <span class="n">psutil</span><span class="o">.</span><span class="n">Process</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">())</span><span class="o">.</span><span class="n">as_dict</span><span class="p">()</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">answer</span> <span class="o">=</span> <span class="p">{</span><span class="s">&#39;error&#39;</span><span class="p">:</span> <span class="nb">repr</span><span class="p">(</span><span class="n">e</span><span class="p">)}</span>
+    <span class="k">return</span> <span class="n">answer</span>
+
+
+<span class="k">def</span> <span class="nf">get_one_fd_info</span><span class="p">(</span><span class="n">fd</span><span class="p">):</span></div>
+<div class="viewcode-block" id="get_one_fd_info"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_one_fd_info">[docs]</a>    <span class="kn">import</span> <span class="nn">traceback</span>
+
+    <span class="n">all_fd_info</span> <span class="o">=</span> <span class="n">get_fd_info</span><span class="p">()</span>
+    <span class="n">fd_info</span> <span class="o">=</span> <span class="n">all_fd_info</span><span class="p">[</span><span class="n">fd</span><span class="p">]</span>
+    <span class="n">fd_info</span><span class="p">[</span><span class="s">&#39;frames&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">obj</span> <span class="ow">in</span> <span class="n">fd_info</span><span class="p">[</span><span class="s">&#39;gc_objs&#39;</span><span class="p">]:</span>
+        <span class="n">frames</span> <span class="o">=</span> <span class="n">get_frames_local_to</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">frame</span> <span class="ow">in</span> <span class="n">frames</span><span class="p">:</span>
+            <span class="n">fd_info</span><span class="p">[</span><span class="s">&#39;frames&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">traceback</span><span class="o">.</span><span class="n">format_stack</span><span class="p">(</span><span class="n">frame</span><span class="p">)))</span>
+    <span class="k">return</span> <span class="n">fd_info</span>
+
+
+<span class="k">def</span> <span class="nf">get_fd_info</span><span class="p">():</span></div>
+<div class="viewcode-block" id="get_fd_info"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_fd_info">[docs]</a>    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Gathers and correlates fd info from 3 sources:</span>
+<span class="sd">    1- gc over all objects that have a fileno(); this is most &#39;socket-like&#39; things</span>
+<span class="sd">    2- infra Context object data structures</span>
+<span class="sd">    3- psutil information</span>
+<span class="sd">    4- /proc filesystem (if available)</span>
+
+<span class="sd">    This function is a little bit open-ended, we can probably continue</span>
+<span class="sd">    to find additional sources of information</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="kn">import</span> <span class="nn">psutil</span>
+
+    <span class="n">fd_info</span> <span class="o">=</span> <span class="n">collections</span><span class="o">.</span><span class="n">defaultdict</span><span class="p">(</span>
+        <span class="k">lambda</span><span class="p">:</span> <span class="p">{</span><span class="s">&#39;gc_objs&#39;</span><span class="p">:</span> <span class="p">[],</span> <span class="s">&#39;/proc&#39;</span><span class="p">:</span> <span class="p">{},</span> <span class="s">&#39;context&#39;</span><span class="p">:</span> <span class="p">[],</span> <span class="s">&#39;psutil&#39;</span><span class="p">:</span> <span class="p">{}})</span>
+
+    <span class="c"># 1 - all objects with filenos</span>
+    <span class="k">for</span> <span class="n">obj</span> <span class="ow">in</span> <span class="n">gc</span><span class="o">.</span><span class="n">get_objects</span><span class="p">():</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">fd</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="s">&#39;fileno&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">callable</span><span class="p">(</span><span class="n">obj</span><span class="o">.</span><span class="n">fileno</span><span class="p">):</span>
+                <span class="n">fd</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">fileno</span><span class="p">()</span>
+        <span class="k">except</span><span class="p">:</span>  <span class="c"># there are a zillion boring reasons this may fail</span>
+            <span class="k">pass</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">fd</span><span class="p">,</span> <span class="p">(</span><span class="nb">int</span><span class="p">,</span> <span class="nb">long</span><span class="p">)):</span>
+            <span class="n">fd_info</span><span class="p">[</span><span class="n">fd</span><span class="p">][</span><span class="s">&#39;gc_objs&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+
+    <span class="c"># 2 - inspection of data-structures in context</span>
+    <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+    <span class="n">socks</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">model</span> <span class="ow">in</span> <span class="n">ctx</span><span class="o">.</span><span class="n">connection_mgr</span><span class="o">.</span><span class="n">server_models</span><span class="o">.</span><span class="n">values</span><span class="p">():</span>
+        <span class="n">socks</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">active_connections</span><span class="p">)</span>
+    <span class="n">socks</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">client_sockets</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">server_group</span><span class="p">:</span>
+        <span class="n">socks</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">server_group</span><span class="o">.</span><span class="n">socks</span><span class="o">.</span><span class="n">values</span><span class="p">())</span>
+    <span class="k">for</span> <span class="n">sock</span> <span class="ow">in</span> <span class="n">socks</span><span class="p">:</span>
+        <span class="n">fd_info</span><span class="p">[</span><span class="n">sock</span><span class="o">.</span><span class="n">fileno</span><span class="p">()][</span><span class="s">&#39;context&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sock</span><span class="p">)</span>
+
+    <span class="c"># 3 - psutil information</span>
+    <span class="n">process</span> <span class="o">=</span> <span class="n">psutil</span><span class="o">.</span><span class="n">Process</span><span class="p">()</span>
+    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">get_open_files</span><span class="p">():</span>
+        <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">fd</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">fd_info</span><span class="p">[</span><span class="n">f</span><span class="o">.</span><span class="n">fd</span><span class="p">][</span><span class="s">&#39;psutil&#39;</span><span class="p">][</span><span class="s">&#39;path&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">path</span>
+    <span class="k">for</span> <span class="n">conn</span> <span class="ow">in</span> <span class="n">process</span><span class="o">.</span><span class="n">get_connections</span><span class="p">(</span><span class="n">kind</span><span class="o">=</span><span class="s">&#39;all&#39;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">conn</span><span class="o">.</span><span class="n">fd</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">fd_info</span><span class="p">[</span><span class="n">conn</span><span class="o">.</span><span class="n">fd</span><span class="p">][</span><span class="s">&#39;psutil&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">vars</span><span class="p">(</span><span class="n">conn</span><span class="p">))</span>
+        <span class="k">del</span> <span class="n">fd_info</span><span class="p">[</span><span class="n">conn</span><span class="o">.</span><span class="n">fd</span><span class="p">][</span><span class="s">&#39;psutil&#39;</span><span class="p">][</span><span class="s">&#39;fd&#39;</span><span class="p">]</span>
+
+    <span class="c"># 4 - /proc filesystem</span>
+    <span class="n">proc_path</span> <span class="o">=</span> <span class="s">&quot;/proc/&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">())</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">proc_path</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">fd_info</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">fd</span> <span class="ow">in</span> <span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">proc_path</span> <span class="o">+</span> <span class="s">&quot;/fd&quot;</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">inode</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">readlink</span><span class="p">(</span><span class="n">proc_path</span> <span class="o">+</span> <span class="s">&quot;/fd/&quot;</span> <span class="o">+</span> <span class="n">fd</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">OSError</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">fd</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">fd</span><span class="p">)</span>
+            <span class="n">fd_info</span><span class="p">[</span><span class="n">fd</span><span class="p">][</span><span class="s">&#39;/proc&#39;</span><span class="p">][</span><span class="s">&#39;inode&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">inode</span>
+
+    <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">fd_info</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_frames_local_to</span><span class="p">(</span><span class="n">obj</span><span class="p">):</span></div>
+<div class="viewcode-block" id="get_frames_local_to"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_frames_local_to">[docs]</a>    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Find all of the frames which the object is referenced in.</span>
+<span class="sd">    Return a list [(name, frame), (name, frame) ... ]</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="kn">import</span> <span class="nn">types</span>
+    <span class="n">refs</span> <span class="o">=</span> <span class="n">gc</span><span class="o">.</span><span class="n">get_referrers</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span>
+    <span class="n">frame_refs</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">refs</span><span class="p">:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">types</span><span class="o">.</span><span class="n">FrameType</span><span class="p">):</span>
+            <span class="k">continue</span>
+        <span class="k">if</span> <span class="n">f</span><span class="o">.</span><span class="n">f_code</span><span class="o">.</span><span class="n">co_filename</span> <span class="o">==</span> <span class="n">__file__</span><span class="p">:</span>
+            <span class="k">continue</span>  <span class="c"># skip references to this file</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">f</span><span class="o">.</span><span class="n">f_locals</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="n">obj</span><span class="p">:</span>
+                <span class="n">frame_refs</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">k</span><span class="p">,</span> <span class="n">f</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">frame_refs</span>
+
+
+<span class="k">def</span> <span class="nf">get_connection_mgr</span><span class="p">():</span></div>
+<div class="viewcode-block" id="get_connection_mgr"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_connection_mgr">[docs]</a>    <span class="n">connection_mgr</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">connection_mgr</span>
+    <span class="n">server_models</span><span class="p">,</span> <span class="n">sockpools</span> <span class="o">=</span> <span class="p">{},</span> <span class="p">{}</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">connection_mgr</span><span class="o">.</span><span class="n">server_models</span><span class="p">:</span>
+        <span class="n">server_model</span> <span class="o">=</span> <span class="n">connection_mgr</span><span class="o">.</span><span class="n">server_models</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+        <span class="n">server_models</span><span class="p">[</span><span class="nb">repr</span><span class="p">(</span><span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s">&quot;info&quot;</span><span class="p">:</span> <span class="nb">repr</span><span class="p">(</span><span class="n">server_model</span><span class="p">),</span>
+            <span class="s">&quot;fds&quot;</span><span class="p">:</span> <span class="p">[</span><span class="n">s</span><span class="o">.</span><span class="n">fileno</span><span class="p">()</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">server_model</span><span class="o">.</span><span class="n">active_connections</span><span class="o">.</span><span class="n">keys</span><span class="p">()]</span>
+        <span class="p">}</span>
+    <span class="k">for</span> <span class="n">prot</span> <span class="ow">in</span> <span class="n">connection_mgr</span><span class="o">.</span><span class="n">sockpools</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">sock_type</span> <span class="ow">in</span> <span class="n">connection_mgr</span><span class="o">.</span><span class="n">sockpools</span><span class="p">[</span><span class="n">prot</span><span class="p">]:</span>
+            <span class="n">sockpool</span> <span class="o">=</span> <span class="n">connection_mgr</span><span class="o">.</span><span class="n">sockpools</span><span class="p">[</span><span class="n">prot</span><span class="p">][</span><span class="n">sock_type</span><span class="p">]</span>
+            <span class="n">sockpools</span><span class="p">[</span><span class="nb">repr</span><span class="p">((</span><span class="n">prot</span><span class="p">,</span> <span class="n">sock_type</span><span class="p">))]</span> <span class="o">=</span> <span class="p">{</span>
+                <span class="s">&quot;info&quot;</span><span class="p">:</span> <span class="nb">repr</span><span class="p">(</span><span class="n">sockpool</span><span class="p">),</span>
+                <span class="s">&quot;addresses&quot;</span><span class="p">:</span> <span class="nb">map</span><span class="p">(</span><span class="nb">repr</span><span class="p">,</span> <span class="n">sockpool</span><span class="o">.</span><span class="n">free_socks_by_addr</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+            <span class="p">}</span>
+    <span class="k">return</span> <span class="p">{</span><span class="s">&#39;server_models&#39;</span><span class="p">:</span> <span class="n">server_models</span><span class="p">,</span> <span class="s">&#39;sockpools&#39;</span><span class="p">:</span> <span class="n">sockpools</span><span class="p">}</span>
+
+
+<span class="k">def</span> <span class="nf">get_logs</span><span class="p">():</span></div>
+<div class="viewcode-block" id="get_logs"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_logs">[docs]</a>    <span class="k">return</span> <span class="n">ll</span><span class="o">.</span><span class="n">log_msgs</span>
+
+
+<span class="k">def</span> <span class="nf">get_web_logs</span><span class="p">():</span></div>
+<div class="viewcode-block" id="get_web_logs"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_web_logs">[docs]</a>    <span class="n">sgrp</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">server_group</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">sgrp</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">EnvironmentError</span><span class="p">(</span><span class="s">&quot;context.server_group unset (infra.serve() not called)&quot;</span><span class="p">)</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">serv</span> <span class="ow">in</span> <span class="n">sgrp</span><span class="o">.</span><span class="n">servers</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">serv</span><span class="p">,</span> <span class="s">&quot;log&quot;</span><span class="p">):</span>
+            <span class="n">result</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">serv</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">msgs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">result</span>
+
+
+<span class="k">def</span> <span class="nf">get_sampro_data</span><span class="p">():</span></div>
+<div class="viewcode-block" id="get_sampro_data"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_sampro_data">[docs]</a>    <span class="n">processed</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+    <span class="n">profiler</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">profiler</span>
+    <span class="k">if</span> <span class="n">profiler</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&quot;(sampling disabled; enable with infra.get_context().set_sampling(True))&quot;</span>
+    <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">profiler</span><span class="o">.</span><span class="n">live_data_copy</span><span class="p">()</span><span class="o">.</span><span class="n">iteritems</span><span class="p">():</span>
+        <span class="n">code</span><span class="p">,</span> <span class="n">lineno</span><span class="p">,</span> <span class="n">parentcode</span> <span class="o">=</span> <span class="n">k</span>
+        <span class="k">if</span> <span class="n">parentcode</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="c"># TODO: shorten filenames up to the .git directory</span>
+            <span class="n">key</span> <span class="o">=</span> <span class="p">(</span><span class="n">code</span><span class="o">.</span><span class="n">co_name</span> <span class="o">+</span> <span class="s">&quot;(&quot;</span> <span class="o">+</span> <span class="n">code</span><span class="o">.</span><span class="n">co_filename</span> <span class="o">+</span>
+                   <span class="s">&quot;, &quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">code</span><span class="o">.</span><span class="n">co_firstlineno</span><span class="p">)</span> <span class="o">+</span> <span class="s">&quot;)&quot;</span><span class="p">)</span>
+            <span class="n">processed</span><span class="p">[</span><span class="n">key</span><span class="p">]</span> <span class="o">+=</span> <span class="n">v</span>
+    <span class="n">processed</span> <span class="o">=</span> <span class="nb">reversed</span><span class="p">(</span><span class="nb">sorted</span><span class="p">([(</span><span class="n">v</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">processed</span><span class="o">.</span><span class="n">items</span><span class="p">()]))</span>
+    <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">processed</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_recent</span><span class="p">(</span><span class="n">thing1</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">thing2</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span></div>
+<div class="viewcode-block" id="get_recent"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_recent">[docs]</a>    <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">thing1</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="n">ctx</span><span class="o">.</span><span class="n">recent</span><span class="o">.</span><span class="n">keys</span><span class="p">()]</span>
+    <span class="k">if</span> <span class="n">thing2</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">recent</span><span class="p">[</span><span class="n">thing1</span><span class="p">],</span> <span class="p">(</span><span class="nb">dict</span><span class="p">,</span> <span class="n">cache</span><span class="o">.</span><span class="n">Cache</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="nb">dict</span><span class="p">([(</span><span class="nb">repr</span><span class="p">(</span><span class="n">k</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
+                         <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">ctx</span><span class="o">.</span><span class="n">recent</span><span class="p">[</span><span class="n">thing1</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">()])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">recent</span><span class="p">[</span><span class="n">thing1</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">recent</span><span class="p">[</span><span class="n">thing1</span><span class="p">],</span> <span class="p">(</span><span class="nb">dict</span><span class="p">,</span> <span class="n">cache</span><span class="o">.</span><span class="n">Cache</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="nb">dict</span><span class="p">([(</span><span class="nb">repr</span><span class="p">(</span><span class="n">k</span><span class="p">),</span> <span class="nb">list</span><span class="p">(</span><span class="n">v</span><span class="p">))</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span>
+                         <span class="n">ctx</span><span class="o">.</span><span class="n">recent</span><span class="p">[</span><span class="n">thing1</span><span class="p">]</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">thing2</span> <span class="ow">in</span> <span class="nb">str</span><span class="p">(</span><span class="n">k</span><span class="p">)])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;{&quot;error&quot;:&quot;&#39;</span> <span class="o">+</span> <span class="n">thing1</span> <span class="o">+</span> <span class="s">&#39; recent data is not dict.&quot;}&#39;</span>
+
+
+<span class="k">def</span> <span class="nf">get_recent_tcp</span><span class="p">(</span><span class="n">thing2</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span></div>
+<div class="viewcode-block" id="get_recent_tcp"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_recent_tcp">[docs]</a>    <span class="k">return</span> <span class="n">get_recent</span><span class="p">(</span><span class="n">thing1</span><span class="o">=</span><span class="s">&#39;network&#39;</span><span class="p">,</span> <span class="n">thing2</span><span class="o">=</span><span class="n">thing2</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">get_warnings</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span></div>
+<div class="viewcode-block" id="get_warnings"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.get_warnings">[docs]</a>    <span class="n">warns</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">get_warnings</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">path</span><span class="p">:</span>
+        <span class="n">path_segs</span> <span class="o">=</span> <span class="n">path</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;.&#39;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">seg</span> <span class="ow">in</span> <span class="n">path_segs</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">seg</span> <span class="ow">in</span> <span class="n">warns</span><span class="p">:</span>
+                <span class="n">warns</span> <span class="o">=</span> <span class="n">warns</span><span class="p">[</span><span class="n">seg</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">return</span> <span class="s">&quot;(none)&quot;</span>
+    <span class="n">warns</span> <span class="o">=</span> <span class="n">_dict_map</span><span class="p">(</span><span class="n">warns</span><span class="p">,</span> <span class="n">_transform</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">warns</span>
+
+
+<span class="k">def</span> <span class="nf">_transform</span><span class="p">(</span><span class="n">v</span><span class="p">):</span></div>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="k">return</span> <span class="nb">repr</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">_dict_map</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">transform</span><span class="p">,</span> <span class="n">recurse</span><span class="o">=</span><span class="k">lambda</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">:</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)):</span>
+    <span class="n">transformed</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">stack</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">data</span><span class="p">,</span> <span class="n">transformed</span><span class="p">))</span>
+    <span class="k">while</span> <span class="n">stack</span><span class="p">:</span>
+        <span class="n">src</span><span class="p">,</span> <span class="n">dst</span> <span class="o">=</span> <span class="n">stack</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">src</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+            <span class="k">if</span> <span class="n">recurse</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">):</span>
+                <span class="n">child_val</span> <span class="o">=</span> <span class="p">{}</span>
+                <span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">v</span><span class="p">,</span> <span class="n">child_val</span><span class="p">))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">child_val</span> <span class="o">=</span> <span class="n">transform</span><span class="p">(</span><span class="n">v</span><span class="p">)</span>
+            <span class="n">dst</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">child_val</span>
+    <span class="k">return</span> <span class="n">transformed</span>
+
+
+<span class="k">def</span> <span class="nf">set_level</span><span class="p">(</span><span class="n">level</span><span class="p">):</span>
+<div class="viewcode-block" id="set_level"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.set_level">[docs]</a>    <span class="n">ll</span><span class="o">.</span><span class="n">set_log_level</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">level</span><span class="p">))</span>
+    <span class="k">return</span> <span class="n">ll</span><span class="o">.</span><span class="n">get_log_level</span><span class="p">()</span>
+
+
+<span class="k">def</span> <span class="nf">reset_stats</span><span class="p">():</span></div>
+<div class="viewcode-block" id="reset_stats"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.reset_stats">[docs]</a>    <span class="kn">import</span> <span class="nn">faststat</span>
+    <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">stats</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="n">faststat</span><span class="o">.</span><span class="n">Stats</span><span class="p">)</span>
+    <span class="k">return</span> <span class="s">&quot;OK&quot;</span>
+
+
+<span class="k">def</span> <span class="nf">view_obj</span><span class="p">(</span><span class="n">request</span><span class="p">,</span> <span class="n">obj_id</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span></div>
+<div class="viewcode-block" id="view_obj"><a class="viewcode-back" href="../../../meta_service.html#support.meta_service.meta_service.view_obj">[docs]</a>    <span class="kn">import</span> <span class="nn">obj_browser</span>
+
+    <span class="k">if</span> <span class="n">obj_id</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">clastic</span><span class="o">.</span><span class="n">redirect</span><span class="p">(</span>
+            <span class="n">request</span><span class="o">.</span><span class="n">path</span> <span class="o">+</span> <span class="s">&#39;/{0}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">())))</span>
+
+    <span class="k">for</span> <span class="n">obj</span> <span class="ow">in</span> <span class="n">gc</span><span class="o">.</span><span class="n">get_objects</span><span class="p">():</span>
+        <span class="k">if</span> <span class="nb">id</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span> <span class="o">==</span> <span class="n">obj_id</span><span class="p">:</span>
+            <span class="k">break</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;no Python object with id {0}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">obj_id</span><span class="p">))</span>
+
+    <span class="n">path</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">request</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">rpartition</span><span class="p">(</span><span class="s">&#39;/&#39;</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">clastic</span><span class="o">.</span><span class="n">Response</span><span class="p">(</span>
+        <span class="n">obj_browser</span><span class="o">.</span><span class="n">render_html</span><span class="p">(</span>
+            <span class="n">obj</span><span class="p">,</span> <span class="k">lambda</span> <span class="nb">id</span><span class="p">:</span> <span class="n">path</span> <span class="o">+</span> <span class="s">&#39;/{0}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">id</span><span class="p">)),</span>
+        <span class="n">mimetype</span><span class="o">=</span><span class="s">&quot;text/html&quot;</span><span class="p">)</span>
+</pre></div></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="../../../index.html">
+    <img class="logo" src="../../../_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../async.html">Asynchronous Helpers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../buffered_socket.html">Buffered Socket</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../connection_mgr.html">Managed Connections</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../context.html">Context Management</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../crypto.html">Cryptography and Security</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../exceptions.html">Exceptions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../group.html">Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../http_client.html">HTTP Client</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../meta_service.html">MetaService</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>

@@ -1,0 +1,280 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Asynchronous Helpers &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="index.html" />
+    <link rel="next" title="Buffered Socket" href="buffered_socket.html" />
+    <link rel="prev" title="Architecture" href="architecture.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="buffered_socket.html" title="Buffered Socket"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="architecture.html" title="Architecture"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">SuPPort 0.0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-support.async">
+<span id="asynchronous-helpers"></span><h1>Asynchronous Helpers<a class="headerlink" href="#module-support.async" title="Permalink to this headline">¶</a></h1>
+<dl class="class">
+<dt id="support.async.CPUThread">
+<em class="property">class </em><code class="descclassname">support.async.</code><code class="descname">CPUThread</code><a class="reference internal" href="_modules/support/async.html#CPUThread"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.CPUThread" title="Permalink to this definition">¶</a></dt>
+<dd><p>Manages a single worker thread to dispatch cpu intensive tasks to.</p>
+<p>Signficantly less overhead than gevent.threadpool.ThreadPool() since it
+uses prompt notifications rather than polling.  The trade-off is that only
+one thread can be managed this way.</p>
+<p>Since there is only one thread, hub.loop.async() objects may be used
+instead of polling to handle inter-thread communication.</p>
+<dl class="method">
+<dt id="support.async.CPUThread.apply">
+<code class="descname">apply</code><span class="sig-paren">(</span><em>func</em>, <em>args</em>, <em>kwargs</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#CPUThread.apply"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.CPUThread.apply" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.async.GreenConsole">
+<em class="property">class </em><code class="descclassname">support.async.</code><code class="descname">GreenConsole</code><span class="sig-paren">(</span><em>locals=None</em>, <em>filename='&lt;console&gt;'</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#GreenConsole"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.GreenConsole" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="method">
+<dt id="support.async.GreenConsole.raw_input">
+<code class="descname">raw_input</code><span class="sig-paren">(</span><em>*a</em>, <em>**kw</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#GreenConsole.raw_input"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.GreenConsole.raw_input" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.async.Greenlet">
+<em class="property">class </em><code class="descclassname">support.async.</code><code class="descname">Greenlet</code><span class="sig-paren">(</span><em>f</em>, <em>*a</em>, <em>**kw</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#Greenlet"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.Greenlet" title="Permalink to this definition">¶</a></dt>
+<dd><p>A subclass of gevent.Greenlet which adds additional members:</p>
+<blockquote>
+<div><ul class="simple">
+<li>locals: a dict of variables that are local to the &#8220;spawn tree&#8221; of
+greenlets</li>
+<li>spawner: a weak-reference back to the spawner of the
+greenlet</li>
+<li>stacks: a record of the stack at which the greenlet was
+spawned, and ancestors</li>
+</ul>
+</div></blockquote>
+</dd></dl>
+
+<dl class="class">
+<dt id="support.async.ThreadPoolDispatcher">
+<em class="property">class </em><code class="descclassname">support.async.</code><code class="descname">ThreadPoolDispatcher</code><span class="sig-paren">(</span><em>pool</em>, <em>name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#ThreadPoolDispatcher"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.ThreadPoolDispatcher" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="support.async.check_fork">
+<code class="descclassname">support.async.</code><code class="descname">check_fork</code><span class="sig-paren">(</span><em>fn</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#check_fork"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.check_fork" title="Permalink to this definition">¶</a></dt>
+<dd><p>Hack for Django/gevent interaction to reset after non-gevent fork</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="support.async.close_threadpool">
+<code class="descclassname">support.async.</code><code class="descname">close_threadpool</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#close_threadpool"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.close_threadpool" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="support.async.cpu_bound">
+<code class="descclassname">support.async.</code><code class="descname">cpu_bound</code><span class="sig-paren">(</span><em>f</em>, <em>p=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#cpu_bound"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.cpu_bound" title="Permalink to this definition">¶</a></dt>
+<dd><p>Cause the decorated function to have its execution deferred to a
+separate thread to avoid blocking the IO loop in the main thread.
+Useful for wrapping encryption or serialization tasks.</p>
+<p>Example usage:</p>
+<p>&#64;async.cpu_bound
+def my_slow_function():</p>
+<blockquote>
+<div>pass</div></blockquote>
+</dd></dl>
+
+<dl class="function">
+<dt id="support.async.cpu_bound_if">
+<code class="descclassname">support.async.</code><code class="descname">cpu_bound_if</code><span class="sig-paren">(</span><em>p</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#cpu_bound_if"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.cpu_bound_if" title="Permalink to this definition">¶</a></dt>
+<dd><p>Similar to cpu_bound, but should be called with a predicate
+parameter which determines whether or not to dispatch to a
+cpu_bound thread.  The predicate will be passed the same
+parameters as the function itself.</p>
+<p>Example usage:</p>
+<p># will be deferred to a thread if parameter greater than 16k,
+# else run inline
+&#64;async.cpu_bound_if(lambda s: len(s) &gt; 16 * 1024)
+def my_string_function(data):</p>
+<blockquote>
+<div>pass</div></blockquote>
+</dd></dl>
+
+<dl class="function">
+<dt id="support.async.get_spawntree_local">
+<code class="descclassname">support.async.</code><code class="descname">get_spawntree_local</code><span class="sig-paren">(</span><em>name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#get_spawntree_local"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.get_spawntree_local" title="Permalink to this definition">¶</a></dt>
+<dd><p>Essentially provides dynamic scope lookup for programming aspects
+that cross greenlet borders. Be wary of overusing this
+functionality, as it effectively constitutes mutating global state
+which can lead to race conditions and architectural problems.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="support.async.greenify">
+<code class="descclassname">support.async.</code><code class="descname">greenify</code><span class="sig-paren">(</span><em>banner='REPL is now greenlet friendly (exit with Ctrl+C)'</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#greenify"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.greenify" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="support.async.in_threadpool">
+<code class="descclassname">support.async.</code><code class="descname">in_threadpool</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#in_threadpool"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.in_threadpool" title="Permalink to this definition">¶</a></dt>
+<dd><p>function to return the threadpool in which code is currently executing (if any)</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="support.async.killsock">
+<code class="descclassname">support.async.</code><code class="descname">killsock</code><span class="sig-paren">(</span><em>sock</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#killsock"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.killsock" title="Permalink to this definition">¶</a></dt>
+<dd><p>Attempts to cleanly shutdown a socket. Regardless of cleanliness,
+ensures that upon return, the socket is fully closed, catching any
+exceptions along the way. A safe and prompt way to dispose of the
+socket, freeing system resources.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="support.async.set_spawntree_local">
+<code class="descclassname">support.async.</code><code class="descname">set_spawntree_local</code><span class="sig-paren">(</span><em>name</em>, <em>val</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#set_spawntree_local"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.set_spawntree_local" title="Permalink to this definition">¶</a></dt>
+<dd><p>Similar to get_spawntree_local except that it allows setting these
+values. Again, be wary of overuse.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="support.async.staggered_retries">
+<code class="descclassname">support.async.</code><code class="descname">staggered_retries</code><span class="sig-paren">(</span><em>run</em>, <em>*a</em>, <em>**kw</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#staggered_retries"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.staggered_retries" title="Permalink to this definition">¶</a></dt>
+<dd><p>A version of spawn that will block will it is done
+running the function, and which will call the function
+repeatedly as time progresses through the timeouts list.</p>
+<p>Best used for idempotent network calls (e.g. HTTP GETs).</p>
+<p>e.g.
+user_data = async.staggered_retries(get_data, max_results,</p>
+<blockquote>
+<div>latent_data_ok, public_credential_load,
+timeouts_secs=[0.1, 0.5, 1, 2])</div></blockquote>
+<p>returns None on timeout.</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="support.async.start_repl">
+<code class="descclassname">support.async.</code><code class="descname">start_repl</code><span class="sig-paren">(</span><em>local=None</em>, <em>banner='infra REPL (exit with Ctrl+C)'</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#start_repl"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.start_repl" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="support.async.timed">
+<code class="descclassname">support.async.</code><code class="descname">timed</code><span class="sig-paren">(</span><em>f</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/async.html#timed"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.async.timed" title="Permalink to this definition">¶</a></dt>
+<dd><p>wrap a function and time all of its execution calls in milliseconds</p>
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="index.html">
+    <img class="logo" src="_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="">Asynchronous Helpers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="buffered_socket.html">Buffered Socket</a></li>
+<li class="toctree-l1"><a class="reference internal" href="connection_mgr.html">Connection Management</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+      |
+      <a href="_sources/async.txt"
+          rel="nofollow">Page source</a></li>
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>

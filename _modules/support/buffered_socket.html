@@ -1,0 +1,289 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>support.buffered_socket &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../index.html">SuPPort 0.0.1 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for support.buffered_socket</h1><div class="highlight"><pre>
+<span class="kn">import</span> <span class="nn">gevent</span>
+
+
+<span class="n">_UNSET</span> <span class="o">=</span> <span class="nb">object</span><span class="p">()</span>
+
+
+<div class="viewcode-block" id="BufferedSocket"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.BufferedSocket">[docs]</a><span class="k">class</span> <span class="nc">BufferedSocket</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sock</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">maxbytes</span><span class="o">=</span><span class="mi">32</span> <span class="o">*</span> <span class="mi">1024</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sock</span> <span class="o">=</span> <span class="n">sock</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">settimeout</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span> <span class="o">=</span> <span class="s">&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sbuf</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span> <span class="o">=</span> <span class="n">timeout</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">maxbytes</span> <span class="o">=</span> <span class="n">maxbytes</span>
+
+<div class="viewcode-block" id="BufferedSocket.settimeout"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.BufferedSocket.settimeout">[docs]</a>    <span class="k">def</span> <span class="nf">settimeout</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span> <span class="o">=</span> <span class="n">timeout</span>
+</div>
+<div class="viewcode-block" id="BufferedSocket.setmaxbytes"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.BufferedSocket.setmaxbytes">[docs]</a>    <span class="k">def</span> <span class="nf">setmaxbytes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">maxbytes</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">maxbytes</span> <span class="o">=</span> <span class="n">maxbytes</span>
+</div>
+<div class="viewcode-block" id="BufferedSocket.recv"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.BufferedSocket.recv">[docs]</a>    <span class="k">def</span> <span class="nf">recv</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">flags</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">_UNSET</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">timeout</span> <span class="ow">is</span> <span class="n">_UNSET</span><span class="p">:</span>
+            <span class="n">timeout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span>
+        <span class="k">if</span> <span class="n">flags</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;flags not supported&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">size</span><span class="p">:</span>
+            <span class="n">data</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span><span class="p">[:</span><span class="n">size</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span><span class="p">[</span><span class="n">size</span><span class="p">:]</span>
+            <span class="k">return</span> <span class="n">data</span>
+        <span class="n">size</span> <span class="o">-=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span><span class="p">)</span>
+        <span class="k">with</span> <span class="n">gevent</span><span class="o">.</span><span class="n">Timeout</span><span class="p">(</span><span class="n">timeout</span><span class="p">,</span> <span class="n">Timeout</span><span class="p">(</span><span class="n">timeout</span><span class="p">)):</span>
+            <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="n">size</span><span class="p">)</span>
+        <span class="c"># don&#39;t empty buffer till after network communication is complete,</span>
+        <span class="c"># to avoid data loss on transient / retry-able errors (e.g. read</span>
+        <span class="c"># timeout)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span> <span class="o">=</span> <span class="s">&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">data</span>
+</div>
+<div class="viewcode-block" id="BufferedSocket.peek"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.BufferedSocket.peek">[docs]</a>    <span class="k">def</span> <span class="nf">peek</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="s">&#39;peek n bytes from the socket, but keep them in the buffer&#39;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="n">n</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span><span class="p">[:</span><span class="n">n</span><span class="p">]</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">recv_all</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">timeout</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span> <span class="o">=</span> <span class="n">data</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span>
+        <span class="k">return</span> <span class="n">data</span>
+</div>
+<div class="viewcode-block" id="BufferedSocket.recv_until"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.BufferedSocket.recv_until">[docs]</a>    <span class="k">def</span> <span class="nf">recv_until</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">marker</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">_UNSET</span><span class="p">,</span> <span class="n">maxbytes</span><span class="o">=</span><span class="n">_UNSET</span><span class="p">):</span>
+        <span class="s">&#39;read off of socket until the marker is found&#39;</span>
+        <span class="k">if</span> <span class="n">maxbytes</span> <span class="ow">is</span> <span class="n">_UNSET</span><span class="p">:</span>
+            <span class="n">maxbytes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">maxbytes</span>
+        <span class="k">if</span> <span class="n">timeout</span> <span class="ow">is</span> <span class="n">_UNSET</span><span class="p">:</span>
+            <span class="n">timeout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span>
+        <span class="n">chunks</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">recvd</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">nxt</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">gevent</span><span class="o">.</span><span class="n">Timeout</span><span class="p">(</span><span class="n">timeout</span><span class="p">,</span> <span class="bp">False</span><span class="p">):</span>
+                <span class="n">nxt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">32</span> <span class="o">*</span> <span class="mi">1024</span><span class="p">)</span>
+                <span class="k">while</span> <span class="n">nxt</span> <span class="ow">and</span> <span class="n">marker</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">nxt</span><span class="p">:</span>
+                    <span class="n">chunks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nxt</span><span class="p">)</span>
+                    <span class="n">recvd</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">nxt</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">maxbytes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span> <span class="ow">and</span> <span class="n">recvd</span> <span class="o">&gt;</span> <span class="n">maxbytes</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="n">NotFound</span><span class="p">(</span><span class="n">marker</span><span class="p">,</span> <span class="n">recvd</span><span class="p">)</span>
+                    <span class="n">nxt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">32</span> <span class="o">*</span> <span class="mi">1024</span><span class="p">)</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">nxt</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">ConnectionClosed</span><span class="p">(</span>
+                        <span class="s">&#39;connection closed after reading {0} bytes without&#39;</span>
+                        <span class="s">&#39; finding symbol {1}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">recvd</span><span class="p">,</span> <span class="n">marker</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">marker</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">nxt</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">Timeout</span><span class="p">(</span>
+                    <span class="n">timeout</span><span class="p">,</span> <span class="s">&#39;read {0} bytes without finding symbol {1}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                        <span class="n">recvd</span><span class="p">,</span> <span class="n">marker</span><span class="p">))</span>
+        <span class="k">except</span><span class="p">:</span>  <span class="c"># in case of error, retain data read so far in buffer</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span> <span class="o">=</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">chunks</span><span class="p">)</span>
+            <span class="k">raise</span>
+        <span class="n">val</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span> <span class="o">=</span> <span class="n">nxt</span><span class="o">.</span><span class="n">partition</span><span class="p">(</span><span class="n">marker</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">chunks</span><span class="p">)</span> <span class="o">+</span> <span class="n">val</span>
+</div>
+<div class="viewcode-block" id="BufferedSocket.recv_all"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.BufferedSocket.recv_all">[docs]</a>    <span class="k">def</span> <span class="nf">recv_all</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">_UNSET</span><span class="p">):</span>
+        <span class="s">&#39;read off of socket until size bytes have been read&#39;</span>
+        <span class="k">if</span> <span class="n">timeout</span> <span class="ow">is</span> <span class="n">_UNSET</span><span class="p">:</span>
+            <span class="n">timeout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span>
+        <span class="n">chunks</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">total_bytes</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">gevent</span><span class="o">.</span><span class="n">Timeout</span><span class="p">(</span><span class="n">timeout</span><span class="p">,</span> <span class="bp">False</span><span class="p">):</span>
+                <span class="n">nxt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="n">size</span><span class="p">)</span>
+                <span class="k">while</span> <span class="n">nxt</span><span class="p">:</span>
+                    <span class="n">total_bytes</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">nxt</span><span class="p">)</span>
+                    <span class="k">if</span> <span class="n">total_bytes</span> <span class="o">&gt;=</span> <span class="n">size</span><span class="p">:</span>
+                        <span class="k">break</span>
+                    <span class="n">chunks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">nxt</span><span class="p">)</span>
+                    <span class="n">nxt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="n">size</span> <span class="o">-</span> <span class="n">total_bytes</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="n">ConnectionClosed</span><span class="p">(</span>
+                        <span class="s">&#39;connection was closed after reading&#39;</span>
+                        <span class="s">&#39; {0} of {1} bytes&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">total_bytes</span><span class="p">,</span> <span class="n">size</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">total_bytes</span> <span class="o">&lt;</span> <span class="n">size</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="n">Timeout</span><span class="p">(</span>
+                    <span class="n">timeout</span><span class="p">,</span> <span class="s">&#39;read {0} of {1} bytes&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">total_bytes</span><span class="p">,</span> <span class="n">size</span><span class="p">))</span>
+        <span class="k">except</span><span class="p">:</span>  <span class="c"># in case of error, retain data read so far in buffer</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span> <span class="o">=</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">chunks</span><span class="p">)</span>
+            <span class="k">raise</span>
+        <span class="n">extra_bytes</span> <span class="o">=</span> <span class="n">total_bytes</span> <span class="o">-</span> <span class="n">size</span>
+        <span class="k">if</span> <span class="n">extra_bytes</span><span class="p">:</span>
+            <span class="n">last</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span> <span class="o">=</span> <span class="n">nxt</span><span class="p">[:</span><span class="o">-</span><span class="n">extra_bytes</span><span class="p">],</span> <span class="n">nxt</span><span class="p">[</span><span class="o">-</span><span class="n">extra_bytes</span><span class="p">:]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">last</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rbuf</span> <span class="o">=</span> <span class="n">nxt</span><span class="p">,</span> <span class="s">&quot;&quot;</span>
+        <span class="n">chunks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">last</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">chunks</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BufferedSocket.send"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.BufferedSocket.send">[docs]</a>    <span class="k">def</span> <span class="nf">send</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">flags</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="n">_UNSET</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">timeout</span> <span class="ow">is</span> <span class="n">_UNSET</span><span class="p">:</span>
+            <span class="n">timeout</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span>
+        <span class="k">if</span> <span class="n">flags</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;flags not supported&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sbuf</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sbuf</span><span class="p">)</span> <span class="o">+</span> <span class="n">data</span><span class="p">]</span>
+        <span class="k">with</span> <span class="n">gevent</span><span class="o">.</span><span class="n">Timeout</span><span class="p">(</span><span class="n">timeout</span><span class="p">,</span> <span class="bp">False</span><span class="p">):</span>
+            <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">sbuf</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+                <span class="n">sent</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">sbuf</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sbuf</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">sent</span><span class="p">:]</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">sbuf</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span>
+            <span class="k">raise</span> <span class="n">Timeout</span><span class="p">(</span>
+                <span class="n">timeout</span><span class="p">,</span> <span class="s">&quot;{0} bytes unsent&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sbuf</span><span class="p">[</span><span class="mi">0</span><span class="p">])))</span>
+</div>
+    <span class="n">sendall</span> <span class="o">=</span> <span class="n">send</span>
+
+<div class="viewcode-block" id="BufferedSocket.flush"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.BufferedSocket.flush">[docs]</a>    <span class="k">def</span> <span class="nf">flush</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="s">&#39;&#39;</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BufferedSocket.buffer"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.BufferedSocket.buffer">[docs]</a>    <span class="k">def</span> <span class="nf">buffer</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sbuf</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="BufferedSocket.close"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.BufferedSocket.close">[docs]</a>    <span class="k">def</span> <span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="BufferedSocket.shutdown"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.BufferedSocket.shutdown">[docs]</a>    <span class="k">def</span> <span class="nf">shutdown</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">how</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">shutdown</span><span class="p">(</span><span class="n">how</span><span class="p">)</span>
+    
+
+</div></div>
+<div class="viewcode-block" id="Error"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.Error">[docs]</a><span class="k">class</span> <span class="nc">Error</span><span class="p">(</span><span class="ne">Exception</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+</div>
+<div class="viewcode-block" id="ConnectionClosed"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.ConnectionClosed">[docs]</a><span class="k">class</span> <span class="nc">ConnectionClosed</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">pass</span>
+
+</div>
+<div class="viewcode-block" id="Timeout"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.Timeout">[docs]</a><span class="k">class</span> <span class="nc">Timeout</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="p">,</span> <span class="n">extra</span><span class="o">=</span><span class="s">&quot;&quot;</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">timeout</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="nb">super</span><span class="p">(</span><span class="n">Timeout</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="s">&#39;timed out &#39;</span> <span class="o">+</span> <span class="n">extra</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="nb">super</span><span class="p">(</span><span class="n">Timeout</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span>
+                <span class="s">&#39;timed out after {0}ms &#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">timeout</span> <span class="o">*</span> <span class="mf">1e3</span><span class="p">)</span> <span class="o">+</span> <span class="n">extra</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="NotFound"><a class="viewcode-back" href="../../buffered_socket.html#support.buffered_socket.NotFound">[docs]</a><span class="k">class</span> <span class="nc">NotFound</span><span class="p">(</span><span class="n">Error</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">symbol</span><span class="p">,</span> <span class="n">bytes_read</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">NotFound</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span>
+            <span class="s">&#39;read {1} bytes without finding symbol {0}&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+                <span class="n">symbol</span><span class="p">,</span> <span class="n">bytes_read</span><span class="p">))</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="../../index.html">
+    <img class="logo" src="../../_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../async.html">Asynchronous Helpers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../buffered_socket.html">Buffered Socket</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../connection_mgr.html">Managed Connections</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../context.html">Context Management</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../crypto.html">Cryptography and Security</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../exceptions.html">Exceptions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../group.html">Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../http_client.html">HTTP Client</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../meta_service.html">MetaService</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>

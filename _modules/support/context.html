@@ -1,0 +1,722 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>support.context &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../index.html">SuPPort 0.0.1 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for support.context</h1><div class="highlight"><pre>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">This module defines a context object which holds on to all global state.</span>
+<span class="sd">&#39;&#39;&#39;</span>
+
+<span class="kn">import</span> <span class="nn">os.path</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">getpass</span>
+<span class="kn">import</span> <span class="nn">weakref</span>
+<span class="kn">import</span> <span class="nn">linecache</span>
+<span class="kn">import</span> <span class="nn">threading</span>
+<span class="kn">import</span> <span class="nn">cmd</span>
+<span class="kn">from</span> <span class="nn">weakref</span> <span class="kn">import</span> <span class="n">WeakKeyDictionary</span>
+<span class="kn">from</span> <span class="nn">collections</span> <span class="kn">import</span> <span class="n">defaultdict</span><span class="p">,</span> <span class="n">deque</span>
+<span class="kn">from</span> <span class="nn">multiprocessing</span> <span class="kn">import</span> <span class="n">cpu_count</span>
+
+<span class="kn">import</span> <span class="nn">gevent</span>
+<span class="kn">import</span> <span class="nn">sampro</span>
+<span class="kn">import</span> <span class="nn">greenlet</span>
+<span class="kn">import</span> <span class="nn">faststat</span>
+<span class="kn">import</span> <span class="nn">hyperloglog.hll</span>
+<span class="kn">import</span> <span class="nn">functools</span>
+
+<span class="kn">import</span> <span class="nn">ll</span>
+<span class="n">ml</span> <span class="o">=</span> <span class="n">ll</span><span class="o">.</span><span class="n">LLogger</span><span class="p">()</span>
+
+<span class="kn">from</span> <span class="nn">support</span> <span class="kn">import</span> <span class="n">log</span>
+<span class="kn">from</span> <span class="nn">support</span> <span class="kn">import</span> <span class="n">cache</span>
+
+<span class="c"># NOTE: do not import anything else from support at context import time</span>
+<span class="c"># this is a bit heavy-handed, but guarantees no circular import errors</span>
+<span class="c"># which are otherwise very easy to create</span>
+
+
+<span class="n">CONTEXT</span> <span class="o">=</span> <span class="bp">None</span>
+
+
+<div class="viewcode-block" id="get_context"><a class="viewcode-back" href="../../context.html#support.context.get_context">[docs]</a><span class="k">def</span> <span class="nf">get_context</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">CONTEXT</span>
+    <span class="k">if</span> <span class="n">CONTEXT</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">CONTEXT</span> <span class="o">=</span> <span class="n">Context</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">CONTEXT</span>
+
+</div>
+<div class="viewcode-block" id="set_context"><a class="viewcode-back" href="../../context.html#support.context.set_context">[docs]</a><span class="k">def</span> <span class="nf">set_context</span><span class="p">(</span><span class="n">context</span><span class="p">):</span>
+    <span class="k">global</span> <span class="n">CONTEXT</span>
+    <span class="n">CONTEXT</span> <span class="o">=</span> <span class="n">context</span>
+
+</div>
+<div class="viewcode-block" id="Context"><a class="viewcode-back" href="../../context.html#support.context.Context">[docs]</a><span class="k">class</span> <span class="nc">Context</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Context object is meant to be the clearinghouse for global data in</span>
+<span class="sd">    an application written using SuPPort.  There is only one active</span>
+<span class="sd">    Context at a time.  Access the context with</span>
+<span class="sd">    infra.context.get_context().</span>
+
+<span class="sd">    Two categories of data in here:</span>
+
+<span class="sd">      1. Global data used internally by the infrastructure.</span>
+
+<span class="sd">      2. Global data which would otherwise need to be kept track of by</span>
+<span class="sd">      user code. (This stuff can be identified by the presence of</span>
+<span class="sd">      getters)</span>
+
+<span class="sd">    There are many configuration attributes. They ALL go to a sane</span>
+<span class="sd">    default, it is not necessary to touch them but they are available</span>
+<span class="sd">    for advanced users.</span>
+
+<span class="sd">    ========================== ===================================== ==============================</span>
+<span class="sd">    attribute                  description                           default</span>
+<span class="sd">    ========================== ===================================== ==============================</span>
+<span class="sd">    num_workers                number of pre-forked worker processes cpu_count-1, minimum 2</span>
+
+<span class="sd">    worker_memlimit            maximum amount of RAM used by process 1 GiB</span>
+<span class="sd">                               before worker suicide</span>
+
+<span class="sd">    max_concurrent_clients     maximum number of client connections  1000</span>
+<span class="sd">                               to spawn greenlets for before pausing</span>
+<span class="sd">                               socket accept</span>
+
+<span class="sd">    datacenter_connect_timeout max timeout for connecting to         0.05 (=50ms)</span>
+<span class="sd">                               internal servers (that is servers</span>
+<span class="sd">                               inside the EBay/PayPal data center)</span>
+<span class="sd">                               in seconds</span>
+
+<span class="sd">    process_group_file_path    pid file location (used for server    [appname].pid</span>
+<span class="sd">                               shutdown)</span>
+
+<span class="sd">    bakdoor_port               the port for the TCP REPL server      port + 2 in dev, None in live</span>
+<span class="sd">                               (None means no REPL server)</span>
+
+<span class="sd">    port                       the port that infra.serve() will use  topo[appname][&quot;bind_port&quot;], or</span>
+<span class="sd">                                                                    8888 if in dev and no topo</span>
+<span class="sd">                                                                    entry found</span>
+
+<span class="sd">    accept_queue_maxlen        the depth of the user-space accept</span>
+<span class="sd">                               queue.  If the queue exceeds this</span>
+<span class="sd">                               length, connections will be closed.   128</span>
+<span class="sd">    ========================== ===================================== ==============================</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dev</span><span class="o">=</span><span class="bp">False</span><span class="p">,</span> <span class="n">stage_host</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="n">ml</span><span class="o">.</span><span class="n">ld</span><span class="p">(</span><span class="s">&quot;Initing Context {0}&quot;</span><span class="p">,</span>  <span class="nb">id</span><span class="p">(</span><span class="bp">self</span><span class="p">))</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="bp">None</span>
+
+        <span class="c">#UFORK STUFF</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_workers</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">cpu_count</span><span class="p">()</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">worker_memlimit</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">**</span> <span class="mi">30</span>
+        <span class="c"># used in python as num_children</span>
+        <span class="c"># read from opscfg as max_connections</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pid</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">process_group_file_path</span> <span class="o">=</span> <span class="s">&#39;&#39;</span>
+
+        <span class="c">#ASYNC RELATED STUFF</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">greenlet_ancestors</span> <span class="o">=</span> <span class="n">WeakKeyDictionary</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">exception_traces</span> <span class="o">=</span> <span class="n">WeakKeyDictionary</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">thread_locals</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">local</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cpu_thread_enabled</span> <span class="o">=</span> <span class="bp">True</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">cal</span> <span class="o">=</span> <span class="bp">None</span>  <span class="c"># TODO</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="n">log</span><span class="o">.</span><span class="n">LoggingContext</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">greenlet_trans_stack</span> <span class="o">=</span> <span class="n">WeakKeyDictionary</span><span class="p">()</span>
+
+        <span class="c"># recent stuff</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">recent</span> <span class="o">=</span> <span class="n">cache</span><span class="o">.</span><span class="n">DefaultLRU</span><span class="p">(</span><span class="mi">4096</span><span class="p">,</span> <span class="k">lambda</span><span class="p">:</span> <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="mi">1024</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">recent</span><span class="p">[</span><span class="s">&#39;network&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cache</span><span class="o">.</span><span class="n">DefaultLRU</span><span class="p">(</span><span class="mi">512</span><span class="p">,</span>
+                                                  <span class="k">lambda</span><span class="p">:</span> <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="mi">100</span><span class="p">))</span>
+
+        <span class="c">#PROTECTED RELATED STUFF</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">protected</span> <span class="o">=</span> <span class="bp">None</span>
+
+        <span class="kn">import</span> <span class="nn">connection_mgr</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">connection_mgr</span> <span class="o">=</span> <span class="n">connection_mgr</span><span class="o">.</span><span class="n">ConnectionManager</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">user</span> <span class="o">=</span> <span class="n">getpass</span><span class="o">.</span><span class="n">getuser</span><span class="p">()</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_dev</span> <span class="o">=</span> <span class="n">dev</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_debug_errors</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start_browser</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="c"># whether to start a browser pointed at meta on server startup</span>
+
+        <span class="c">#NETWORK RELATED STUFF</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_concurrent_clients</span> <span class="o">=</span> <span class="mi">1000</span>
+        <span class="k">if</span> <span class="n">dev</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">datacenter_connect_timeout</span> <span class="o">=</span> <span class="mf">1.0</span>  <span class="c"># for stages</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">datacenter_connect_timeout</span> <span class="o">=</span> <span class="mf">0.05</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">client_sockets</span> <span class="o">=</span> <span class="n">WeakKeyDictionary</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">server_group</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">port</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">admin_port</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">backdoor_port</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ip</span> <span class="o">=</span> <span class="s">&quot;127.0.0.1&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">hostname</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">gethostname</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fqdn</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">getfqdn</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name_cache</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ip</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">gethostbyname</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">hostname</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">socket</span><span class="o">.</span><span class="n">error</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">ip</span> <span class="o">=</span> <span class="n">get_ip_from_hosts</span><span class="p">()</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">hostname</span><span class="p">,</span> <span class="n">port</span> <span class="ow">in</span> <span class="p">[(</span><span class="s">&quot;github.paypal.com&quot;</span><span class="p">,</span> <span class="mi">80</span><span class="p">)]:</span>
+                    <span class="k">try</span><span class="p">:</span>  <span class="c"># TODO: more hostname / ports to connect to</span>
+                        <span class="n">addr</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">gethostbyname</span><span class="p">(</span><span class="n">hostname</span><span class="p">),</span> <span class="n">port</span>
+                        <span class="n">conn</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">create_connection</span><span class="p">(</span><span class="n">addr</span><span class="p">)</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">ip</span> <span class="o">=</span> <span class="n">conn</span><span class="o">.</span><span class="n">getsockname</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+                        <span class="n">conn</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                        <span class="k">break</span>
+                    <span class="k">except</span> <span class="n">socket</span><span class="o">.</span><span class="n">error</span><span class="p">:</span>
+                        <span class="k">pass</span>
+
+        <span class="c">#TOPO RELATED STUFF</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">topos</span> <span class="o">=</span> <span class="bp">None</span>  <span class="c"># TODO</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">amqs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fpti_client</span> <span class="o">=</span> <span class="bp">None</span>  <span class="c"># set from contrib ?</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">ops_config</span> <span class="o">=</span> <span class="bp">None</span>  <span class="c"># TODO</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">opscfg_revmap</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">address_aliases</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">_serve_ufork</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_serve_daemon</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_wsgi_middleware</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="c"># whether or not dev mode servers should make client certs optional</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ssl_client_cert_optional_in_dev</span> <span class="o">=</span> <span class="bp">True</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">dev_service_repl_enabled</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dev_cal_print_logs</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dev_use_reloader</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="c"># whether a greenlet REPL should be started when a server is run in dev mode</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cryptoclient_ping_time_secs</span> <span class="o">=</span> <span class="mi">180</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sockpool_enabled</span> <span class="o">=</span> <span class="bp">True</span>
+
+        <span class="c"># print on bad log msgs or not</span>
+        <span class="c"># (If bad due to load, sholdn&#39;t print</span>
+        <span class="c"># if bad fmt string, should print</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log_failure_print</span> <span class="o">=</span> <span class="bp">True</span>  <span class="c"># set to false in post fork</span>
+
+        <span class="c">#MONITORING DATA</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stats</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="n">faststat</span><span class="o">.</span><span class="n">Stats</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">durations</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="n">faststat</span><span class="o">.</span><span class="n">Duration</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">intervals</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="n">faststat</span><span class="o">.</span><span class="n">Interval</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">markov_stats</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="n">faststat</span><span class="o">.</span><span class="n">Markov</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">volatile_stats</span> <span class="o">=</span> <span class="n">cache</span><span class="o">.</span><span class="n">DefaultLRU</span><span class="p">(</span><span class="mi">2048</span><span class="p">,</span> <span class="n">faststat</span><span class="o">.</span><span class="n">Stats</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sketches</span> <span class="o">=</span> <span class="n">defaultdict</span><span class="p">(</span><span class="n">StreamSketch</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">profiler</span> <span class="o">=</span> <span class="bp">None</span>  <span class="c"># sampling profiler</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">stopping</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sys_stats_greenlet</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">monitor_interval</span> <span class="o">=</span> <span class="mf">0.1</span>  <span class="c"># ~10x per second</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_greenlet_trace</span><span class="p">(</span><span class="bp">True</span><span class="p">)</span>  <span class="c"># histogram of CPU runs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">set_monitoring_greenlet</span><span class="p">(</span><span class="bp">True</span><span class="p">)</span>  <span class="c"># monitor queue depths</span>
+
+        <span class="c"># CLIENT BEHAVIORS</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mayfly_client_retries</span> <span class="o">=</span> <span class="mi">3</span>
+
+        <span class="c"># Are we up yet as a server?</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">running</span> <span class="o">=</span> <span class="bp">False</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">accept_queue_maxlen</span> <span class="o">=</span> <span class="mi">128</span>
+
+<div class="viewcode-block" id="Context.disable_recent_cache"><a class="viewcode-back" href="../../context.html#support.context.Context.disable_recent_cache">[docs]</a>    <span class="k">def</span> <span class="nf">disable_recent_cache</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Disable caching of recent outgoing network requests.</span>
+<span class="sd">        This will help to keep memory footprint small in applications where</span>
+<span class="sd">        that is important.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">recent</span> <span class="o">=</span> <span class="n">cache</span><span class="o">.</span><span class="n">DefaultEmptyCache</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">recent</span><span class="p">[</span><span class="s">&#39;network&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">cache</span><span class="o">.</span><span class="n">DefaultEmptyCache</span><span class="p">(</span><span class="k">lambda</span><span class="p">:</span> <span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+</div>
+<div class="viewcode-block" id="Context.set_stage_host"><a class="viewcode-back" href="../../context.html#support.context.Context.set_stage_host">[docs]</a>    <span class="k">def</span> <span class="nf">set_stage_host</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">stage_host</span><span class="p">,</span> <span class="n">stage_ip</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stage_host</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stage_ip</span> <span class="o">=</span> <span class="bp">None</span>  <span class="c"># net.find_host(stage_host)[0]  # TODO</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_update_addresses</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="Context.set_config"><a class="viewcode-back" href="../../context.html#support.context.Context.set_config">[docs]</a>    <span class="k">def</span> <span class="nf">set_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">config</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_update_addresses</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">appname</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">ops_config</span> <span class="o">=</span> <span class="bp">None</span>  <span class="c"># TODO</span>
+</div>
+    <span class="k">def</span> <span class="nf">_update_addresses</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="kn">import</span> <span class="nn">connection_mgr</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">topos</span><span class="p">:</span>
+            <span class="n">addresses</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">topos</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">appname</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">addresses</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">address_groups</span> <span class="o">=</span> <span class="n">connection_mgr</span><span class="o">.</span><span class="n">AddressGroupMap</span><span class="p">(</span>
+            <span class="p">[(</span><span class="n">name</span><span class="p">,</span> <span class="n">connection_mgr</span><span class="o">.</span><span class="n">AddressGroup</span><span class="p">((((</span><span class="mi">1</span><span class="p">,</span> <span class="n">address</span><span class="p">),),)))</span>
+             <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">address</span> <span class="ow">in</span> <span class="n">addresses</span><span class="o">.</span><span class="n">items</span><span class="p">()])</span>
+
+    <span class="c"># empirically tested to take ~ 2 microseconds;</span>
+    <span class="c"># keep an eye to make sure this can&#39;t blow up</span>
+<div class="viewcode-block" id="Context.store_network_data"><a class="viewcode-back" href="../../context.html#support.context.Context.store_network_data">[docs]</a>    <span class="k">def</span> <span class="nf">store_network_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">fd</span><span class="p">,</span> <span class="n">direction</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="n">q</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">recent</span><span class="p">[</span><span class="s">&#39;network&#39;</span><span class="p">][</span><span class="n">name</span><span class="p">]</span>
+        <span class="n">q</span><span class="o">.</span><span class="n">appendleft</span><span class="p">((</span><span class="n">fd</span><span class="p">,</span> <span class="n">direction</span><span class="p">,</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">(),</span> <span class="n">summarize</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="mi">4096</span><span class="p">)))</span>
+        <span class="k">if</span> <span class="n">ll</span><span class="o">.</span><span class="n">get_log_level</span><span class="p">()</span> <span class="o">&gt;=</span> <span class="n">ll</span><span class="o">.</span><span class="n">LOG_LEVELS</span><span class="p">[</span><span class="s">&#39;DEBUG2&#39;</span><span class="p">]:</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="s">&#39;tobytes&#39;</span><span class="p">):</span>
+                <span class="n">data</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">tobytes</span><span class="p">()</span>
+            <span class="n">ml</span><span class="o">.</span><span class="n">ld2</span><span class="p">(</span><span class="s">&quot;Network/SSL: Endpoint: {0}/FD {1}: {2}DATA: {{{3}}}&quot;</span><span class="p">,</span>
+                   <span class="n">name</span><span class="p">,</span> <span class="n">fd</span><span class="p">,</span> <span class="n">direction</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
+</div>
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">dev</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_dev</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">port</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_port</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_port</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">topos</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">topos</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">appname</span><span class="p">):</span>
+            <span class="n">app</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">topos</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">appname</span><span class="p">)</span>
+            <span class="k">if</span> <span class="s">&#39;bind_port&#39;</span> <span class="ow">in</span> <span class="n">app</span><span class="o">.</span><span class="n">addresses</span><span class="p">:</span>
+                <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">app</span><span class="p">[</span><span class="s">&#39;bind_port&#39;</span><span class="p">])</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dev</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">8888</span>
+        <span class="k">return</span> <span class="bp">None</span>
+
+    <span class="nd">@port.setter</span>
+    <span class="k">def</span> <span class="nf">port</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">val</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_port</span> <span class="o">=</span> <span class="n">val</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">debug_errors</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_debug_errors</span>
+
+    <span class="nd">@debug_errors.setter</span>
+    <span class="k">def</span> <span class="nf">debug_errors</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">val</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">val</span><span class="p">:</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">dev</span> <span class="ow">or</span> <span class="bp">self</span><span class="o">.</span><span class="n">serve_ufork</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;_debug_errors may only be True&quot;</span>
+                                 <span class="s">&quot;if dev is True and serve_ufork is False&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_debug_errors</span> <span class="o">=</span> <span class="n">val</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">appname</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">appname</span>
+        <span class="k">return</span> <span class="s">&quot;support&quot;</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">serve_ufork</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_serve_ufork</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">dev</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_serve_ufork</span>
+
+    <span class="nd">@serve_ufork.setter</span>
+    <span class="k">def</span> <span class="nf">serve_ufork</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">val</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">val</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">debug_errors</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_serve_ufork</span> <span class="o">=</span> <span class="n">val</span>
+
+    <span class="nd">@serve_ufork.deleter</span>
+    <span class="k">def</span> <span class="nf">serve_ufork</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_serve_ufork</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">sampling</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">profiler</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span>
+
+<div class="viewcode-block" id="Context.set_sampling"><a class="viewcode-back" href="../../context.html#support.context.Context.set_sampling">[docs]</a>    <span class="k">def</span> <span class="nf">set_sampling</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">val</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">val</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="bp">True</span><span class="p">,</span> <span class="bp">False</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;sampling may only be set to True or False&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">val</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">profiler</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">profiler</span> <span class="o">=</span> <span class="n">sampro</span><span class="o">.</span><span class="n">Sampler</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">profiler</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">val</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">profiler</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">profiler</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">profiler</span> <span class="o">=</span> <span class="bp">None</span>
+</div>
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">monitoring_greenlet</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">sys_stats_greenlet</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span>
+
+<div class="viewcode-block" id="Context.set_monitoring_greenlet"><a class="viewcode-back" href="../../context.html#support.context.Context.set_monitoring_greenlet">[docs]</a>    <span class="k">def</span> <span class="nf">set_monitoring_greenlet</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">val</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">val</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="bp">True</span><span class="p">,</span> <span class="bp">False</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;sampling may only be set to True or False&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">val</span> <span class="ow">and</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">sys_stats_greenlet</span><span class="p">:</span>
+            <span class="c"># do as I say, not as I do; using gevent.spawn instead of async.spawn</span>
+            <span class="c"># here to prevent circular import</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sys_stats_greenlet</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">_sys_stats_monitor</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">val</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">sys_stats_greenlet</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sys_stats_greenlet</span><span class="o">.</span><span class="n">kill</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sys_stats_greenlet</span> <span class="o">=</span> <span class="bp">None</span>
+</div>
+<div class="viewcode-block" id="Context.stop"><a class="viewcode-back" href="../../context.html#support.context.Context.stop">[docs]</a>    <span class="k">def</span> <span class="nf">stop</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Stop any concurrently running tasks (threads or greenlets)</span>
+<span class="sd">        associated with this Context object.</span>
+
+<span class="sd">        (e.g. sampling profiler thread, system monitor greenlet)</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stopping</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tracing</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">profiler</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">profiler</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">server_group</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">server_group</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+</div>
+    <span class="nd">@property</span>
+    <span class="k">def</span> <span class="nf">greenlet_settrace</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="s">&#39;check if any greenlet trace function is registered&#39;</span>
+        <span class="k">return</span> <span class="nb">bool</span><span class="p">(</span><span class="n">greenlet</span><span class="o">.</span><span class="n">gettrace</span><span class="p">())</span>
+
+<div class="viewcode-block" id="Context.set_greenlet_trace"><a class="viewcode-back" href="../../context.html#support.context.Context.set_greenlet_trace">[docs]</a>    <span class="k">def</span> <span class="nf">set_greenlet_trace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">value</span><span class="p">):</span>
+        <span class="s">&#39;turn on tracking of greenlet switches&#39;</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">not</span> <span class="ow">in</span> <span class="p">(</span><span class="bp">True</span><span class="p">,</span> <span class="bp">False</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&quot;value must be True or False&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s">&quot;tracing&quot;</span><span class="p">,</span> <span class="bp">False</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">tracing</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">thread_spin_monitor</span> <span class="o">=</span> <span class="n">_ThreadSpinMonitor</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">value</span> <span class="ow">is</span> <span class="bp">False</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">tracing</span> <span class="o">=</span> <span class="bp">False</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">thread_spin_monitor</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">greenlet</span><span class="o">.</span><span class="n">settrace</span><span class="p">(</span><span class="bp">None</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+                <span class="k">pass</span>  <span class="c"># not the end of the world</span>
+</div>
+<div class="viewcode-block" id="Context.get_connection"><a class="viewcode-back" href="../../context.html#support.context.Context.get_connection">[docs]</a>    <span class="k">def</span> <span class="nf">get_connection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">connection_mgr</span><span class="o">.</span><span class="n">get_connection</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">__del__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stopping</span> <span class="o">=</span> <span class="bp">True</span>
+
+</div>
+<span class="k">class</span> <span class="nc">_ThreadSpinMonitor</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="c"># just a little thingie to prevent multiple instances leaking threads;</span>
+    <span class="c"># note this is inherently a global class since it uses greenlet.settrace()</span>
+    <span class="n">MAIN_INSTANCE</span> <span class="o">=</span> <span class="bp">None</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ctx</span><span class="p">):</span>
+        <span class="n">_ThreadSpinMonitor</span><span class="o">.</span><span class="n">MAIN_INSTANCE</span> <span class="o">=</span> <span class="bp">self</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">main_thread_id</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">current_thread</span><span class="p">()</span><span class="o">.</span><span class="n">ident</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cur_pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_spin</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span> <span class="o">=</span> <span class="n">ctx</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">spin_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">last_cal_log</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c"># limit how often CAL logs</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stopping</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="n">greenlet</span><span class="o">.</span><span class="n">settrace</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_greenlet_spin_trace</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_start_thread</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_start_thread</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">long_spin_thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span>
+            <span class="n">target</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_thread_spin_monitor</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">long_spin_thread</span><span class="o">.</span><span class="n">daemon</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">long_spin_thread</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">_greenlet_spin_trace</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">why</span><span class="p">,</span> <span class="n">gs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">spin_count</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="o">.</span><span class="n">running</span> <span class="ow">and</span> <span class="n">why</span><span class="p">:</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">cur_pid</span> <span class="o">!=</span> <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">():</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_start_thread</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">cur_pid</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">()</span>
+            <span class="n">lt</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_spin</span>
+            <span class="n">ct</span> <span class="o">=</span> <span class="n">faststat</span><span class="o">.</span><span class="n">nanotime</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">last_spin</span> <span class="o">=</span> <span class="n">ct</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">lt</span><span class="p">:</span>
+                <span class="k">return</span>
+            <span class="n">the_time</span> <span class="o">=</span> <span class="p">(</span><span class="n">ct</span> <span class="o">-</span> <span class="n">lt</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1e6</span>
+            <span class="k">if</span> <span class="n">gs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">is</span> <span class="n">gevent</span><span class="o">.</span><span class="n">hub</span><span class="o">.</span><span class="n">get_hub</span><span class="p">():</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="s">&#39;greenlet_idle(ms)&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">the_time</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="s">&#39;greenlet_switch(ms)&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">the_time</span><span class="p">)</span>
+            <span class="n">ml</span><span class="o">.</span><span class="n">ld4</span><span class="p">(</span><span class="s">&quot;{1} {0}&quot;</span><span class="p">,</span> <span class="n">why</span><span class="p">,</span> <span class="n">the_time</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_thread_spin_monitor</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">while</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="n">time</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="o">.</span><span class="n">tracing</span> <span class="ow">or</span> <span class="bp">self</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">MAIN_INSTANCE</span><span class="p">:</span>
+                <span class="k">return</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_spin</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">ct</span> <span class="o">=</span> <span class="n">faststat</span><span class="o">.</span><span class="n">nanotime</span><span class="p">()</span>
+            <span class="n">dur</span> <span class="o">=</span> <span class="n">ct</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_spin</span>
+            <span class="c"># if time is greater than 150 ms</span>
+            <span class="k">if</span> <span class="n">dur</span> <span class="o">&gt;</span> <span class="mf">150e6</span> <span class="ow">and</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">last_cal_log</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">tid</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">main_thread_id</span>
+                <span class="n">frame</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">_current_frames</span><span class="p">()[</span><span class="n">tid</span><span class="p">]</span>
+                <span class="c"># specifically dont log pdb</span>
+                <span class="k">if</span> <span class="n">frame</span><span class="o">.</span><span class="n">f_code</span> <span class="ow">is</span> <span class="ow">not</span> <span class="n">cmd</span><span class="o">.</span><span class="n">Cmd</span><span class="o">.</span><span class="n">cmdloop</span><span class="o">.</span><span class="n">im_func</span><span class="o">.</span><span class="n">func_code</span><span class="p">:</span>
+                    <span class="n">stack</span> <span class="o">=</span> <span class="n">_format_stack</span><span class="p">(</span><span class="n">frame</span><span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s">&#39;LONG_SPIN&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">failure</span><span class="p">(</span><span class="n">time</span><span class="o">=</span><span class="n">dur</span><span class="o">/</span><span class="mf">1e6</span><span class="p">,</span>
+                                                           <span class="n">slow_green</span><span class="o">=</span><span class="n">stack</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">last_cal_log</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+
+
+<span class="c"># work around traceback.format_stack() linecache KeyError</span>
+<span class="k">def</span> <span class="nf">_format_stack</span><span class="p">(</span><span class="n">frame</span><span class="p">,</span> <span class="n">maxlen</span><span class="o">=</span><span class="mi">1024</span> <span class="o">*</span> <span class="mi">3</span><span class="p">):</span>
+    <span class="n">frames</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">while</span> <span class="n">frame</span><span class="p">:</span>
+        <span class="n">frames</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">frame</span><span class="p">)</span>
+        <span class="n">frame</span> <span class="o">=</span> <span class="n">frame</span><span class="o">.</span><span class="n">f_back</span>
+    <span class="n">frames</span><span class="o">.</span><span class="n">reverse</span><span class="p">()</span>
+    <span class="n">stack</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">frame</span> <span class="ow">in</span> <span class="n">frames</span><span class="p">:</span>
+        <span class="n">filename</span> <span class="o">=</span> <span class="n">frame</span><span class="o">.</span><span class="n">f_code</span><span class="o">.</span><span class="n">co_filename</span>
+        <span class="n">lineno</span> <span class="o">=</span> <span class="n">frame</span><span class="o">.</span><span class="n">f_lineno</span>
+        <span class="n">name</span> <span class="o">=</span> <span class="n">frame</span><span class="o">.</span><span class="n">f_code</span><span class="o">.</span><span class="n">co_name</span>
+        <span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;  File &quot;{0}&quot;, line {1}, in {2}</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="n">filename</span><span class="p">,</span> <span class="n">lineno</span><span class="p">,</span> <span class="n">name</span><span class="p">))</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">linecache</span><span class="o">.</span><span class="n">checkcache</span><span class="p">(</span><span class="n">filename</span><span class="p">)</span>
+            <span class="n">line</span> <span class="o">=</span> <span class="n">linecache</span><span class="o">.</span><span class="n">getline</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">lineno</span><span class="p">,</span> <span class="n">frame</span><span class="o">.</span><span class="n">f_globals</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">KeyError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">stack</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="s">&#39;    {0}</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">()))</span>
+    <span class="n">trace</span> <span class="o">=</span> <span class="s">&#39;&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">stack</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">trace</span> <span class="o">&lt;</span> <span class="n">maxlen</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">trace</span>
+    <span class="n">short</span> <span class="o">=</span> <span class="s">&quot;({0} truncated bytes)&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">trace</span><span class="p">)</span> <span class="o">-</span> <span class="n">maxlen</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">short</span> <span class="o">+</span> <span class="n">trace</span><span class="p">[:</span><span class="n">maxlen</span><span class="p">]</span>
+
+
+<div class="viewcode-block" id="StreamSketch"><a class="viewcode-back" href="../../context.html#support.context.StreamSketch">[docs]</a><span class="k">class</span> <span class="nc">StreamSketch</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Tracking useful attributes of a data stream.</span>
+<span class="sd">    (e.g. cardinality, total count)</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">hll</span> <span class="o">=</span> <span class="n">hyperloglog</span><span class="o">.</span><span class="n">hll</span><span class="o">.</span><span class="n">HyperLogLog</span><span class="p">(</span><span class="mf">0.05</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lossy_counting</span> <span class="o">=</span> <span class="n">StreamSketch</span><span class="o">.</span><span class="n">LossyCounting</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="mi">0</span>
+
+<div class="viewcode-block" id="StreamSketch.add"><a class="viewcode-back" href="../../context.html#support.context.StreamSketch.add">[docs]</a>    <span class="k">def</span> <span class="nf">add</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">hll</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lossy_counting</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="StreamSketch.card"><a class="viewcode-back" href="../../context.html#support.context.StreamSketch.card">[docs]</a>    <span class="k">def</span> <span class="nf">card</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">hll</span><span class="o">.</span><span class="n">card</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="StreamSketch.heavy_hitters"><a class="viewcode-back" href="../../context.html#support.context.StreamSketch.heavy_hitters">[docs]</a>    <span class="k">def</span> <span class="nf">heavy_hitters</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">lossy_counting</span><span class="o">.</span><span class="n">d</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="StreamSketch.LossyCounting"><a class="viewcode-back" href="../../context.html#support.context.StreamSketch.LossyCounting">[docs]</a>    <span class="k">class</span> <span class="nc">LossyCounting</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Implements the &quot;lossy counting&quot; algorithm from</span>
+<span class="sd">        &quot;Approximate Frequency Counts over Data Streams&quot; by Manku &amp; Motwani</span>
+
+<span class="sd">        Experimentally run-time is between 1-3 microseconds on core i7</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mf">0.001</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">d</span> <span class="o">=</span> <span class="p">{}</span>  <span class="c"># {key : (count, error)}</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">b_current</span> <span class="o">=</span> <span class="mi">1</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">w</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="n">epsilon</span><span class="p">)</span>
+
+<div class="viewcode-block" id="StreamSketch.LossyCounting.add"><a class="viewcode-back" href="../../context.html#support.context.StreamSketch.LossyCounting.add">[docs]</a>        <span class="k">def</span> <span class="nf">add</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">if</span> <span class="n">data</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">d</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">d</span><span class="p">[</span><span class="n">data</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">d</span><span class="p">[</span><span class="n">data</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">b_current</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">w</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">d</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">([(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">d</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+                               <span class="k">if</span> <span class="nb">sum</span><span class="p">(</span><span class="n">v</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">b_current</span><span class="p">])</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">b_current</span> <span class="o">+=</span> <span class="mi">1</span>
+
+</div></div></div>
+<span class="k">def</span> <span class="nf">_sys_stats_monitor</span><span class="p">(</span><span class="n">context</span><span class="p">):</span>
+    <span class="kn">import</span> <span class="nn">gc</span>
+    <span class="kn">from</span> <span class="nn">gevent.hub</span> <span class="kn">import</span> <span class="n">_get_hub</span>
+    <span class="kn">from</span> <span class="nn">gevent</span> <span class="kn">import</span> <span class="n">sleep</span>
+
+    <span class="n">context</span> <span class="o">=</span> <span class="n">weakref</span><span class="o">.</span><span class="n">ref</span><span class="p">(</span><span class="n">context</span><span class="p">)</span>  <span class="c"># give gc a hand</span>
+    <span class="n">end</span> <span class="o">=</span> <span class="n">faststat</span><span class="o">.</span><span class="n">nanotime</span><span class="p">()</span>  <span class="c"># current time throws off duration stats less than 0</span>
+    <span class="k">while</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">start</span> <span class="o">=</span> <span class="n">faststat</span><span class="o">.</span><span class="n">nanotime</span><span class="p">()</span>
+        <span class="n">tmp</span> <span class="o">=</span> <span class="n">context</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">tmp</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">or</span> <span class="n">tmp</span><span class="o">.</span><span class="n">stopping</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="c"># tmp.stats[&#39;gc.garbage&#39;].add(len(gc.garbage))</span>
+        <span class="c"># NOTE: gc.garbage() only does something if gc module has debug flag set</span>
+        <span class="n">counts</span> <span class="o">=</span> <span class="n">gc</span><span class="o">.</span><span class="n">get_count</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">counts</span><span class="p">)):</span>
+            <span class="n">tmp</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="s">&#39;gc.count&#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">i</span><span class="p">)]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">counts</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+        <span class="n">tmp</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="s">&#39;greenlets.active&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">_get_hub</span><span class="p">()</span><span class="o">.</span><span class="n">loop</span><span class="o">.</span><span class="n">activecnt</span><span class="p">)</span>
+        <span class="n">tmp</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="s">&#39;greenlets.pending&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">_get_hub</span><span class="p">()</span><span class="o">.</span><span class="n">loop</span><span class="o">.</span><span class="n">pendingcnt</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">tmp</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="s">&#39;queues.cpu_bound.depth&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span>
+                <span class="nb">len</span><span class="p">(</span><span class="n">tmp</span><span class="o">.</span><span class="n">thread_locals</span><span class="o">.</span><span class="n">cpu_bound_thread</span><span class="o">.</span><span class="n">in_q</span><span class="p">))</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">tmp</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="s">&#39;queues.io_bound.depth&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span>
+                <span class="n">tmp</span><span class="o">.</span><span class="n">thread_locals</span><span class="o">.</span><span class="n">io_bound_thread</span><span class="o">.</span><span class="n">task_queue</span><span class="o">.</span><span class="n">_qsize</span><span class="p">())</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="n">interval</span> <span class="o">=</span> <span class="n">tmp</span><span class="o">.</span><span class="n">monitor_interval</span>
+        <span class="n">end</span><span class="p">,</span> <span class="n">prev</span> <span class="o">=</span> <span class="n">faststat</span><span class="o">.</span><span class="n">nanotime</span><span class="p">(),</span> <span class="n">end</span>
+        <span class="c"># keep a rough measure of the fraction of time spent on monitoring</span>
+        <span class="k">if</span> <span class="n">prev</span> <span class="o">==</span> <span class="n">end</span><span class="p">:</span>
+            <span class="n">tmp</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="s">&#39;monitoring.overhead&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">tmp</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="s">&#39;monitoring.overhead&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">((</span><span class="n">end</span> <span class="o">-</span> <span class="n">start</span><span class="p">)</span><span class="o">/</span><span class="p">(</span><span class="n">end</span> <span class="o">-</span> <span class="n">prev</span><span class="p">))</span>
+        <span class="n">tmp</span><span class="o">.</span><span class="n">durations</span><span class="p">[</span><span class="s">&#39;monitoring.duration&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">end</span><span class="p">(</span><span class="n">start</span><span class="p">)</span>
+        <span class="n">tmp</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">sleep</span><span class="p">(</span><span class="n">interval</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="get_ip_from_hosts"><a class="viewcode-back" href="../../context.html#support.context.get_ip_from_hosts">[docs]</a><span class="k">def</span> <span class="nf">get_ip_from_hosts</span><span class="p">():</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    get the current ip from the hosts file, without doing any DNS;</span>
+<span class="sd">    available as a fallback</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="kn">import</span> <span class="nn">platform</span>
+    <span class="n">hostname</span> <span class="o">=</span> <span class="n">platform</span><span class="o">.</span><span class="n">node</span><span class="p">()</span>
+    <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="s">&#39;/etc/hosts&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">hosts</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">hosts</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">hostname</span> <span class="ow">in</span> <span class="n">line</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">line</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+
+</div>
+<div class="viewcode-block" id="counted"><a class="viewcode-back" href="../../context.html#support.context.counted">[docs]</a><span class="k">def</span> <span class="nf">counted</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
+    <span class="nd">@functools.wraps</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">g</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+        <span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">intervals</span><span class="p">[</span><span class="s">&#39;decorator.&#39;</span> <span class="o">+</span> <span class="n">f</span><span class="o">.</span><span class="n">__name__</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">g</span>
+
+</div>
+<div class="viewcode-block" id="summarize"><a class="viewcode-back" href="../../context.html#support.context.summarize">[docs]</a><span class="k">def</span> <span class="nf">summarize</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">64</span><span class="p">):</span>
+    <span class="n">data</span> <span class="o">=</span> <span class="nb">repr</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">size</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">data</span>
+    <span class="k">return</span> <span class="n">data</span><span class="p">[:</span><span class="n">size</span> <span class="o">/</span> <span class="mi">2</span><span class="p">]</span> <span class="o">+</span> <span class="s">&#39;&quot;...({0} more bytes)...&quot;&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">-</span> <span class="n">size</span><span class="p">)</span> <span class="o">+</span> <span class="n">data</span><span class="p">[</span><span class="o">-</span><span class="n">size</span> <span class="o">/</span> <span class="mi">2</span><span class="p">:]</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="../../index.html">
+    <img class="logo" src="../../_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../async.html">Asynchronous Helpers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../buffered_socket.html">Buffered Socket</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../connection_mgr.html">Managed Connections</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../context.html">Context Management</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../crypto.html">Cryptography and Security</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../exceptions.html">Exceptions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../group.html">Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../http_client.html">HTTP Client</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../meta_service.html">MetaService</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>

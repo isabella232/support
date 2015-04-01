@@ -1,0 +1,421 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>HTTP Client &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="index.html" />
+    <link rel="next" title="MetaService" href="meta_service.html" />
+    <link rel="prev" title="Groups" href="group.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="meta_service.html" title="MetaService"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="group.html" title="Groups"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">SuPPort 0.0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="http-client">
+<h1>HTTP Client<a class="headerlink" href="#http-client" title="Permalink to this headline">¶</a></h1>
+<p>There are two levels of HTTP client in SuPPort: One which roughly maps
+to Python&#8217;s builtin <a class="reference external" href="https://docs.python.org/2.7/library/httplib.html#module-httplib" title="(in Python v2.7)"><code class="xref py py-mod docutils literal"><span class="pre">httplib</span></code></a> module, and another that maps to
+<a class="reference external" href="https://docs.python.org/2.7/library/urllib2.html#module-urllib2" title="(in Python v2.7)"><code class="xref py py-mod docutils literal"><span class="pre">urllib2</span></code></a>.</p>
+<div class="section" id="drop-in-http-client-gurllib2">
+<h2>Drop-in HTTP client: <code class="docutils literal"><span class="pre">gurllib2</span></code><a class="headerlink" href="#drop-in-http-client-gurllib2" title="Permalink to this headline">¶</a></h2>
+<p>This module has all the same members as the standard <a class="reference external" href="https://docs.python.org/2.7/library/urllib2.html#module-urllib2" title="(in Python v2.7)"><code class="xref py py-mod docutils literal"><span class="pre">urllib2</span></code></a>
+library, except that a few have been overridden with alternatives that
+use SuPPort for logging and connection management. It can be used as a
+drop-in replacement in most applications that use urllib2. It is built
+on <code class="xref py py-mod docutils literal"><span class="pre">http_client</span></code>, detailed further down.</p>
+<span class="target" id="module-support.gurllib2"></span><dl class="class">
+<dt id="support.gurllib2.GHTTPHandler">
+<em class="property">class </em><code class="descclassname">support.gurllib2.</code><code class="descname">GHTTPHandler</code><span class="sig-paren">(</span><em>debuglevel=0</em><span class="sig-paren">)</span><a class="headerlink" href="#support.gurllib2.GHTTPHandler" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="method">
+<dt id="support.gurllib2.GHTTPHandler.http_open">
+<code class="descname">http_open</code><span class="sig-paren">(</span><em>req</em><span class="sig-paren">)</span><a class="headerlink" href="#support.gurllib2.GHTTPHandler.http_open" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.gurllib2.GHTTPHandler.http_request">
+<code class="descname">http_request</code><span class="sig-paren">(</span><em>request</em><span class="sig-paren">)</span><a class="headerlink" href="#support.gurllib2.GHTTPHandler.http_request" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.gurllib2.GHTTPSHandler">
+<em class="property">class </em><code class="descclassname">support.gurllib2.</code><code class="descname">GHTTPSHandler</code><span class="sig-paren">(</span><em>debuglevel=0</em><span class="sig-paren">)</span><a class="headerlink" href="#support.gurllib2.GHTTPSHandler" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="method">
+<dt id="support.gurllib2.GHTTPSHandler.https_open">
+<code class="descname">https_open</code><span class="sig-paren">(</span><em>req</em><span class="sig-paren">)</span><a class="headerlink" href="#support.gurllib2.GHTTPSHandler.https_open" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.gurllib2.GHTTPSHandler.https_request">
+<code class="descname">https_request</code><span class="sig-paren">(</span><em>request</em><span class="sig-paren">)</span><a class="headerlink" href="#support.gurllib2.GHTTPSHandler.https_request" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.gurllib2.LogAwareHandler">
+<em class="property">class </em><code class="descclassname">support.gurllib2.</code><code class="descname">LogAwareHandler</code><span class="sig-paren">(</span><em>debuglevel=0</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/gurllib2.html#LogAwareHandler"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.gurllib2.LogAwareHandler" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="attribute">
+<dt id="support.gurllib2.LogAwareHandler.LOG_LEVEL">
+<code class="descname">LOG_LEVEL</code><em class="property"> = 'info'</em><a class="headerlink" href="#support.gurllib2.LogAwareHandler.LOG_LEVEL" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="support.gurllib2.LogAwareHandler.TRANSACTION_TYPE">
+<code class="descname">TRANSACTION_TYPE</code><em class="property"> = 'API'</em><a class="headerlink" href="#support.gurllib2.LogAwareHandler.TRANSACTION_TYPE" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.gurllib2.LogAwareHandler.do_open">
+<code class="descname">do_open</code><span class="sig-paren">(</span><em>conn_type</em>, <em>req</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/gurllib2.html#LogAwareHandler.do_open"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.gurllib2.LogAwareHandler.do_open" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.gurllib2.LogAwareHandler.get_log_kwargs">
+<code class="descname">get_log_kwargs</code><span class="sig-paren">(</span><em>request</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/gurllib2.html#LogAwareHandler.get_log_kwargs"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.gurllib2.LogAwareHandler.get_log_kwargs" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.gurllib2.LogAwareHandler.post_request">
+<code class="descname">post_request</code><span class="sig-paren">(</span><em>log_record</em>, <em>request</em>, <em>response</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/gurllib2.html#LogAwareHandler.post_request"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.gurllib2.LogAwareHandler.post_request" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.gurllib2.LogAwareHandler.pre_request">
+<code class="descname">pre_request</code><span class="sig-paren">(</span><em>log_record</em>, <em>request</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/gurllib2.html#LogAwareHandler.pre_request"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.gurllib2.LogAwareHandler.pre_request" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="support.gurllib2.build_opener">
+<code class="descclassname">support.gurllib2.</code><code class="descname">build_opener</code><span class="sig-paren">(</span><em>*args</em>, <em>**kwargs</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/gurllib2.html#build_opener"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.gurllib2.build_opener" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="support.gurllib2.install_opener">
+<code class="descclassname">support.gurllib2.</code><code class="descname">install_opener</code><span class="sig-paren">(</span><em>opener</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/gurllib2.html#install_opener"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.gurllib2.install_opener" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="support.gurllib2.urlopen">
+<code class="descclassname">support.gurllib2.</code><code class="descname">urlopen</code><span class="sig-paren">(</span><em>url</em>, <em>data=None</em>, <em>timeout=&lt;object object&gt;</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/gurllib2.html#urlopen"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.gurllib2.urlopen" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</div>
+<div class="section" id="low-level-http-client-http-client">
+<h2>Low-level HTTP client: <code class="docutils literal"><span class="pre">http_client</span></code><a class="headerlink" href="#low-level-http-client-http-client" title="Permalink to this headline">¶</a></h2>
+<p><code class="docutils literal"><span class="pre">http_client</span></code> is a simple HTTP client that builds on <a class="reference external" href="https://docs.python.org/2.7/library/httplib.html#module-httplib" title="(in Python v2.7)"><code class="xref py py-mod docutils literal"><span class="pre">httplib</span></code></a>
+and gevent, using SuPPort for connection management and logging.</p>
+<span class="target" id="module-support.http_client"></span><p>A simple HTTP client which mixes httplib with gevent and PayPal protecteds.</p>
+<p>It provides convenience functions for the standard set of <a class="reference external" href="http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods">HTTP methods</a>:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">http_client</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;http://example.com/foo&#39;</span><span class="p">)</span> 
+</pre></div>
+</div>
+<p>which are just shortcuts for the corresponding <a class="reference internal" href="#support.http_client.request" title="support.http_client.request"><code class="xref py py-func docutils literal"><span class="pre">request()</span></code></a> call:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">http_client</span><span class="o">.</span><span class="n">request</span><span class="p">(</span><span class="s">&quot;get&quot;</span><span class="p">,</span> <span class="s">&quot;http://example.com/foo&quot;</span><span class="p">)</span> 
+</pre></div>
+</div>
+<p>If you don&#8217;t intend to read the response&#8217;s body, you should use a
+context manager:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="k">with</span> <span class="n">http_client</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;http://www.example.com&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">response</span><span class="p">:</span> 
+<span class="gp">... </span>   <span class="k">assert</span> <span class="n">response</span><span class="o">.</span><span class="n">status</span> <span class="o">==</span> <span class="mi">200</span>
+</pre></div>
+</div>
+<p>This will release the underlying socket back to the socket pool.</p>
+<dl class="class">
+<dt id="support.http_client.Request">
+<em class="property">class </em><code class="descclassname">support.http_client.</code><code class="descname">Request</code><span class="sig-paren">(</span><em>method</em>, <em>url</em>, <em>headers</em>, <em>body</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/http_client.html#Request"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.http_client.Request" title="Permalink to this definition">¶</a></dt>
+<dd><p>A simple wrapper for HTTP Requests</p>
+<dl class="attribute">
+<dt id="support.http_client.Request.method">
+<code class="descname">method</code><a class="headerlink" href="#support.http_client.Request.method" title="Permalink to this definition">¶</a></dt>
+<dd><p>The method used for this request (e.g., <cite>POST</cite>, <cite>GET</cite>).</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="support.http_client.Request.url">
+<code class="descname">url</code><a class="headerlink" href="#support.http_client.Request.url" title="Permalink to this definition">¶</a></dt>
+<dd><p>The requested URL.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="support.http_client.Request.headers">
+<code class="descname">headers</code><a class="headerlink" href="#support.http_client.Request.headers" title="Permalink to this definition">¶</a></dt>
+<dd><p>The request headers (a <a class="reference external" href="https://docs.python.org/2.7/library/functions.html#list" title="(in Python v2.7)"><code class="xref py py-class docutils literal"><span class="pre">list</span></code></a> of two-item <code class="xref py py-class docutils literal"><span class="pre">tuples</span></code>)</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="support.http_client.Request.body">
+<code class="descname">body</code><a class="headerlink" href="#support.http_client.Request.body" title="Permalink to this definition">¶</a></dt>
+<dd><p>The body if present, otherwise <cite>None</cite>.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.http_client.Response">
+<em class="property">class </em><code class="descclassname">support.http_client.</code><code class="descname">Response</code><span class="sig-paren">(</span><em>request</em>, <em>status</em>, <em>headers</em>, <em>http_response</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/http_client.html#Response"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.http_client.Response" title="Permalink to this definition">¶</a></dt>
+<dd><p>A simple wrapper for HTTP responses.</p>
+<dl class="attribute">
+<dt id="support.http_client.Response.request">
+<code class="descname">request</code><a class="headerlink" href="#support.http_client.Response.request" title="Permalink to this definition">¶</a></dt>
+<dd><p>the <a class="reference internal" href="#support.http_client.Request" title="support.http_client.Request"><code class="xref py py-class docutils literal"><span class="pre">Request</span></code></a> object that lead to this response</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="support.http_client.Response.status">
+<code class="descname">status</code><a class="headerlink" href="#support.http_client.Response.status" title="Permalink to this definition">¶</a></dt>
+<dd><p>the numeric status code for this Response</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="support.http_client.Response.headers">
+<code class="descname">headers</code><a class="headerlink" href="#support.http_client.Response.headers" title="Permalink to this definition">¶</a></dt>
+<dd><p>an <a class="reference external" href="https://docs.python.org/2.7/library/httplib.html#httplib.HTTPMessage" title="(in Python v2.7)"><code class="xref py py-class docutils literal"><span class="pre">HTTPMessage</span></code></a> object containing this
+response&#8217;s headers.  You can treat this as a dictionary: for
+example, you can get the value for the <code class="docutils literal"><span class="pre">Host</span></code> header with
+<code class="docutils literal"><span class="pre">msg['Host']</span></code>.  <strong>You should, however, be careful with
+duplicate headers.</strong></p>
+<p>Consider the following headers:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">headers</span> <span class="o">=</span> <span class="s">&#39;</span><span class="se">\r\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span><span class="s">&#39;X-First-Header: First, Value&#39;</span><span class="p">,</span>
+<span class="gp">... </span>                      <span class="s">&#39;X-First-Header: Second, Value&#39;</span><span class="p">,</span>
+<span class="gp">... </span>                      <span class="s">&#39;X-Second-Header: Final, Value&#39;</span><span class="p">,</span>
+<span class="gp">... </span>                      <span class="s">&#39;&#39;</span><span class="p">])</span>
+</pre></div>
+</div>
+<p>Note that the header <code class="docutils literal"><span class="pre">X-First-Header</span></code> appears twice.</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">StringIO</span> <span class="kn">import</span> <span class="n">StringIO</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span> <span class="nn">httplib</span> <span class="kn">import</span> <span class="n">HTTPMessage</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">msg</span> <span class="o">=</span> <span class="n">HTTPMessage</span><span class="p">(</span><span class="n">StringIO</span><span class="p">(</span><span class="n">headers</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">msg</span><span class="p">[</span><span class="s">&#39;X-First-Header&#39;</span><span class="p">]</span>
+<span class="go">&#39;First, Value, Second, Value&#39;</span>
+</pre></div>
+</div>
+<p><code class="xref py py-class docutils literal"><span class="pre">HTTPMessage</span></code> has <em>concatenated</em> the two values we
+provided for <cite>X-First-Header</cite> (<cite>First, Value</cite> and <cite>Second,
+Value</cite>) with a comma.  Unfortunately both of these values
+contain a comma.  That means a simple <a class="reference external" href="https://docs.python.org/2.7/library/stdtypes.html#str.split" title="(in Python v2.7)"><code class="xref py py-meth docutils literal"><span class="pre">str.split()</span></code></a> can&#8217;t
+Recover the original values:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">msg</span><span class="p">[</span><span class="s">&#39;X-First-Header&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s">&#39;, &#39;</span><span class="p">)</span>
+<span class="go">[&#39;First&#39;, &#39;Value&#39;, &#39;Second&#39;, &#39;Value&#39;]</span>
+</pre></div>
+</div>
+<p>The same behavior occurs with <code class="xref py py-meth docutils literal"><span class="pre">HTTPMessage.items()</span></code>:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">msg</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> 
+<span class="go">[(&#39;x-second-header&#39;, &#39;Final, Value&#39;),</span>
+<span class="go"> (&#39;x-first-header&#39;, &#39;First, Value, Second, Value&#39;)]</span>
+</pre></div>
+</div>
+<p>To correctly recover values from duplicated header fields, use
+<code class="xref py py-meth docutils literal"><span class="pre">HTTPMessage.getheaders()</span></code>:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">msg</span><span class="o">.</span><span class="n">getheaders</span><span class="p">(</span><span class="s">&#39;X-First-Header&#39;</span><span class="p">)</span>
+<span class="go">[&#39;First, Value&#39;, &#39;Second, Value&#39;]</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="support.http_client.Response.http_response">
+<code class="descname">http_response</code><a class="headerlink" href="#support.http_client.Response.http_response" title="Permalink to this definition">¶</a></dt>
+<dd><p>the underlying <a class="reference external" href="https://docs.python.org/2.7/library/httplib.html#httplib.HTTPResponse" title="(in Python v2.7)"><code class="xref py py-class docutils literal"><span class="pre">HTTPResponse</span></code></a> object for
+this response.</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="support.http_client.Response.body">
+<code class="descname">body</code><a class="headerlink" href="#support.http_client.Response.body" title="Permalink to this definition">¶</a></dt>
+<dd><p>the body of the request, if applicable.</p>
+<p>Since this value is lazily loaded, if you never access it the
+response&#8217;s body will never be downloaded.  Once loaded it&#8217;s
+stored locally, so repeated accesses won&#8217;t trigger repeated
+network calls.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="support.http_client.Response.close">
+<code class="descname">close</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/http_client.html#Response.close"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.http_client.Response.close" title="Permalink to this definition">¶</a></dt>
+<dd><p>Release the underlying socket back to the connection pool.  This
+will be automatically called by <a href="#id1"><span class="problematic" id="id2">:attribute:`~Response.body`</span></a>
+after the body has been read.  You should arrange to have this called (</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="support.http_client.request">
+<code class="descclassname">support.http_client.</code><code class="descname">request</code><span class="sig-paren">(</span><em>method</em>, <em>url</em>, <em>body=None</em>, <em>headers=None</em>, <em>literal=False</em>, <em>use_protected=False</em>, <em>timeout=&lt;object object&gt;</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/http_client.html#request"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.http_client.request" title="Permalink to this definition">¶</a></dt>
+<dd><p>A function to issue HTTP requests.</p>
+<table class="docutils field-list" frame="void" rules="none">
+<col class="field-name" />
+<col class="field-body" />
+<tbody valign="top">
+<tr class="field-odd field"><th class="field-name">Parameters:</th><td class="field-body"><ul class="first simple">
+<li><strong>method</strong> &#8211; the <a class="reference external" href="http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods">HTTP method</a> for this request. Case
+insensitive.</li>
+<li><strong>url</strong> &#8211; the URL to request. Must include a protocol
+(e.g. <cite>http</cite>, <cite>https</cite>).</li>
+<li><strong>body</strong> (a string or file-like object (i.e, an object that has
+a <code class="docutils literal"><span class="pre">read</span></code> method).  It could also be a dict, in which case
+it is stringified, and the header set to application/json) &#8211; the body of the request, if applicable</li>
+<li><strong>headers</strong> (<a class="reference external" href="https://docs.python.org/2.7/library/stdtypes.html#dict" title="(in Python v2.7)"><code class="xref py py-class docutils literal"><span class="pre">dict</span></code></a>) &#8211; A dictionary of request headers</li>
+<li><strong>literal</strong> &#8211; if true, instruct
+<a class="reference external" href="https://docs.python.org/2.7/library/httplib.html#httplib.HTTPConnection" title="(in Python v2.7)"><code class="xref py py-class docutils literal"><span class="pre">HTTPConnection</span></code></a> <strong>not</strong> to set the <code class="docutils literal"><span class="pre">Host</span></code> or
+<code class="docutils literal"><span class="pre">Accept-Encoding</span></code> headers automatically.  Useful for testing</li>
+<li><strong>use_protected</strong> &#8211; if true, use the appropriate protected for
+this call.</li>
+<li><strong>timeout</strong> &#8211; connection timeout for this request.</li>
+</ul>
+</td>
+</tr>
+<tr class="field-even field"><th class="field-name">Returns:</th><td class="field-body"><p class="first last">a <a class="reference internal" href="#support.http_client.Response" title="support.http_client.Response"><code class="xref py py-class docutils literal"><span class="pre">Response</span></code></a> object.</p>
+</td>
+</tr>
+</tbody>
+</table>
+<p>An example, calling up google with a custom host header:</p>
+<div class="highlight-python"><div class="highlight"><pre><span class="gp">&gt;&gt;&gt; </span><span class="n">request</span><span class="p">(</span><span class="s">&#39;get&#39;</span><span class="p">,</span>
+<span class="gp">... </span>        <span class="s">&#39;http://google.com&#39;</span><span class="p">,</span>
+<span class="gp">... </span>        <span class="n">headers</span><span class="o">=</span><span class="p">{</span><span class="s">&#39;Host&#39;</span><span class="p">:</span> <span class="s">&#39;www.google.com&#39;</span><span class="p">},</span>
+<span class="gp">... </span>        <span class="n">literal</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+<span class="go">&lt;http_client.Response (200) GET http://google.com&gt;</span>
+</pre></div>
+</div>
+</dd></dl>
+
+<dl class="function">
+<dt id="support.http_client.urllib2_request">
+<code class="descclassname">support.http_client.</code><code class="descname">urllib2_request</code><span class="sig-paren">(</span><em>u2req</em>, <em>timeout=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/http_client.html#urllib2_request"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.http_client.urllib2_request" title="Permalink to this definition">¶</a></dt>
+<dd><p>Translate a urllib2.Request to something we can pass to our
+request() function, and translate our Response to a
+urllib2.addinfourl object</p>
+</dd></dl>
+
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="index.html">
+    <img class="logo" src="_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="async.html">Asynchronous Helpers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="buffered_socket.html">Buffered Socket</a></li>
+<li class="toctree-l1"><a class="reference internal" href="connection_mgr.html">Managed Connections</a></li>
+<li class="toctree-l1"><a class="reference internal" href="context.html">Context Management</a></li>
+<li class="toctree-l1"><a class="reference internal" href="crypto.html">Cryptography and Security</a></li>
+<li class="toctree-l1"><a class="reference internal" href="exceptions.html">Exceptions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="group.html">Groups</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="">HTTP Client</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#drop-in-http-client-gurllib2">Drop-in HTTP client: <code class="docutils literal"><span class="pre">gurllib2</span></code></a></li>
+<li class="toctree-l2"><a class="reference internal" href="#low-level-http-client-http-client">Low-level HTTP client: <code class="docutils literal"><span class="pre">http_client</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="meta_service.html">MetaService</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+      |
+      <a href="_sources/http_client.txt"
+          rel="nofollow">Page source</a></li>
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>

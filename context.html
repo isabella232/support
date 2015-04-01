@@ -1,0 +1,314 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Context Management &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="index.html" />
+    <link rel="next" title="Cryptography and Security" href="crypto.html" />
+    <link rel="prev" title="Managed Connections" href="connection_mgr.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="crypto.html" title="Cryptography and Security"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="connection_mgr.html" title="Managed Connections"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">SuPPort 0.0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-support.context">
+<span id="context-management"></span><h1>Context Management<a class="headerlink" href="#module-support.context" title="Permalink to this headline">¶</a></h1>
+<p>This module defines a context object which holds on to all global state.</p>
+<dl class="class">
+<dt id="support.context.Context">
+<em class="property">class </em><code class="descclassname">support.context.</code><code class="descname">Context</code><span class="sig-paren">(</span><em>dev=False</em>, <em>stage_host=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#Context"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.Context" title="Permalink to this definition">¶</a></dt>
+<dd><p>Context object is meant to be the clearinghouse for global data in
+an application written using SuPPort.  There is only one active
+Context at a time.  Access the context with
+infra.context.get_context().</p>
+<p>Two categories of data in here:</p>
+<blockquote>
+<div><ol class="arabic simple">
+<li>Global data used internally by the infrastructure.</li>
+</ol>
+<p>2. Global data which would otherwise need to be kept track of by
+user code. (This stuff can be identified by the presence of
+getters)</p>
+</div></blockquote>
+<p>There are many configuration attributes. They ALL go to a sane
+default, it is not necessary to touch them but they are available
+for advanced users.</p>
+<dl class="attribute">
+<dt id="support.context.Context.appname">
+<code class="descname">appname</code><a class="headerlink" href="#support.context.Context.appname" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="support.context.Context.debug_errors">
+<code class="descname">debug_errors</code><a class="headerlink" href="#support.context.Context.debug_errors" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="support.context.Context.dev">
+<code class="descname">dev</code><a class="headerlink" href="#support.context.Context.dev" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.context.Context.disable_recent_cache">
+<code class="descname">disable_recent_cache</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#Context.disable_recent_cache"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.Context.disable_recent_cache" title="Permalink to this definition">¶</a></dt>
+<dd><p>Disable caching of recent outgoing network requests.
+This will help to keep memory footprint small in applications where
+that is important.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="support.context.Context.get_connection">
+<code class="descname">get_connection</code><span class="sig-paren">(</span><em>*a</em>, <em>**kw</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#Context.get_connection"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.Context.get_connection" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="support.context.Context.greenlet_settrace">
+<code class="descname">greenlet_settrace</code><a class="headerlink" href="#support.context.Context.greenlet_settrace" title="Permalink to this definition">¶</a></dt>
+<dd><p>check if any greenlet trace function is registered</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="support.context.Context.monitoring_greenlet">
+<code class="descname">monitoring_greenlet</code><a class="headerlink" href="#support.context.Context.monitoring_greenlet" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="support.context.Context.port">
+<code class="descname">port</code><a class="headerlink" href="#support.context.Context.port" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="support.context.Context.sampling">
+<code class="descname">sampling</code><a class="headerlink" href="#support.context.Context.sampling" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="attribute">
+<dt id="support.context.Context.serve_ufork">
+<code class="descname">serve_ufork</code><a class="headerlink" href="#support.context.Context.serve_ufork" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.context.Context.set_config">
+<code class="descname">set_config</code><span class="sig-paren">(</span><em>config</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#Context.set_config"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.Context.set_config" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.context.Context.set_greenlet_trace">
+<code class="descname">set_greenlet_trace</code><span class="sig-paren">(</span><em>value</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#Context.set_greenlet_trace"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.Context.set_greenlet_trace" title="Permalink to this definition">¶</a></dt>
+<dd><p>turn on tracking of greenlet switches</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="support.context.Context.set_monitoring_greenlet">
+<code class="descname">set_monitoring_greenlet</code><span class="sig-paren">(</span><em>val</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#Context.set_monitoring_greenlet"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.Context.set_monitoring_greenlet" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.context.Context.set_sampling">
+<code class="descname">set_sampling</code><span class="sig-paren">(</span><em>val</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#Context.set_sampling"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.Context.set_sampling" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.context.Context.set_stage_host">
+<code class="descname">set_stage_host</code><span class="sig-paren">(</span><em>stage_host</em>, <em>stage_ip=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#Context.set_stage_host"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.Context.set_stage_host" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.context.Context.stop">
+<code class="descname">stop</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#Context.stop"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.Context.stop" title="Permalink to this definition">¶</a></dt>
+<dd><p>Stop any concurrently running tasks (threads or greenlets)
+associated with this Context object.</p>
+<p>(e.g. sampling profiler thread, system monitor greenlet)</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="support.context.Context.store_network_data">
+<code class="descname">store_network_data</code><span class="sig-paren">(</span><em>name</em>, <em>fd</em>, <em>direction</em>, <em>data</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#Context.store_network_data"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.Context.store_network_data" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.context.StreamSketch">
+<em class="property">class </em><code class="descclassname">support.context.</code><code class="descname">StreamSketch</code><a class="reference internal" href="_modules/support/context.html#StreamSketch"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.StreamSketch" title="Permalink to this definition">¶</a></dt>
+<dd><p>Tracking useful attributes of a data stream.
+(e.g. cardinality, total count)</p>
+<dl class="class">
+<dt id="support.context.StreamSketch.LossyCounting">
+<em class="property">class </em><code class="descname">LossyCounting</code><span class="sig-paren">(</span><em>epsilon=0.001</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#StreamSketch.LossyCounting"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.StreamSketch.LossyCounting" title="Permalink to this definition">¶</a></dt>
+<dd><p>Implements the &#8220;lossy counting&#8221; algorithm from
+&#8220;Approximate Frequency Counts over Data Streams&#8221; by Manku &amp; Motwani</p>
+<p>Experimentally run-time is between 1-3 microseconds on core i7</p>
+<dl class="method">
+<dt id="support.context.StreamSketch.LossyCounting.add">
+<code class="descname">add</code><span class="sig-paren">(</span><em>data</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#StreamSketch.LossyCounting.add"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.StreamSketch.LossyCounting.add" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="method">
+<dt id="support.context.StreamSketch.add">
+<code class="descclassname">StreamSketch.</code><code class="descname">add</code><span class="sig-paren">(</span><em>data</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#StreamSketch.add"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.StreamSketch.add" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.context.StreamSketch.card">
+<code class="descclassname">StreamSketch.</code><code class="descname">card</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#StreamSketch.card"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.StreamSketch.card" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.context.StreamSketch.heavy_hitters">
+<code class="descclassname">StreamSketch.</code><code class="descname">heavy_hitters</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#StreamSketch.heavy_hitters"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.StreamSketch.heavy_hitters" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="support.context.counted">
+<code class="descclassname">support.context.</code><code class="descname">counted</code><span class="sig-paren">(</span><em>f</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#counted"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.counted" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="support.context.get_context">
+<code class="descclassname">support.context.</code><code class="descname">get_context</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#get_context"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.get_context" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="support.context.get_ip_from_hosts">
+<code class="descclassname">support.context.</code><code class="descname">get_ip_from_hosts</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#get_ip_from_hosts"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.get_ip_from_hosts" title="Permalink to this definition">¶</a></dt>
+<dd><p>get the current ip from the hosts file, without doing any DNS;
+available as a fallback</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="support.context.set_context">
+<code class="descclassname">support.context.</code><code class="descname">set_context</code><span class="sig-paren">(</span><em>context</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#set_context"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.set_context" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="support.context.summarize">
+<code class="descclassname">support.context.</code><code class="descname">summarize</code><span class="sig-paren">(</span><em>data</em>, <em>size=64</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/context.html#summarize"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.context.summarize" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="index.html">
+    <img class="logo" src="_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="async.html">Asynchronous Helpers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="buffered_socket.html">Buffered Socket</a></li>
+<li class="toctree-l1"><a class="reference internal" href="connection_mgr.html">Managed Connections</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="">Context Management</a></li>
+<li class="toctree-l1"><a class="reference internal" href="crypto.html">Cryptography and Security</a></li>
+<li class="toctree-l1"><a class="reference internal" href="exceptions.html">Exceptions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="group.html">Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="http_client.html">HTTP Client</a></li>
+<li class="toctree-l1"><a class="reference internal" href="meta_service.html">MetaService</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+      |
+      <a href="_sources/context.txt"
+          rel="nofollow">Page source</a></li>
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>

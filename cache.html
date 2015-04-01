@@ -1,0 +1,198 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Cache &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">SuPPort 0.0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-support.cache">
+<span id="cache"></span><h1>Cache<a class="headerlink" href="#module-support.cache" title="Permalink to this headline">¶</a></h1>
+<dl class="class">
+<dt id="support.cache.Cache">
+<em class="property">class </em><code class="descclassname">support.cache.</code><code class="descname">Cache</code><a class="reference internal" href="_modules/support/cache.html#Cache"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.Cache" title="Permalink to this definition">¶</a></dt>
+<dd><p>empty base class to enable isinstance(foo, cache.Cache)</p>
+</dd></dl>
+
+<dl class="class">
+<dt id="support.cache.DefaultEmptyCache">
+<em class="property">class </em><code class="descclassname">support.cache.</code><code class="descname">DefaultEmptyCache</code><span class="sig-paren">(</span><em>default</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#DefaultEmptyCache"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.DefaultEmptyCache" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="class">
+<dt id="support.cache.DefaultLRU">
+<em class="property">class </em><code class="descclassname">support.cache.</code><code class="descname">DefaultLRU</code><span class="sig-paren">(</span><em>size</em>, <em>default</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#DefaultLRU"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.DefaultLRU" title="Permalink to this definition">¶</a></dt>
+<dd><p>A Segmented LRU Cache which behaves like a collections.defaultdict on missing keys.</p>
+</dd></dl>
+
+<dl class="class">
+<dt id="support.cache.EmptyCache">
+<em class="property">class </em><code class="descclassname">support.cache.</code><code class="descname">EmptyCache</code><a class="reference internal" href="_modules/support/cache.html#EmptyCache"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.EmptyCache" title="Permalink to this definition">¶</a></dt>
+<dd><p>Provides the same API as a cache, but doesn&#8217;t actually store anything.
+Can be substituted for a real cache for applications where memory is critical.</p>
+<dl class="method">
+<dt id="support.cache.EmptyCache.items">
+<code class="descname">items</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#EmptyCache.items"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.EmptyCache.items" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.cache.EmptyCache.keys">
+<code class="descname">keys</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#EmptyCache.keys"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.EmptyCache.keys" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.cache.EmptyCache.values">
+<code class="descname">values</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#EmptyCache.values"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.EmptyCache.values" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.cache.LRUCache">
+<em class="property">class </em><code class="descclassname">support.cache.</code><code class="descname">LRUCache</code><span class="sig-paren">(</span><em>maxlen=10000</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#LRUCache"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.LRUCache" title="Permalink to this definition">¶</a></dt>
+<dd><p>Implements an LRU cache based on a linked list.
+Performance is about 1.1 microseconds per set/get on a core i7</p>
+<dl class="method">
+<dt id="support.cache.LRUCache.add">
+<code class="descname">add</code><span class="sig-paren">(</span><em>key</em>, <em>val</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#LRUCache.add"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.LRUCache.add" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.cache.LRUCache.items">
+<code class="descname">items</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#LRUCache.items"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.LRUCache.items" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.cache.LRUCache.keys">
+<code class="descname">keys</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#LRUCache.keys"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.LRUCache.keys" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.cache.LRUCache.pop">
+<code class="descname">pop</code><span class="sig-paren">(</span><em>key=&lt;object object&gt;</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#LRUCache.pop"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.LRUCache.pop" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.cache.LRUCache.values">
+<code class="descname">values</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#LRUCache.values"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.LRUCache.values" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.cache.SegmentedCache">
+<em class="property">class </em><code class="descclassname">support.cache.</code><code class="descname">SegmentedCache</code><span class="sig-paren">(</span><em>maxlen=10000</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#SegmentedCache"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.SegmentedCache" title="Permalink to this definition">¶</a></dt>
+<dd><p>Implements a Segmented LRU cache based on an LRU cache.</p>
+<dl class="method">
+<dt id="support.cache.SegmentedCache.add">
+<code class="descname">add</code><span class="sig-paren">(</span><em>key</em>, <em>val</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#SegmentedCache.add"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.SegmentedCache.add" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.cache.SegmentedCache.items">
+<code class="descname">items</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#SegmentedCache.items"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.SegmentedCache.items" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.cache.SegmentedCache.keys">
+<code class="descname">keys</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#SegmentedCache.keys"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.SegmentedCache.keys" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.cache.SegmentedCache.values">
+<code class="descname">values</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/cache.html#SegmentedCache.values"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.cache.SegmentedCache.values" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/cache.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 1.3.1</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.3</a>
+      
+      |
+      <a href="_sources/cache.txt"
+          rel="nofollow">Page source</a></li>
+    </div>
+
+    
+
+    
+  </body>
+</html>

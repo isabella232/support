@@ -1,0 +1,6 @@
+Socket Pooling
+--------------
+
+.. automodule:: support.socket_pool
+   :members:
+   :undoc-members:

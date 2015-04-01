@@ -1,0 +1,194 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>support.exceptions &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../index.html">SuPPort 0.0.1 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for support.exceptions</h1><div class="highlight"><pre>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">This module holds root exception types, as well as mix-ins</span>
+<span class="sd">that can be subclassed for user code or used in try/except blocks</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">traceback</span>
+<span class="kn">import</span> <span class="nn">os</span>
+
+<span class="kn">import</span> <span class="nn">gevent</span>
+
+
+<div class="viewcode-block" id="current_code_list"><a class="viewcode-back" href="../../exceptions.html#support.exceptions.current_code_list">[docs]</a><span class="k">def</span> <span class="nf">current_code_list</span><span class="p">():</span>
+    <span class="s">&#39;returns a code-list that can be formatted by code_list2trace_list&#39;</span>
+    <span class="n">f</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">_getframe</span><span class="p">()</span><span class="o">.</span><span class="n">f_back</span>
+    <span class="n">code_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">while</span> <span class="n">f</span><span class="p">:</span>
+        <span class="n">code_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">f_code</span><span class="p">)</span>
+        <span class="n">code_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">f_lineno</span><span class="p">)</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">f_back</span>
+    <span class="k">return</span> <span class="n">code_list</span>
+
+</div>
+<div class="viewcode-block" id="code_list2trace_list"><a class="viewcode-back" href="../../exceptions.html#support.exceptions.code_list2trace_list">[docs]</a><span class="k">def</span> <span class="nf">code_list2trace_list</span><span class="p">(</span><span class="n">code_list</span><span class="p">):</span>
+    <span class="n">trace_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">code</span><span class="p">,</span> <span class="n">lineno</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">code_list</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">::</span><span class="o">-</span><span class="mi">2</span><span class="p">],</span> <span class="n">code_list</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">::</span><span class="o">-</span><span class="mi">2</span><span class="p">]):</span>
+        <span class="n">line</span> <span class="o">=</span> <span class="n">LINECACHE</span><span class="o">.</span><span class="n">getline</span><span class="p">(</span><span class="n">code</span><span class="o">.</span><span class="n">co_filename</span><span class="p">,</span> <span class="n">lineno</span><span class="p">)</span>
+        <span class="n">trace</span> <span class="o">=</span> <span class="s">&#39;  File &quot;{0}&quot;, line {1}, in {2}</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+            <span class="n">code</span><span class="o">.</span><span class="n">co_filename</span><span class="p">,</span> <span class="n">lineno</span><span class="p">,</span> <span class="n">code</span><span class="o">.</span><span class="n">co_name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">line</span><span class="p">:</span>
+            <span class="n">trace</span> <span class="o">+=</span> <span class="s">&#39;    {0}</span><span class="se">\n</span><span class="s">&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">line</span><span class="o">.</span><span class="n">strip</span><span class="p">())</span>
+        <span class="n">trace_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">trace</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">trace_list</span>
+
+</div>
+<div class="viewcode-block" id="GLineCache"><a class="viewcode-back" href="../../exceptions.html#support.exceptions.GLineCache">[docs]</a><span class="k">class</span> <span class="nc">GLineCache</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="s">&#39;same idea as linecache.py module, but uses gevent primitives and thread/greenlet safe&#39;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="o">=</span> <span class="p">{}</span>
+
+<div class="viewcode-block" id="GLineCache.getline"><a class="viewcode-back" href="../../exceptions.html#support.exceptions.GLineCache.getline">[docs]</a>    <span class="k">def</span> <span class="nf">getline</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">lineno</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">filename</span> <span class="ow">not</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span><span class="p">:</span>
+            <span class="n">gevent</span><span class="o">.</span><span class="n">get_hub</span><span class="p">()</span><span class="o">.</span><span class="n">threadpool</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">update</span><span class="p">,</span> <span class="p">(</span><span class="n">filename</span><span class="p">,))</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cache</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">lines</span><span class="p">[</span><span class="n">lineno</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">IndexError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s">&#39;&#39;</span>
+</div>
+<div class="viewcode-block" id="GLineCache.update"><a class="viewcode-back" href="../../exceptions.html#support.exceptions.GLineCache.update">[docs]</a>    <span class="k">def</span> <span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trypath</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">filename</span><span class="p">):</span>
+            <span class="c"># TODO: is loader.getsource() important here?</span>
+            <span class="c"># ... in practice are there a significant number of libs</span>
+            <span class="c"># distributed in zip or other non-source-file form?</span>
+            <span class="k">for</span> <span class="n">directory</span> <span class="ow">in</span> <span class="n">sys</span><span class="o">.</span><span class="n">path</span><span class="p">:</span>
+                <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">directory</span><span class="p">,</span> <span class="n">filename</span><span class="p">)</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_trypath</span><span class="p">(</span><span class="n">filename</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+                    <span class="k">break</span>
+</div>
+    <span class="k">def</span> <span class="nf">_trypath</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">filename</span><span class="p">,</span> <span class="n">path</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="s">&#39;Ur&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">cache</span><span class="p">[</span><span class="n">filename</span><span class="p">]</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">readlines</span><span class="p">()</span>
+                <span class="k">return</span> <span class="bp">True</span>
+        <span class="k">except</span> <span class="ne">IOError</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">False</span>
+
+</div>
+<span class="n">LINECACHE</span> <span class="o">=</span> <span class="n">GLineCache</span><span class="p">()</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="../../index.html">
+    <img class="logo" src="../../_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../async.html">Asynchronous Helpers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../buffered_socket.html">Buffered Socket</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../connection_mgr.html">Managed Connections</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../context.html">Context Management</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../crypto.html">Cryptography and Security</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../exceptions.html">Exceptions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../group.html">Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../http_client.html">HTTP Client</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../meta_service.html">MetaService</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>

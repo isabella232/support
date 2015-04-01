@@ -1,0 +1,606 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>support.async &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../index.html">SuPPort 0.0.1 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for support.async</h1><div class="highlight"><pre>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">os.path</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+<span class="kn">import</span> <span class="nn">functools</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">imp</span>
+<span class="kn">import</span> <span class="nn">code</span>
+<span class="kn">import</span> <span class="nn">platform</span>
+<span class="kn">import</span> <span class="nn">threading</span>
+<span class="kn">import</span> <span class="nn">collections</span>
+<span class="kn">import</span> <span class="nn">weakref</span>
+
+<span class="kn">import</span> <span class="nn">gevent</span>
+<span class="kn">import</span> <span class="nn">gevent.pool</span>
+<span class="kn">import</span> <span class="nn">gevent.socket</span>
+<span class="kn">import</span> <span class="nn">gevent.threadpool</span>
+<span class="kn">import</span> <span class="nn">gevent.greenlet</span>
+<span class="kn">import</span> <span class="nn">faststat</span>
+
+<span class="kn">from</span> <span class="nn">support</span> <span class="kn">import</span> <span class="n">context</span>
+
+<span class="kn">from</span> <span class="nn">support</span> <span class="kn">import</span> <span class="n">ll</span>
+
+<span class="n">ml</span> <span class="o">=</span> <span class="n">ll</span><span class="o">.</span><span class="n">LLogger</span><span class="p">()</span>
+
+
+<span class="c"># TODO: investigate replacing curtime with nanotime</span>
+<span class="c"># (mostly used in Threadpool dispatch</span>
+<span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">time</span><span class="p">,</span> <span class="s">&quot;perf_counter&quot;</span><span class="p">):</span>
+    <span class="n">curtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">perf_counter</span>  <span class="c"># 3.3</span>
+<span class="k">elif</span> <span class="n">platform</span><span class="o">.</span><span class="n">system</span><span class="p">()</span> <span class="o">==</span> <span class="s">&quot;Windows&quot;</span><span class="p">:</span>
+    <span class="n">curtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">clock</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">curtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span>
+
+
+<span class="k">class</span> <span class="nc">Greenlet</span><span class="p">(</span><span class="n">gevent</span><span class="o">.</span><span class="n">Greenlet</span><span class="p">):</span>
+<div class="viewcode-block" id="Greenlet"><a class="viewcode-back" href="../../async.html#support.async.Greenlet">[docs]</a>    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    A subclass of gevent.Greenlet which adds additional members:</span>
+
+<span class="sd">     - locals: a dict of variables that are local to the &quot;spawn tree&quot; of</span>
+<span class="sd">       greenlets</span>
+<span class="sd">     - spawner: a weak-reference back to the spawner of the</span>
+<span class="sd">       greenlet</span>
+<span class="sd">     - stacks: a record of the stack at which the greenlet was</span>
+<span class="sd">       spawned, and ancestors</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">,</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">Greenlet</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+        <span class="n">spawner</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spawn_parent</span> <span class="o">=</span> <span class="n">weakref</span><span class="o">.</span><span class="n">proxy</span><span class="p">(</span><span class="n">gevent</span><span class="o">.</span><span class="n">getcurrent</span><span class="p">())</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">spawner</span><span class="p">,</span> <span class="s">&#39;locals&#39;</span><span class="p">):</span>
+            <span class="n">spawner</span><span class="o">.</span><span class="n">locals</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">locals</span> <span class="o">=</span> <span class="n">spawner</span><span class="o">.</span><span class="n">locals</span>
+        <span class="n">stack</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">cur</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">_getframe</span><span class="p">()</span>
+        <span class="k">while</span> <span class="n">cur</span><span class="p">:</span>
+            <span class="n">stack</span><span class="o">.</span><span class="n">extend</span><span class="p">((</span><span class="n">cur</span><span class="o">.</span><span class="n">f_code</span><span class="p">,</span> <span class="n">cur</span><span class="o">.</span><span class="n">f_lineno</span><span class="p">))</span>
+            <span class="n">cur</span> <span class="o">=</span> <span class="n">cur</span><span class="o">.</span><span class="n">f_back</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stacks</span> <span class="o">=</span> <span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">stack</span><span class="p">),)</span> <span class="o">+</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">spawner</span><span class="p">,</span> <span class="s">&#39;stacks&#39;</span><span class="p">,</span> <span class="p">())[:</span><span class="mi">10</span><span class="p">]</span>
+
+
+<span class="k">def</span> <span class="nf">get_spawntree_local</span><span class="p">(</span><span class="n">name</span><span class="p">):</span></div>
+<div class="viewcode-block" id="get_spawntree_local"><a class="viewcode-back" href="../../async.html#support.async.get_spawntree_local">[docs]</a>    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Essentially provides dynamic scope lookup for programming aspects</span>
+<span class="sd">    that cross greenlet borders. Be wary of overusing this</span>
+<span class="sd">    functionality, as it effectively constitutes mutating global state</span>
+<span class="sd">    which can lead to race conditions and architectural problems.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="nb">locals</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">gevent</span><span class="o">.</span><span class="n">getcurrent</span><span class="p">(),</span> <span class="s">&#39;locals&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">locals</span><span class="p">:</span>
+        <span class="k">return</span> <span class="nb">locals</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">return</span> <span class="bp">None</span>
+
+
+<span class="k">def</span> <span class="nf">set_spawntree_local</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">val</span><span class="p">):</span></div>
+<div class="viewcode-block" id="set_spawntree_local"><a class="viewcode-back" href="../../async.html#support.async.set_spawntree_local">[docs]</a>    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Similar to get_spawntree_local except that it allows setting these</span>
+<span class="sd">    values. Again, be wary of overuse.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">cur</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">getcurrent</span><span class="p">()</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">cur</span><span class="p">,</span> <span class="s">&#39;locals&#39;</span><span class="p">):</span>
+        <span class="n">cur</span><span class="o">.</span><span class="n">locals</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">cur</span><span class="o">.</span><span class="n">locals</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">val</span>
+
+
+<span class="k">def</span> <span class="nf">staggered_retries</span><span class="p">(</span><span class="n">run</span><span class="p">,</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span></div>
+<div class="viewcode-block" id="staggered_retries"><a class="viewcode-back" href="../../async.html#support.async.staggered_retries">[docs]</a>    <span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    A version of spawn that will block will it is done</span>
+<span class="sd">    running the function, and which will call the function</span>
+<span class="sd">    repeatedly as time progresses through the timeouts list.</span>
+
+<span class="sd">    Best used for idempotent network calls (e.g. HTTP GETs).</span>
+
+<span class="sd">    e.g.</span>
+<span class="sd">    user_data = async.staggered_retries(get_data, max_results,</span>
+<span class="sd">                                        latent_data_ok, public_credential_load,</span>
+<span class="sd">                                        timeouts_secs=[0.1, 0.5, 1, 2])</span>
+
+<span class="sd">    returns None on timeout.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+    <span class="n">ready</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">event</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+    <span class="n">ready</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">callback</span><span class="p">(</span><span class="n">source</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">source</span><span class="o">.</span><span class="n">successful</span><span class="p">():</span>
+            <span class="n">ready</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="s">&#39;timeouts_secs&#39;</span> <span class="ow">in</span> <span class="n">kw</span><span class="p">:</span>
+        <span class="n">timeouts_secs</span> <span class="o">=</span> <span class="n">kw</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;timeouts_secs&#39;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">timeouts_secs</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.05</span><span class="p">,</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.15</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">timeouts_secs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">timeouts_secs</span><span class="o">.</span><span class="n">insert</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">gs</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">run</span><span class="p">,</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+    <span class="n">gs</span><span class="o">.</span><span class="n">link_value</span><span class="p">(</span><span class="n">callback</span><span class="p">)</span>
+    <span class="n">running</span> <span class="o">=</span> <span class="p">[</span><span class="n">gs</span><span class="p">]</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">timeouts_secs</span><span class="p">)):</span>
+        <span class="n">this_timeout</span> <span class="o">=</span> <span class="n">timeouts_secs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">timeouts_secs</span><span class="p">[</span><span class="n">i</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">dev</span><span class="p">:</span>
+            <span class="n">this_timeout</span> <span class="o">=</span> <span class="n">this_timeout</span> <span class="o">*</span> <span class="mf">5.0</span>
+        <span class="n">ml</span><span class="o">.</span><span class="n">ld2</span><span class="p">(</span><span class="s">&quot;Using timeout {0}&quot;</span><span class="p">,</span> <span class="n">this_timeout</span><span class="p">)</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">gevent</span><span class="o">.</span><span class="n">Timeout</span><span class="p">(</span><span class="n">this_timeout</span><span class="p">):</span>
+                <span class="n">ready</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+                <span class="k">break</span>
+        <span class="k">except</span> <span class="n">gevent</span><span class="o">.</span><span class="n">Timeout</span><span class="p">:</span>
+            <span class="n">ml</span><span class="o">.</span><span class="n">ld2</span><span class="p">(</span><span class="s">&quot;Timed out!&quot;</span><span class="p">)</span>
+            <span class="n">log_rec</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">critical</span><span class="p">(</span><span class="s">&#39;ASYNC.STAGGER&#39;</span><span class="p">,</span> <span class="n">run</span><span class="o">.</span><span class="n">__name__</span><span class="p">)</span>
+            <span class="n">log_rec</span><span class="o">.</span><span class="n">failure</span><span class="p">(</span><span class="s">&#39;timed out after {timeout}&#39;</span><span class="p">,</span>
+                            <span class="n">timeout</span><span class="o">=</span><span class="n">this_timeout</span><span class="p">)</span>
+            <span class="n">gs</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">run</span><span class="p">,</span> <span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+            <span class="n">gs</span><span class="o">.</span><span class="n">link_value</span><span class="p">(</span><span class="n">callback</span><span class="p">)</span>
+            <span class="n">running</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">gs</span><span class="p">)</span>
+    <span class="n">vals</span> <span class="o">=</span> <span class="p">[</span><span class="n">l</span><span class="o">.</span><span class="n">value</span> <span class="k">for</span> <span class="n">l</span> <span class="ow">in</span> <span class="n">running</span> <span class="k">if</span> <span class="n">l</span><span class="o">.</span><span class="n">successful</span><span class="p">()]</span>
+    <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">running</span><span class="p">:</span>
+        <span class="n">g</span><span class="o">.</span><span class="n">kill</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">vals</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">vals</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">return</span> <span class="bp">None</span>
+
+
+<span class="k">def</span> <span class="nf">timed</span><span class="p">(</span><span class="n">f</span><span class="p">):</span></div>
+<div class="viewcode-block" id="timed"><a class="viewcode-back" href="../../async.html#support.async.timed">[docs]</a>    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    wrap a function and time all of its execution calls in milliseconds</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="n">fname</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">__code__</span><span class="o">.</span><span class="n">co_filename</span><span class="p">)</span> <span class="ow">or</span> <span class="s">&#39;_&#39;</span>
+    <span class="n">line_no</span> <span class="o">=</span> <span class="nb">repr</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">__code__</span><span class="o">.</span><span class="n">co_firstlineno</span><span class="p">)</span>
+    <span class="n">name</span> <span class="o">=</span> <span class="s">&#39;timed.{0}[{1}:{2}](ms)&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="n">fname</span><span class="p">,</span> <span class="n">line_no</span><span class="p">)</span>
+
+    <span class="nd">@functools.wraps</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">g</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+        <span class="n">s</span> <span class="o">=</span> <span class="n">faststat</span><span class="o">.</span><span class="n">nanotime</span><span class="p">()</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+        <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="n">name</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">((</span><span class="n">faststat</span><span class="o">.</span><span class="n">nanotime</span><span class="p">()</span> <span class="o">-</span> <span class="n">s</span><span class="p">)</span> <span class="o">/</span> <span class="mf">1e6</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">r</span>
+    <span class="k">return</span> <span class="n">g</span>
+
+
+<span class="k">class</span> <span class="nc">ThreadPoolDispatcher</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span></div>
+<div class="viewcode-block" id="ThreadPoolDispatcher"><a class="viewcode-back" href="../../async.html#support.async.ThreadPoolDispatcher">[docs]</a>    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pool</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pool</span> <span class="o">=</span> <span class="n">pool</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+
+    <span class="k">def</span> <span class="nf">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">f</span><span class="p">):</span>
+
+        <span class="nd">@functools.wraps</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="k">def</span> <span class="nf">g</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+            <span class="n">enqueued</span> <span class="o">=</span> <span class="n">curtime</span><span class="p">()</span>
+            <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+            <span class="n">started</span> <span class="o">=</span> <span class="p">[]</span>
+
+            <span class="k">def</span> <span class="nf">in_thread</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+                <span class="n">ml</span><span class="o">.</span><span class="n">ld3</span><span class="p">(</span><span class="s">&quot;In thread {0}&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">__name__</span><span class="p">)</span>
+                <span class="n">started</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">curtime</span><span class="p">())</span>
+                <span class="k">return</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+
+            <span class="c"># some modules import things lazily; it is too dangerous</span>
+            <span class="c"># to run a function in another thread if the import lock is</span>
+            <span class="c"># held by the current thread (this happens rarely -- only</span>
+            <span class="c"># if the thread dispatched function is being executed at</span>
+            <span class="c"># the import time of a module)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">ctx</span><span class="o">.</span><span class="n">cpu_thread_enabled</span> <span class="ow">or</span> <span class="n">imp</span><span class="o">.</span><span class="n">lock_held</span><span class="p">():</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="n">in_thread</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+            <span class="k">elif</span> <span class="n">in_threadpool</span><span class="p">()</span> <span class="ow">is</span> <span class="bp">self</span><span class="o">.</span><span class="n">pool</span><span class="p">:</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="n">in_thread</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">ctx</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">+</span> <span class="s">&#39;.depth&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">pool</span><span class="p">))</span>
+                <span class="n">ret</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">pool</span><span class="o">.</span><span class="n">apply_e</span><span class="p">((</span><span class="ne">Exception</span><span class="p">,),</span> <span class="n">in_thread</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">kw</span><span class="p">)</span>
+                <span class="n">ml</span><span class="o">.</span><span class="n">ld3</span><span class="p">(</span><span class="s">&quot;Enqueued to thread {0}/depth {1}&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">pool</span><span class="p">))</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="n">started</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">duration</span> <span class="o">=</span> <span class="n">curtime</span><span class="p">()</span> <span class="o">-</span> <span class="n">start</span>
+            <span class="n">queued</span> <span class="o">=</span> <span class="n">start</span> <span class="o">-</span> <span class="n">enqueued</span>
+            <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">ret</span><span class="p">,</span> <span class="s">&#39;__len__&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">callable</span><span class="p">(</span><span class="n">ret</span><span class="o">.</span><span class="n">__len__</span><span class="p">):</span>
+                <span class="n">prsize</span> <span class="o">=</span> <span class="n">ret</span><span class="o">.</span><span class="n">__len__</span><span class="p">()</span>  <span class="c"># parameter-or-return size</span>
+            <span class="k">elif</span> <span class="n">a</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="s">&#39;__len__&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">callable</span><span class="p">(</span><span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">__len__</span><span class="p">):</span>
+                <span class="n">prsize</span> <span class="o">=</span> <span class="n">a</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">__len__</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">prsize</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="n">_queue_stats</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="n">queued</span><span class="p">,</span> <span class="n">duration</span><span class="p">,</span> <span class="n">prsize</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">ret</span>
+
+        <span class="n">g</span><span class="o">.</span><span class="n">no_defer</span> <span class="o">=</span> <span class="n">f</span>
+        <span class="k">return</span> <span class="n">g</span>
+
+
+<span class="k">def</span> <span class="nf">in_threadpool</span><span class="p">():</span></div>
+<div class="viewcode-block" id="in_threadpool"><a class="viewcode-back" href="../../async.html#support.async.in_threadpool">[docs]</a>    <span class="s">&#39;function to return the threadpool in which code is currently executing (if any)&#39;</span>
+    <span class="n">frame</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">_getframe</span><span class="p">()</span>
+    <span class="k">while</span> <span class="n">frame</span><span class="o">.</span><span class="n">f_back</span><span class="p">:</span>
+        <span class="n">frame</span> <span class="o">=</span> <span class="n">frame</span><span class="o">.</span><span class="n">f_back</span>
+    <span class="bp">self</span> <span class="o">=</span> <span class="n">frame</span><span class="o">.</span><span class="n">f_locals</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s">&#39;self&#39;</span><span class="p">)</span>
+    <span class="k">if</span> <span class="p">(</span><span class="nb">isinstance</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gevent</span><span class="o">.</span><span class="n">threadpool</span><span class="o">.</span><span class="n">ThreadPool</span><span class="p">)</span> <span class="ow">and</span>
+           <span class="n">frame</span><span class="o">.</span><span class="n">f_code</span> <span class="ow">is</span> <span class="nb">getattr</span><span class="p">(</span><span class="nb">getattr</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_worker</span><span class="p">,</span> <span class="s">&quot;im_func&quot;</span><span class="p">),</span> <span class="s">&quot;func_code&quot;</span><span class="p">)):</span>
+        <span class="k">return</span> <span class="bp">self</span>
+    <span class="k">return</span> <span class="bp">None</span>
+
+
+<span class="k">class</span> <span class="nc">CPUThread</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span></div>
+<div class="viewcode-block" id="CPUThread"><a class="viewcode-back" href="../../async.html#support.async.CPUThread">[docs]</a>    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Manages a single worker thread to dispatch cpu intensive tasks to.</span>
+
+<span class="sd">    Signficantly less overhead than gevent.threadpool.ThreadPool() since it</span>
+<span class="sd">    uses prompt notifications rather than polling.  The trade-off is that only</span>
+<span class="sd">    one thread can be managed this way.</span>
+
+<span class="sd">    Since there is only one thread, hub.loop.async() objects may be used</span>
+<span class="sd">    instead of polling to handle inter-thread communication.</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">in_q</span> <span class="o">=</span> <span class="n">collections</span><span class="o">.</span><span class="n">deque</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">out_q</span> <span class="o">=</span> <span class="n">collections</span><span class="o">.</span><span class="n">deque</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">in_async</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">out_async</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">get_hub</span><span class="p">()</span><span class="o">.</span><span class="n">loop</span><span class="o">.</span><span class="n">async</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">out_q_has_data</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">event</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">out_async</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">out_q_has_data</span><span class="o">.</span><span class="n">set</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">worker</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_run</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">worker</span><span class="o">.</span><span class="n">daemon</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stopping</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">results</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="c"># start running thread / greenlet after everything else is set up</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">worker</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">notifier</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_notify</span><span class="p">)</span>
+
+    <span class="k">def</span> <span class="nf">_run</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># in_cpubound_thread is sentinel to prevent double thread dispatch</span>
+        <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">thread_locals</span><span class="o">.</span><span class="n">in_cpubound_thread</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">in_async</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">get_hub</span><span class="p">()</span><span class="o">.</span><span class="n">loop</span><span class="o">.</span><span class="n">async</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">in_q_has_data</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">event</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">in_async</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">in_q_has_data</span><span class="o">.</span><span class="n">set</span><span class="p">)</span>
+            <span class="k">while</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">stopping</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">in_q</span><span class="p">:</span>
+                    <span class="c"># wait for more work</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">in_q_has_data</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">in_q_has_data</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+                    <span class="k">continue</span>
+                <span class="c"># arbitrary non-preemptive service discipline can go here</span>
+                <span class="c"># FIFO for now, but we should experiment with others</span>
+                <span class="n">jobid</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">enqueued</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">in_q</span><span class="o">.</span><span class="n">popleft</span><span class="p">()</span>
+                <span class="n">started</span> <span class="o">=</span> <span class="n">curtime</span><span class="p">()</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">ret</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">jobid</span><span class="p">]</span> <span class="o">=</span> <span class="n">func</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">)</span>
+                <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                    <span class="n">ret</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">jobid</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_Caught</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">out_q</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">jobid</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">out_async</span><span class="o">.</span><span class="n">send</span><span class="p">()</span>
+                <span class="c"># keep track of some statistics</span>
+                <span class="n">queued</span><span class="p">,</span> <span class="n">duration</span> <span class="o">=</span> <span class="n">started</span> <span class="o">-</span> <span class="n">enqueued</span><span class="p">,</span> <span class="n">curtime</span><span class="p">()</span> <span class="o">-</span> <span class="n">started</span>
+                <span class="n">size</span> <span class="o">=</span> <span class="bp">None</span>
+                <span class="c"># ret s set up above before async send</span>
+                <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">ret</span><span class="p">,</span> <span class="s">&#39;__len__&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">callable</span><span class="p">(</span><span class="n">ret</span><span class="o">.</span><span class="n">__len__</span><span class="p">):</span>
+                    <span class="n">size</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">ret</span><span class="p">)</span>
+                <span class="n">_queue_stats</span><span class="p">(</span><span class="s">&#39;cpu_bound&#39;</span><span class="p">,</span> <span class="n">func</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span> <span class="n">queued</span><span class="p">,</span> <span class="n">duration</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_error</span><span class="p">()</span>
+            <span class="c"># this may always halt the server process</span>
+
+    <span class="k">def</span> <span class="nf">apply</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">):</span>
+<div class="viewcode-block" id="CPUThread.apply"><a class="viewcode-back" href="../../async.html#support.async.CPUThread.apply">[docs]</a>        <span class="n">done</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">event</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">in_q</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">done</span><span class="p">,</span> <span class="n">func</span><span class="p">,</span> <span class="n">args</span><span class="p">,</span> <span class="n">kwargs</span><span class="p">,</span> <span class="n">curtime</span><span class="p">()))</span>
+        <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="s">&#39;cpu_bound.depth&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="mi">1</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">in_q</span><span class="p">))</span>
+        <span class="k">while</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">in_async</span><span class="p">:</span>
+            <span class="n">gevent</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">0.01</span><span class="p">)</span>  <span class="c"># poll until worker thread has initialized</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">in_async</span><span class="o">.</span><span class="n">send</span><span class="p">()</span>
+        <span class="n">done</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+        <span class="n">res</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">done</span><span class="p">]</span>
+        <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">results</span><span class="p">[</span><span class="n">done</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">res</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_Caught</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="n">res</span><span class="o">.</span><span class="n">err</span>
+        <span class="k">return</span> <span class="n">res</span>
+
+    <span class="k">def</span> <span class="nf">_notify</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span></div>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">while</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">stopping</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">out_q</span><span class="p">:</span>
+                    <span class="c"># wait for jobs to complete</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">out_q_has_data</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">out_q_has_data</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+                    <span class="k">continue</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">out_q</span><span class="o">.</span><span class="n">popleft</span><span class="p">()</span><span class="o">.</span><span class="n">set</span><span class="p">()</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_error</span><span class="p">()</span>
+
+    <span class="k">class</span> <span class="nc">_Caught</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+        <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">err</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">err</span> <span class="o">=</span> <span class="n">err</span>
+
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">cn</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span>
+        <span class="k">return</span> <span class="p">(</span><span class="s">&quot;&lt;</span><span class="si">%s</span><span class="s">@</span><span class="si">%s</span><span class="s"> in_q:</span><span class="si">%s</span><span class="s"> out_q:</span><span class="si">%s</span><span class="s">&gt;&quot;</span> <span class="o">%</span>
+                <span class="p">(</span><span class="n">cn</span><span class="p">,</span> <span class="nb">id</span><span class="p">(</span><span class="bp">self</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">in_q</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">out_q</span><span class="p">)))</span>
+
+    <span class="k">def</span> <span class="nf">_error</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># TODO: something better, but this is darn useful for debugging</span>
+        <span class="kn">import</span> <span class="nn">traceback</span>
+        <span class="n">traceback</span><span class="o">.</span><span class="n">print_exc</span><span class="p">()</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+        <span class="n">tl</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">thread_locals</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tl</span><span class="p">,</span> <span class="s">&#39;cpu_bound_thread&#39;</span><span class="p">)</span> <span class="ow">and</span> <span class="n">tl</span><span class="o">.</span><span class="n">cpu_bound_thread</span> <span class="ow">is</span> <span class="bp">self</span><span class="p">:</span>
+            <span class="k">del</span> <span class="n">tl</span><span class="o">.</span><span class="n">cpu_bound_thread</span>
+
+
+<span class="k">def</span> <span class="nf">_queue_stats</span><span class="p">(</span><span class="n">qname</span><span class="p">,</span> <span class="n">fname</span><span class="p">,</span> <span class="n">queued_ns</span><span class="p">,</span> <span class="n">duration_ns</span><span class="p">,</span> <span class="n">size_B</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span></div>
+    <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+    <span class="n">fprefix</span> <span class="o">=</span> <span class="n">qname</span> <span class="o">+</span> <span class="s">&#39;.&#39;</span> <span class="o">+</span> <span class="n">fname</span>
+    <span class="n">ctx</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="n">fprefix</span> <span class="o">+</span> <span class="s">&#39;.queued(ms)&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">queued_ns</span> <span class="o">*</span> <span class="mi">1000</span><span class="p">)</span>
+    <span class="n">ctx</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="n">fprefix</span> <span class="o">+</span> <span class="s">&#39;.duration(ms)&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">duration_ns</span> <span class="o">*</span> <span class="mi">1000</span><span class="p">)</span>
+    <span class="n">ctx</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="n">qname</span> <span class="o">+</span> <span class="s">&#39;.queued(ms)&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">queued_ns</span> <span class="o">*</span> <span class="mi">1000</span><span class="p">)</span>
+    <span class="n">ctx</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="n">qname</span> <span class="o">+</span> <span class="s">&#39;.duration(ms)&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">duration_ns</span> <span class="o">*</span> <span class="mi">1000</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">size_B</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="n">fprefix</span> <span class="o">+</span> <span class="s">&#39;.len&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">size_B</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">duration_ns</span><span class="p">:</span>  <span class="c"># may be 0</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="n">fprefix</span> <span class="o">+</span> <span class="s">&#39;.rate(B/ms)&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">size_B</span> <span class="o">/</span> <span class="p">(</span><span class="n">duration_ns</span> <span class="o">*</span> <span class="mf">1000.0</span><span class="p">))</span>
+
+
+<span class="c"># TODO: make size configurable</span>
+<span class="n">io_bound</span> <span class="o">=</span> <span class="n">ThreadPoolDispatcher</span><span class="p">(</span><span class="n">gevent</span><span class="o">.</span><span class="n">threadpool</span><span class="o">.</span><span class="n">ThreadPool</span><span class="p">(</span><span class="mi">10</span><span class="p">),</span> <span class="s">&#39;io_bound&#39;</span><span class="p">)</span>
+
+<span class="c"># N.B.  In many cases fcntl could be used as an alternative method of</span>
+<span class="c"># achieving non-blocking file io on unix systems</span>
+
+
+<span class="k">def</span> <span class="nf">cpu_bound</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">p</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+<div class="viewcode-block" id="cpu_bound"><a class="viewcode-back" href="../../async.html#support.async.cpu_bound">[docs]</a>    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Cause the decorated function to have its execution deferred to a</span>
+<span class="sd">    separate thread to avoid blocking the IO loop in the main thread.</span>
+<span class="sd">    Useful for wrapping encryption or serialization tasks.</span>
+
+<span class="sd">    Example usage:</span>
+
+<span class="sd">    @async.cpu_bound</span>
+<span class="sd">    def my_slow_function():</span>
+<span class="sd">        pass</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="nd">@functools.wraps</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+    <span class="k">def</span> <span class="nf">g</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+        <span class="c"># in_cpubound_thread is sentinel to prevent double-thread dispatch</span>
+        <span class="k">if</span> <span class="p">(</span><span class="ow">not</span> <span class="n">ctx</span><span class="o">.</span><span class="n">cpu_thread_enabled</span> <span class="ow">or</span> <span class="n">imp</span><span class="o">.</span><span class="n">lock_held</span><span class="p">()</span>
+                <span class="ow">or</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">thread_locals</span><span class="p">,</span> <span class="s">&#39;in_cpubound_thread&#39;</span><span class="p">,</span> <span class="bp">False</span><span class="p">)):</span>
+            <span class="k">return</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">thread_locals</span><span class="p">,</span> <span class="s">&#39;cpu_bound_thread&#39;</span><span class="p">):</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">thread_locals</span><span class="o">.</span><span class="n">cpu_bound_thread</span> <span class="o">=</span> <span class="n">CPUThread</span><span class="p">()</span>
+        <span class="n">ml</span><span class="o">.</span><span class="n">ld3</span><span class="p">(</span><span class="s">&quot;Calling in cpu thread {0}&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">__name__</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ctx</span><span class="o">.</span><span class="n">thread_locals</span><span class="o">.</span><span class="n">cpu_bound_thread</span><span class="o">.</span><span class="n">apply</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">a</span><span class="p">,</span> <span class="n">kw</span><span class="p">)</span>
+    <span class="n">g</span><span class="o">.</span><span class="n">no_defer</span> <span class="o">=</span> <span class="n">f</span>
+    <span class="k">return</span> <span class="n">g</span>
+
+
+<span class="k">def</span> <span class="nf">cpu_bound_if</span><span class="p">(</span><span class="n">p</span><span class="p">):</span></div>
+<div class="viewcode-block" id="cpu_bound_if"><a class="viewcode-back" href="../../async.html#support.async.cpu_bound_if">[docs]</a>    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    Similar to cpu_bound, but should be called with a predicate</span>
+<span class="sd">    parameter which determines whether or not to dispatch to a</span>
+<span class="sd">    cpu_bound thread.  The predicate will be passed the same</span>
+<span class="sd">    parameters as the function itself.</span>
+
+<span class="sd">    Example usage:</span>
+
+<span class="sd">    # will be deferred to a thread if parameter greater than 16k,</span>
+<span class="sd">    # else run inline</span>
+<span class="sd">    @async.cpu_bound_if(lambda s: len(s) &gt; 16 * 1024)</span>
+<span class="sd">    def my_string_function(data):</span>
+<span class="sd">        pass</span>
+
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="nf">g</span><span class="p">(</span><span class="n">f</span><span class="p">):</span>
+        <span class="n">f</span> <span class="o">=</span> <span class="n">cpu_bound</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+
+        <span class="nd">@functools.wraps</span><span class="p">(</span><span class="n">f</span><span class="p">)</span>
+        <span class="k">def</span> <span class="nf">h</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">p</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+                <span class="k">return</span> <span class="n">f</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">f</span><span class="o">.</span><span class="n">no_defer</span><span class="p">(</span><span class="o">*</span><span class="n">a</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">h</span>
+    <span class="k">return</span> <span class="n">g</span>
+
+
+<span class="k">def</span> <span class="nf">close_threadpool</span><span class="p">():</span></div>
+<div class="viewcode-block" id="close_threadpool"><a class="viewcode-back" href="../../async.html#support.async.close_threadpool">[docs]</a>    <span class="n">tlocals</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">thread_locals</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">tlocals</span><span class="p">,</span> <span class="s">&#39;cpu_bound_thread&#39;</span><span class="p">):</span>
+        <span class="n">ml</span><span class="o">.</span><span class="n">ld2</span><span class="p">(</span><span class="s">&quot;Closing thread pool {0}&quot;</span><span class="p">,</span> <span class="nb">id</span><span class="p">(</span><span class="n">tlocals</span><span class="o">.</span><span class="n">cpu_thread</span><span class="p">))</span>
+        <span class="n">cpu_thread</span> <span class="o">=</span> <span class="n">tlocals</span><span class="o">.</span><span class="n">cpu_bound_thread</span>
+        <span class="n">cpu_thread</span><span class="o">.</span><span class="n">stopping</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">del</span> <span class="n">tlocals</span><span class="o">.</span><span class="n">cpu_bound_thread</span>
+
+
+<span class="k">def</span> <span class="nf">killsock</span><span class="p">(</span><span class="n">sock</span><span class="p">):</span></div>
+<div class="viewcode-block" id="killsock"><a class="viewcode-back" href="../../async.html#support.async.killsock">[docs]</a>    <span class="sd">&quot;&quot;&quot;Attempts to cleanly shutdown a socket. Regardless of cleanliness,</span>
+<span class="sd">    ensures that upon return, the socket is fully closed, catching any</span>
+<span class="sd">    exceptions along the way. A safe and prompt way to dispose of the</span>
+<span class="sd">    socket, freeing system resources.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="s">&#39;_sock&#39;</span><span class="p">):</span>
+        <span class="n">ml</span><span class="o">.</span><span class="n">ld</span><span class="p">(</span><span class="s">&quot;Killing socket {0}/FD {1}&quot;</span><span class="p">,</span> <span class="nb">id</span><span class="p">(</span><span class="n">sock</span><span class="p">),</span> <span class="n">sock</span><span class="o">.</span><span class="n">_sock</span><span class="o">.</span><span class="n">fileno</span><span class="p">())</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ml</span><span class="o">.</span><span class="n">ld</span><span class="p">(</span><span class="s">&quot;Killing socket {0}&quot;</span><span class="p">,</span> <span class="nb">id</span><span class="p">(</span><span class="n">sock</span><span class="p">))</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="c"># TODO: better ideas for how to get SHUT_RDWR constant?</span>
+        <span class="n">sock</span><span class="o">.</span><span class="n">shutdown</span><span class="p">(</span><span class="n">gevent</span><span class="o">.</span><span class="n">socket</span><span class="o">.</span><span class="n">SHUT_RDWR</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">gevent</span><span class="o">.</span><span class="n">socket</span><span class="o">.</span><span class="n">error</span><span class="p">:</span>
+        <span class="k">pass</span>  <span class="c"># just being nice to the server, don&#39;t care if it fails</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">log_rec</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s">&quot;SOCKET&quot;</span><span class="p">,</span> <span class="s">&quot;SHUTDOWN&quot;</span><span class="p">)</span>
+        <span class="n">log_rec</span><span class="o">.</span><span class="n">failure</span><span class="p">(</span><span class="s">&#39;error ({exc}) shutting down socket: {socket}&#39;</span><span class="p">,</span>
+                        <span class="n">socket</span><span class="o">=</span><span class="n">sock</span><span class="p">,</span> <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">sock</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="k">except</span> <span class="n">gevent</span><span class="o">.</span><span class="n">socket</span><span class="o">.</span><span class="n">error</span><span class="p">:</span>
+        <span class="k">pass</span>  <span class="c"># just being nice to the server, don&#39;t care if it fails</span>
+    <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+        <span class="n">log_rec</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s">&quot;SOCKET&quot;</span><span class="p">,</span> <span class="s">&quot;CLOSE&quot;</span><span class="p">)</span>
+        <span class="n">log_rec</span><span class="o">.</span><span class="n">failure</span><span class="p">(</span><span class="s">&#39;error ({exc}) closing socket: {socket}&#39;</span><span class="p">,</span>
+                        <span class="n">socket</span><span class="o">=</span><span class="n">sock</span><span class="p">,</span> <span class="n">exc</span><span class="o">=</span><span class="n">e</span><span class="p">)</span>
+
+
+<span class="n">PID</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">()</span></div>
+
+
+<span class="k">def</span> <span class="nf">check_fork</span><span class="p">(</span><span class="n">fn</span><span class="p">):</span>
+<div class="viewcode-block" id="check_fork"><a class="viewcode-back" href="../../async.html#support.async.check_fork">[docs]</a>        <span class="sd">&quot;&quot;&quot;Hack for Django/gevent interaction to reset after non-gevent fork&quot;&quot;&quot;</span>
+        <span class="nd">@functools.wraps</span><span class="p">(</span><span class="n">fn</span><span class="p">)</span>
+        <span class="k">def</span> <span class="nf">wrapper</span><span class="p">(</span><span class="n">request</span><span class="p">):</span>
+                <span class="k">global</span> <span class="n">PID</span>
+                <span class="k">if</span> <span class="n">PID</span> <span class="o">!=</span> <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">():</span>
+                        <span class="n">gevent</span><span class="o">.</span><span class="n">get_hub</span><span class="p">()</span><span class="o">.</span><span class="n">loop</span><span class="o">.</span><span class="n">reinit</span><span class="p">()</span>
+                        <span class="n">PID</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">()</span>
+                <span class="k">return</span> <span class="n">fn</span><span class="p">(</span><span class="n">request</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">wrapper</span>
+
+
+<span class="c"># a little helper for running a greenlet-friendly console</span>
+<span class="c"># implemented here since it directly references gevent</span>
+
+
+<span class="k">class</span> <span class="nc">GreenConsole</span><span class="p">(</span><span class="n">code</span><span class="o">.</span><span class="n">InteractiveConsole</span><span class="p">):</span></div>
+<div class="viewcode-block" id="GreenConsole"><a class="viewcode-back" href="../../async.html#support.async.GreenConsole">[docs]</a>    <span class="nd">@io_bound</span>
+    <span class="k">def</span> <span class="nf">raw_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="o">=</span><span class="s">&quot;&quot;</span><span class="p">):</span>
+<div class="viewcode-block" id="GreenConsole.raw_input"><a class="viewcode-back" href="../../async.html#support.async.GreenConsole.raw_input">[docs]</a>        <span class="k">return</span> <span class="n">code</span><span class="o">.</span><span class="n">InteractiveConsole</span><span class="o">.</span><span class="n">raw_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">start_repl</span><span class="p">(</span><span class="n">local</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">banner</span><span class="o">=</span><span class="s">&quot;infra REPL (exit with Ctrl+C)&quot;</span><span class="p">):</span></div></div>
+<div class="viewcode-block" id="start_repl"><a class="viewcode-back" href="../../async.html#support.async.start_repl">[docs]</a>    <span class="n">gevent</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">GreenConsole</span><span class="p">()</span><span class="o">.</span><span class="n">interact</span><span class="p">,</span> <span class="n">banner</span><span class="p">)</span>
+
+
+<span class="k">def</span> <span class="nf">greenify</span><span class="p">(</span><span class="n">banner</span><span class="o">=</span><span class="s">&quot;REPL is now greenlet friendly (exit with Ctrl+C)&quot;</span><span class="p">):</span></div>
+<div class="viewcode-block" id="greenify"><a class="viewcode-back" href="../../async.html#support.async.greenify">[docs]</a>    <span class="kn">import</span> <span class="nn">__main__</span>
+    <span class="n">GreenConsole</span><span class="p">(</span><span class="n">__main__</span><span class="o">.</span><span class="n">__dict__</span><span class="p">)</span><span class="o">.</span><span class="n">interact</span><span class="p">(</span><span class="n">banner</span><span class="p">)</span>
+
+
+<span class="c"># The following are imported/aliased for user import convenience</span>
+<span class="n">spawn</span> <span class="o">=</span> <span class="n">Greenlet</span><span class="o">.</span><span class="n">spawn</span></div>
+<span class="n">sleep</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">sleep</span>
+<span class="n">Timeout</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">Timeout</span>
+<span class="n">with_timeout</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">with_timeout</span>
+<span class="n">nanotime</span> <span class="o">=</span> <span class="n">faststat</span><span class="o">.</span><span class="n">nanotime</span>
+<span class="c"># end user imports/aliases</span>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="../../index.html">
+    <img class="logo" src="../../_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../async.html">Asynchronous Helpers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../buffered_socket.html">Buffered Socket</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../connection_mgr.html">Managed Connections</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../context.html">Context Management</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../crypto.html">Cryptography and Security</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../exceptions.html">Exceptions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../group.html">Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../http_client.html">HTTP Client</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../meta_service.html">MetaService</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>

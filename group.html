@@ -1,0 +1,309 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Groups &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="index.html" />
+    <link rel="next" title="HTTP Client" href="http_client.html" />
+    <link rel="prev" title="Exceptions" href="exceptions.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="http_client.html" title="HTTP Client"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="exceptions.html" title="Exceptions"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">SuPPort 0.0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="groups">
+<h1>Groups<a class="headerlink" href="#groups" title="Permalink to this headline">¶</a></h1>
+<p>SuPPort&#8217;s central pillar is the <code class="xref py py-class docutils literal"><span class="pre">Group</span></code>, a group of servers,
+web or otherwise, hosted within a given <a class="reference external" href="https://en.wikipedia.org/wiki/Process_group">process group</a>.</p>
+<span class="target" id="module-support.group"></span><p>Defines a Group class for running and managing servers, as well as a set of
+base server types.</p>
+<p>The following information is needed to start a server:
+1- handler / wsgi app
+2- address
+3- ssl preference</p>
+<dl class="class">
+<dt id="support.group.Group">
+<em class="property">class </em><code class="descclassname">support.group.</code><code class="descname">Group</code><span class="sig-paren">(</span><em>wsgi_apps=()</em>, <em>stream_handlers=()</em>, <em>custom_servers=()</em>, <em>prefork=None</em>, <em>daemonize=None</em>, <em>**kw</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#Group"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.Group" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="method">
+<dt id="support.group.Group.iter_addresses">
+<code class="descname">iter_addresses</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#Group.iter_addresses"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.Group.iter_addresses" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.group.Group.serve_forever">
+<code class="descname">serve_forever</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#Group.serve_forever"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.Group.serve_forever" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.group.Group.start">
+<code class="descname">start</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#Group.start"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.Group.start" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.group.Group.stop">
+<code class="descname">stop</code><span class="sig-paren">(</span><em>timeout=30.0</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#Group.stop"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.Group.stop" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.group.MakeFileCloseWSGIHandler">
+<em class="property">class </em><code class="descclassname">support.group.</code><code class="descname">MakeFileCloseWSGIHandler</code><span class="sig-paren">(</span><em>socket</em>, <em>address</em>, <em>server</em>, <em>rfile=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#MakeFileCloseWSGIHandler"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.MakeFileCloseWSGIHandler" title="Permalink to this definition">¶</a></dt>
+<dd><p>quick work-around to re-enable gevent&#8217;s work-around of the
+makefile() call in the pywsgi handler keeping sockets alive
+past their shelf life</p>
+<dl class="method">
+<dt id="support.group.MakeFileCloseWSGIHandler.handle_one_request">
+<code class="descname">handle_one_request</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#MakeFileCloseWSGIHandler.handle_one_request"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.MakeFileCloseWSGIHandler.handle_one_request" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.group.MakeFileCloseWSGIHandler.process_result">
+<code class="descname">process_result</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#MakeFileCloseWSGIHandler.process_result"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.MakeFileCloseWSGIHandler.process_result" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.group.MakeFileCloseWSGIHandler.run_application">
+<code class="descname">run_application</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#MakeFileCloseWSGIHandler.run_application"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.MakeFileCloseWSGIHandler.run_application" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.group.MultiProtocolWSGIServer">
+<em class="property">class </em><code class="descclassname">support.group.</code><code class="descname">MultiProtocolWSGIServer</code><span class="sig-paren">(</span><em>listener</em>, <em>application=None</em>, <em>backlog=None</em>, <em>spawn='default'</em>, <em>log='default'</em>, <em>handler_class=None</em>, <em>environ=None</em>, <em>**ssl_args</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#MultiProtocolWSGIServer"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.MultiProtocolWSGIServer" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="class">
+<dt id="support.group.RotatingGeventLog">
+<em class="property">class </em><code class="descclassname">support.group.</code><code class="descname">RotatingGeventLog</code><span class="sig-paren">(</span><em>size=10000</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#RotatingGeventLog"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.RotatingGeventLog" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="method">
+<dt id="support.group.RotatingGeventLog.write">
+<code class="descname">write</code><span class="sig-paren">(</span><em>msg</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#RotatingGeventLog.write"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.RotatingGeventLog.write" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.group.SimpleLogMiddleware">
+<em class="property">class </em><code class="descclassname">support.group.</code><code class="descname">SimpleLogMiddleware</code><a class="reference internal" href="_modules/support/group.html#SimpleLogMiddleware"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.SimpleLogMiddleware" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="attribute">
+<dt id="support.group.SimpleLogMiddleware.provides">
+<code class="descname">provides</code><em class="property"> = ['api_cal_trans']</em><a class="headerlink" href="#support.group.SimpleLogMiddleware.provides" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.group.SimpleLogMiddleware.request">
+<code class="descname">request</code><span class="sig-paren">(</span><em>next</em>, <em>request</em>, <em>_route</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#SimpleLogMiddleware.request"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.SimpleLogMiddleware.request" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.group.SockConsole">
+<em class="property">class </em><code class="descclassname">support.group.</code><code class="descname">SockConsole</code><span class="sig-paren">(</span><em>sock</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#SockConsole"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.SockConsole" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="method">
+<dt id="support.group.SockConsole.raw_input">
+<code class="descname">raw_input</code><span class="sig-paren">(</span><em>prompt=''</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#SockConsole.raw_input"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.SockConsole.raw_input" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.group.SockConsole.runcode">
+<code class="descname">runcode</code><span class="sig-paren">(</span><em>_code</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#SockConsole.runcode"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.SockConsole.runcode" title="Permalink to this definition">¶</a></dt>
+<dd><p>Wraps base runcode to put displayhook around it.
+TODO: add a new displayhook dispatcher so that the
+current SockConsole is a greenlet-tree local.
+(In case the statement being executed itself
+causes greenlet switches.)</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="support.group.SockConsole.write">
+<code class="descname">write</code><span class="sig-paren">(</span><em>data</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#SockConsole.write"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.SockConsole.write" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.group.SslContextWSGIServer">
+<em class="property">class </em><code class="descclassname">support.group.</code><code class="descname">SslContextWSGIServer</code><span class="sig-paren">(</span><em>listener</em>, <em>application=None</em>, <em>backlog=None</em>, <em>spawn='default'</em>, <em>log='default'</em>, <em>handler_class=None</em>, <em>environ=None</em>, <em>**ssl_args</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#SslContextWSGIServer"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.SslContextWSGIServer" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="attribute">
+<dt id="support.group.SslContextWSGIServer.handler_class">
+<code class="descname">handler_class</code><a class="headerlink" href="#support.group.SslContextWSGIServer.handler_class" title="Permalink to this definition">¶</a></dt>
+<dd><p>alias of <a class="reference internal" href="#support.group.MakeFileCloseWSGIHandler" title="support.group.MakeFileCloseWSGIHandler"><code class="xref py py-class docutils literal"><span class="pre">MakeFileCloseWSGIHandler</span></code></a></p>
+</dd></dl>
+
+<dl class="method">
+<dt id="support.group.SslContextWSGIServer.wrap_socket_and_handle">
+<code class="descname">wrap_socket_and_handle</code><span class="sig-paren">(</span><em>*a</em>, <em>**kw</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#SslContextWSGIServer.wrap_socket_and_handle"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.SslContextWSGIServer.wrap_socket_and_handle" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.group.ThreadQueueServer">
+<em class="property">class </em><code class="descclassname">support.group.</code><code class="descname">ThreadQueueServer</code><span class="sig-paren">(</span><em>listener</em>, <em>handle=None</em>, <em>backlog=None</em>, <em>spawn='default'</em>, <em>**ssl_args</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#ThreadQueueServer"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.ThreadQueueServer" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="method">
+<dt id="support.group.ThreadQueueServer.do_read">
+<code class="descname">do_read</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#ThreadQueueServer.do_read"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.ThreadQueueServer.do_read" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.group.ThreadQueueServer.start_accepting">
+<code class="descname">start_accepting</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#ThreadQueueServer.start_accepting"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.ThreadQueueServer.start_accepting" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.group.ThreadQueueWSGIServer">
+<em class="property">class </em><code class="descclassname">support.group.</code><code class="descname">ThreadQueueWSGIServer</code><span class="sig-paren">(</span><em>listener</em>, <em>application=None</em>, <em>backlog=None</em>, <em>spawn='default'</em>, <em>log='default'</em>, <em>handler_class=None</em>, <em>environ=None</em>, <em>**ssl_args</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#ThreadQueueWSGIServer"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.ThreadQueueWSGIServer" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="class">
+<dt id="support.group.ThreadWatcher">
+<em class="property">class </em><code class="descclassname">support.group.</code><code class="descname">ThreadWatcher</code><span class="sig-paren">(</span><em>listener</em>, <em>loop</em>, <em>maxlen=128</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#ThreadWatcher"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.ThreadWatcher" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="method">
+<dt id="support.group.ThreadWatcher.run">
+<code class="descname">run</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#ThreadWatcher.run"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.ThreadWatcher.run" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.group.ThreadWatcher.start">
+<code class="descname">start</code><span class="sig-paren">(</span><em>callback</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#ThreadWatcher.start"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.ThreadWatcher.start" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.group.ThreadWatcher.stop">
+<code class="descname">stop</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#ThreadWatcher.stop"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.ThreadWatcher.stop" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="support.group.console_sock_handle">
+<code class="descclassname">support.group.</code><code class="descname">console_sock_handle</code><span class="sig-paren">(</span><em>sock</em>, <em>address</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/group.html#console_sock_handle"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.group.console_sock_handle" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="index.html">
+    <img class="logo" src="_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="async.html">Asynchronous Helpers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="buffered_socket.html">Buffered Socket</a></li>
+<li class="toctree-l1"><a class="reference internal" href="connection_mgr.html">Managed Connections</a></li>
+<li class="toctree-l1"><a class="reference internal" href="context.html">Context Management</a></li>
+<li class="toctree-l1"><a class="reference internal" href="crypto.html">Cryptography and Security</a></li>
+<li class="toctree-l1"><a class="reference internal" href="exceptions.html">Exceptions</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="">Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="http_client.html">HTTP Client</a></li>
+<li class="toctree-l1"><a class="reference internal" href="meta_service.html">MetaService</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+      |
+      <a href="_sources/group.txt"
+          rel="nofollow">Page source</a></li>
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>

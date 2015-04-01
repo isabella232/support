@@ -1,0 +1,352 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Managed Connections &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="index.html" />
+    <link rel="next" title="Context Management" href="context.html" />
+    <link rel="prev" title="Buffered Socket" href="buffered_socket.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="context.html" title="Context Management"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="buffered_socket.html" title="Buffered Socket"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">SuPPort 0.0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-support.connection_mgr">
+<span id="managed-connections"></span><h1>Managed Connections<a class="headerlink" href="#module-support.connection_mgr" title="Permalink to this headline">¶</a></h1>
+<p>This module provides the capability to from an abstract Paypal name,
+such as &#8220;paymentserv&#8221;, or &#8220;occ-conf&#8221; to an open connection.</p>
+<p>The main entry point is the ConnectionManager.get_connection().
+This function will promptly either:</p>
+<blockquote>
+<div>1- raise an Exception which is a subclass of socket.error
+2- return a socket</div></blockquote>
+<p>ConnectionManagers provide the following services:</p>
+<p>1- name resolution (&#8220;paymentserv&#8221; to actual ip/port from topos)
+2- transient markdown (keeping track of connection failures)
+3- socket throttling (keeping track of total open sockets)
+4- timeouts (connection and read timeouts from opscfg)
+5- protecteds</p>
+<p>In addition, by routing all connections through ConnectionManager,
+future refactorings/modifications will be easier.  For example,
+fallbacks or IP multi-plexing.</p>
+<dl class="class">
+<dt id="support.connection_mgr.Address">
+<em class="property">class </em><code class="descclassname">support.connection_mgr.</code><code class="descname">Address</code><span class="sig-paren">(</span><em>ip</em>, <em>port</em><span class="sig-paren">)</span><a class="headerlink" href="#support.connection_mgr.Address" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="attribute">
+<dt id="support.connection_mgr.Address.ip">
+<code class="descname">ip</code><a class="headerlink" href="#support.connection_mgr.Address.ip" title="Permalink to this definition">¶</a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="support.connection_mgr.Address.port">
+<code class="descname">port</code><a class="headerlink" href="#support.connection_mgr.Address.port" title="Permalink to this definition">¶</a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.connection_mgr.AddressGroup">
+<em class="property">class </em><code class="descclassname">support.connection_mgr.</code><code class="descname">AddressGroup</code><span class="sig-paren">(</span><em>tiers</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#AddressGroup"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.AddressGroup" title="Permalink to this definition">¶</a></dt>
+<dd><p>An address group represents the set of addresses known by a
+specific name to a client at runtime.  That is, in a specific
+environment (stage, live, etc), an address group represents the
+set of &lt;ip, port&gt; pairs to try.</p>
+<p>An address group consists of tiers. Each tier should be fully
+exhausted before moving on to the next; tiers are &#8220;fallbacks&#8221;.  A
+tier consists of prioritized addresses.  Within a tier, the
+addresses should be tried in a priority weighted random order.</p>
+<p>The simplest way to use an address group is just to iterate over
+it, and try each address in the order returned.</p>
+<p>tiers: [ [(weight, (ip, port)), (weight, (ip, port)) ... ] ... ]</p>
+<dl class="method">
+<dt id="support.connection_mgr.AddressGroup.connect_ordering">
+<code class="descname">connect_ordering</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#AddressGroup.connect_ordering"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.AddressGroup.connect_ordering" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.connection_mgr.AddressGroupMap">
+<em class="property">class </em><code class="descclassname">support.connection_mgr.</code><code class="descname">AddressGroupMap</code><a class="reference internal" href="_modules/support/connection_mgr.html#AddressGroupMap"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.AddressGroupMap" title="Permalink to this definition">¶</a></dt>
+<dd><p>For dev mode, will lazily pull in additional addresses.</p>
+</dd></dl>
+
+<dl class="class">
+<dt id="support.connection_mgr.ConnectInfo">
+<em class="property">class </em><code class="descclassname">support.connection_mgr.</code><code class="descname">ConnectInfo</code><span class="sig-paren">(</span><em>connect_timeout_ms</em>, <em>response_timeout_ms</em>, <em>max_connect_retry</em>, <em>transient_markdown_enabled</em>, <em>markdown</em><span class="sig-paren">)</span><a class="headerlink" href="#support.connection_mgr.ConnectInfo" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="attribute">
+<dt id="support.connection_mgr.ConnectInfo.connect_timeout_ms">
+<code class="descname">connect_timeout_ms</code><a class="headerlink" href="#support.connection_mgr.ConnectInfo.connect_timeout_ms" title="Permalink to this definition">¶</a></dt>
+<dd><p>Alias for field number 0</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="support.connection_mgr.ConnectInfo.markdown">
+<code class="descname">markdown</code><a class="headerlink" href="#support.connection_mgr.ConnectInfo.markdown" title="Permalink to this definition">¶</a></dt>
+<dd><p>Alias for field number 4</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="support.connection_mgr.ConnectInfo.max_connect_retry">
+<code class="descname">max_connect_retry</code><a class="headerlink" href="#support.connection_mgr.ConnectInfo.max_connect_retry" title="Permalink to this definition">¶</a></dt>
+<dd><p>Alias for field number 2</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="support.connection_mgr.ConnectInfo.response_timeout_ms">
+<code class="descname">response_timeout_ms</code><a class="headerlink" href="#support.connection_mgr.ConnectInfo.response_timeout_ms" title="Permalink to this definition">¶</a></dt>
+<dd><p>Alias for field number 1</p>
+</dd></dl>
+
+<dl class="attribute">
+<dt id="support.connection_mgr.ConnectInfo.transient_markdown_enabled">
+<code class="descname">transient_markdown_enabled</code><a class="headerlink" href="#support.connection_mgr.ConnectInfo.transient_markdown_enabled" title="Permalink to this definition">¶</a></dt>
+<dd><p>Alias for field number 3</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.connection_mgr.ConnectionManager">
+<em class="property">class </em><code class="descclassname">support.connection_mgr.</code><code class="descname">ConnectionManager</code><span class="sig-paren">(</span><em>address_groups=None</em>, <em>address_aliases=None</em>, <em>ssl_context=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#ConnectionManager"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.ConnectionManager" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="method">
+<dt id="support.connection_mgr.ConnectionManager.cull_loop">
+<code class="descname">cull_loop</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#ConnectionManager.cull_loop"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.ConnectionManager.cull_loop" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.connection_mgr.ConnectionManager.get_addr">
+<code class="descname">get_addr</code><span class="sig-paren">(</span><em>name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#ConnectionManager.get_addr"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.ConnectionManager.get_addr" title="Permalink to this definition">¶</a></dt>
+<dd><p>returns the first address which the logical name would resolve to,
+equivalent to get_all_addrs(name)[0]</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="support.connection_mgr.ConnectionManager.get_all_addrs">
+<code class="descname">get_all_addrs</code><span class="sig-paren">(</span><em>name</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#ConnectionManager.get_all_addrs"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.ConnectionManager.get_all_addrs" title="Permalink to this definition">¶</a></dt>
+<dd><p>returns the all addresses which the logical name would resolve to,
+or raises NameNotFound if there is no known address for the given name</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="support.connection_mgr.ConnectionManager.get_connection">
+<code class="descname">get_connection</code><span class="sig-paren">(</span><em>name_or_addr</em>, <em>ssl=False</em>, <em>sock_type=None</em>, <em>read_timeout=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#ConnectionManager.get_connection"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.ConnectionManager.get_connection" title="Permalink to this definition">¶</a></dt>
+<dd><p>name_or_addr - the logical name to connect to, e.g. &#8220;db-r&#8221;
+ssl - if set to True, wrap socket with context.protected;</p>
+<blockquote>
+<div>if set to an SSL context, wrap socket with that</div></blockquote>
+<dl class="docutils">
+<dt>sock_type - a type to wrap the socket in; the intention here is for protocols</dt>
+<dd><p class="first">that want to run asynchronous keep-alives, or higher level handshaking
+(strictly speaking, this is just a callable which accepts socket and</p>
+<blockquote class="last">
+<div>returns the thing that should be pooled, but for must uses it will
+probably be a class)</div></blockquote>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="method">
+<dt id="support.connection_mgr.ConnectionManager.release_connection">
+<code class="descname">release_connection</code><span class="sig-paren">(</span><em>sock</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#ConnectionManager.release_connection"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.ConnectionManager.release_connection" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="exception">
+<dt id="support.connection_mgr.MarkedDownError">
+<em class="property">exception </em><code class="descclassname">support.connection_mgr.</code><code class="descname">MarkedDownError</code><a class="reference internal" href="_modules/support/connection_mgr.html#MarkedDownError"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.MarkedDownError" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="class">
+<dt id="support.connection_mgr.MonitoredSocket">
+<em class="property">class </em><code class="descclassname">support.connection_mgr.</code><code class="descname">MonitoredSocket</code><span class="sig-paren">(</span><em>sock</em>, <em>registry</em>, <em>protected</em>, <em>name=None</em>, <em>type=None</em>, <em>state=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#MonitoredSocket"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.MonitoredSocket" title="Permalink to this definition">¶</a></dt>
+<dd><p>A socket proxy which allows socket lifetime to be monitored.</p>
+<dl class="method">
+<dt id="support.connection_mgr.MonitoredSocket.close">
+<code class="descname">close</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#MonitoredSocket.close"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.MonitoredSocket.close" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.connection_mgr.MonitoredSocket.recv">
+<code class="descname">recv</code><span class="sig-paren">(</span><em>bufsize</em>, <em>flags=0</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#MonitoredSocket.recv"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.MonitoredSocket.recv" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.connection_mgr.MonitoredSocket.send">
+<code class="descname">send</code><span class="sig-paren">(</span><em>data</em>, <em>flags=0</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#MonitoredSocket.send"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.MonitoredSocket.send" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.connection_mgr.MonitoredSocket.sendall">
+<code class="descname">sendall</code><span class="sig-paren">(</span><em>data</em>, <em>flags=0</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#MonitoredSocket.sendall"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.MonitoredSocket.sendall" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.connection_mgr.MonitoredSocket.shutdown">
+<code class="descname">shutdown</code><span class="sig-paren">(</span><em>how</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#MonitoredSocket.shutdown"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.MonitoredSocket.shutdown" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="exception">
+<dt id="support.connection_mgr.MultiConnectFailure">
+<em class="property">exception </em><code class="descclassname">support.connection_mgr.</code><code class="descname">MultiConnectFailure</code><a class="reference internal" href="_modules/support/connection_mgr.html#MultiConnectFailure"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.MultiConnectFailure" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="exception">
+<dt id="support.connection_mgr.NameNotFound">
+<em class="property">exception </em><code class="descclassname">support.connection_mgr.</code><code class="descname">NameNotFound</code><a class="reference internal" href="_modules/support/connection_mgr.html#NameNotFound"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.NameNotFound" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="exception">
+<dt id="support.connection_mgr.OutOfSockets">
+<em class="property">exception </em><code class="descclassname">support.connection_mgr.</code><code class="descname">OutOfSockets</code><a class="reference internal" href="_modules/support/connection_mgr.html#OutOfSockets"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.OutOfSockets" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="class">
+<dt id="support.connection_mgr.ServerModel">
+<em class="property">class </em><code class="descclassname">support.connection_mgr.</code><code class="descname">ServerModel</code><span class="sig-paren">(</span><em>address</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#ServerModel"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.ServerModel" title="Permalink to this definition">¶</a></dt>
+<dd><p>This class represents an estimate of the state of a given &#8220;server&#8221;.
+&#8220;Server&#8221; is defined here by whatever accepts the socket
+connections, which in practice may be an entire pool of server
+machines/VMS, each of which has multiple worker thread/procs.</p>
+<p>For example, estimate how many connections are currently open
+(note: only an estimate, since the exact server-side state of the
+sockets is unknown)</p>
+<dl class="method">
+<dt id="support.connection_mgr.ServerModel.sock_in_use">
+<code class="descname">sock_in_use</code><span class="sig-paren">(</span><em>sock</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/connection_mgr.html#ServerModel.sock_in_use"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.ServerModel.sock_in_use" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="class">
+<dt id="support.connection_mgr.ServerModelDirectory">
+<em class="property">class </em><code class="descclassname">support.connection_mgr.</code><code class="descname">ServerModelDirectory</code><a class="reference internal" href="_modules/support/connection_mgr.html#ServerModelDirectory"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.connection_mgr.ServerModelDirectory" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="index.html">
+    <img class="logo" src="_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="async.html">Asynchronous Helpers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="buffered_socket.html">Buffered Socket</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="">Managed Connections</a></li>
+<li class="toctree-l1"><a class="reference internal" href="context.html">Context Management</a></li>
+<li class="toctree-l1"><a class="reference internal" href="crypto.html">Cryptography and Security</a></li>
+<li class="toctree-l1"><a class="reference internal" href="exceptions.html">Exceptions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="group.html">Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="http_client.html">HTTP Client</a></li>
+<li class="toctree-l1"><a class="reference internal" href="meta_service.html">MetaService</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+      |
+      <a href="_sources/connection_mgr.txt"
+          rel="nofollow">Page source</a></li>
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>

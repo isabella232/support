@@ -6,7 +6,7 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     
-    <title>SuPPort &mdash; SuPPort 0.0.1 documentation</title>
+    <title>Exceptions &mdash; SuPPort 0.0.1 documentation</title>
     
     <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
@@ -23,8 +23,9 @@
     <script type="text/javascript" src="_static/jquery.js"></script>
     <script type="text/javascript" src="_static/underscore.js"></script>
     <script type="text/javascript" src="_static/doctools.js"></script>
-    <link rel="top" title="SuPPort 0.0.1 documentation" href="#" />
-    <link rel="next" title="Architecture" href="architecture.html" />
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="index.html" />
+    <link rel="next" title="Groups" href="group.html" />
+    <link rel="prev" title="Cryptography and Security" href="crypto.html" />
    
   
   <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
@@ -41,9 +42,12 @@
           <a href="py-modindex.html" title="Python Module Index"
              >modules</a> |</li>
         <li class="right" >
-          <a href="architecture.html" title="Architecture"
+          <a href="group.html" title="Groups"
              accesskey="N">next</a> |</li>
-        <li class="nav-item nav-item-0"><a href="#">SuPPort 0.0.1 documentation</a> &raquo;</li> 
+        <li class="right" >
+          <a href="crypto.html" title="Cryptography and Security"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">SuPPort 0.0.1 documentation</a> &raquo;</li> 
       </ul>
     </div>  
 
@@ -52,43 +56,37 @@
         <div class="bodywrapper">
           <div class="body" role="main">
             
-  <div class="section" id="support">
-<h1>SuPPort<a class="headerlink" href="#support" title="Permalink to this headline">¶</a></h1>
-<p>SuPPort is an event-driven server framework designed for building scalable
-and maintainable services and clients in Python.</p>
-<p>Contents:</p>
-<div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="architecture.html#open-source-foundations">Open-source foundations</a></li>
-<li class="toctree-l2"><a class="reference internal" href="architecture.html#interoperability">Interoperability</a></li>
-<li class="toctree-l2"><a class="reference internal" href="architecture.html#introspectability">Introspectability</a></li>
-<li class="toctree-l2"><a class="reference internal" href="architecture.html#infallibility">Infallibility</a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="async.html">Asynchronous Helpers</a></li>
-<li class="toctree-l1"><a class="reference internal" href="buffered_socket.html">Buffered Socket</a></li>
-<li class="toctree-l1"><a class="reference internal" href="connection_mgr.html">Managed Connections</a></li>
-<li class="toctree-l1"><a class="reference internal" href="context.html">Context Management</a></li>
-<li class="toctree-l1"><a class="reference internal" href="crypto.html">Cryptography and Security</a></li>
-<li class="toctree-l1"><a class="reference internal" href="exceptions.html">Exceptions</a></li>
-<li class="toctree-l1"><a class="reference internal" href="group.html">Groups</a></li>
-<li class="toctree-l1"><a class="reference internal" href="http_client.html">HTTP Client</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="http_client.html#drop-in-http-client-gurllib2">Drop-in HTTP client: <code class="docutils literal"><span class="pre">gurllib2</span></code></a></li>
-<li class="toctree-l2"><a class="reference internal" href="http_client.html#low-level-http-client-http-client">Low-level HTTP client: <code class="docutils literal"><span class="pre">http_client</span></code></a></li>
-</ul>
-</li>
-<li class="toctree-l1"><a class="reference internal" href="meta_service.html">MetaService</a></li>
-</ul>
-</div>
-</div>
-<div class="section" id="indices-and-tables">
-<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Permalink to this headline">¶</a></h1>
-<ul class="simple">
-<li><a class="reference internal" href="genindex.html"><span>Index</span></a></li>
-<li><a class="reference internal" href="py-modindex.html"><span>Module Index</span></a></li>
-<li><a class="reference internal" href="search.html"><span>Search Page</span></a></li>
-</ul>
+  <div class="section" id="module-support.exceptions">
+<span id="exceptions"></span><h1>Exceptions<a class="headerlink" href="#module-support.exceptions" title="Permalink to this headline">¶</a></h1>
+<p>This module holds root exception types, as well as mix-ins
+that can be subclassed for user code or used in try/except blocks</p>
+<dl class="class">
+<dt id="support.exceptions.GLineCache">
+<em class="property">class </em><code class="descclassname">support.exceptions.</code><code class="descname">GLineCache</code><a class="reference internal" href="_modules/support/exceptions.html#GLineCache"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.exceptions.GLineCache" title="Permalink to this definition">¶</a></dt>
+<dd><p>same idea as linecache.py module, but uses gevent primitives and thread/greenlet safe</p>
+<dl class="method">
+<dt id="support.exceptions.GLineCache.getline">
+<code class="descname">getline</code><span class="sig-paren">(</span><em>filename</em>, <em>lineno</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/exceptions.html#GLineCache.getline"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.exceptions.GLineCache.getline" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.exceptions.GLineCache.update">
+<code class="descname">update</code><span class="sig-paren">(</span><em>filename</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/exceptions.html#GLineCache.update"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.exceptions.GLineCache.update" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="support.exceptions.code_list2trace_list">
+<code class="descclassname">support.exceptions.</code><code class="descname">code_list2trace_list</code><span class="sig-paren">(</span><em>code_list</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/exceptions.html#code_list2trace_list"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.exceptions.code_list2trace_list" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="function">
+<dt id="support.exceptions.current_code_list">
+<code class="descclassname">support.exceptions.</code><code class="descname">current_code_list</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/exceptions.html#current_code_list"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.exceptions.current_code_list" title="Permalink to this definition">¶</a></dt>
+<dd><p>returns a code-list that can be formatted by code_list2trace_list</p>
+</dd></dl>
+
 </div>
 
 
@@ -98,7 +96,7 @@ and maintainable services and clients in Python.</p>
       <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
         <div class="sphinxsidebarwrapper">
 <p class="logo">
-  <a href="#">
+  <a href="index.html">
     <img class="logo" src="_static/support_logo.png" alt="Logo"/>
     
     <h1 class="logo logo-name">SuPPort</h2>
@@ -119,14 +117,14 @@ and maintainable services and clients in Python.</p>
 
 
 <h3>Navigation</h3>
-<ul>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
 <li class="toctree-l1"><a class="reference internal" href="async.html">Asynchronous Helpers</a></li>
 <li class="toctree-l1"><a class="reference internal" href="buffered_socket.html">Buffered Socket</a></li>
 <li class="toctree-l1"><a class="reference internal" href="connection_mgr.html">Managed Connections</a></li>
 <li class="toctree-l1"><a class="reference internal" href="context.html">Context Management</a></li>
 <li class="toctree-l1"><a class="reference internal" href="crypto.html">Cryptography and Security</a></li>
-<li class="toctree-l1"><a class="reference internal" href="exceptions.html">Exceptions</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="">Exceptions</a></li>
 <li class="toctree-l1"><a class="reference internal" href="group.html">Groups</a></li>
 <li class="toctree-l1"><a class="reference internal" href="http_client.html">HTTP Client</a></li>
 <li class="toctree-l1"><a class="reference internal" href="meta_service.html">MetaService</a></li>
@@ -141,7 +139,7 @@ and maintainable services and clients in Python.</p>
       &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
       
       |
-      <a href="_sources/index.txt"
+      <a href="_sources/exceptions.txt"
           rel="nofollow">Page source</a></li>
     </div>
 

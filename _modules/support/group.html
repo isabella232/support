@@ -1,0 +1,850 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>support.group &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../index.html">SuPPort 0.0.1 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for support.group</h1><div class="highlight"><pre>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Defines a Group class for running and managing servers, as well as a set of</span>
+<span class="sd">base server types.</span>
+
+<span class="sd">The following information is needed to start a server:</span>
+<span class="sd">1- handler / wsgi app</span>
+<span class="sd">2- address</span>
+<span class="sd">3- ssl preference</span>
+
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+<span class="kn">import</span> <span class="nn">threading</span>
+<span class="kn">import</span> <span class="nn">traceback</span>
+<span class="kn">import</span> <span class="nn">collections</span>
+
+<span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">os</span><span class="p">,</span> <span class="s">&quot;fork&quot;</span><span class="p">):</span>
+    <span class="kn">import</span> <span class="nn">ufork</span>
+    <span class="kn">import</span> <span class="nn">fcntl</span>
+    <span class="kn">import</span> <span class="nn">errno</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">ufork</span> <span class="o">=</span> <span class="bp">None</span>
+<span class="kn">import</span> <span class="nn">gevent</span>
+<span class="kn">from</span> <span class="nn">gevent</span> <span class="kn">import</span> <span class="n">pywsgi</span>
+<span class="kn">import</span> <span class="nn">gevent.server</span>
+<span class="kn">import</span> <span class="nn">gevent.socket</span>
+<span class="kn">import</span> <span class="nn">gevent.pool</span>
+
+<span class="kn">import</span> <span class="nn">clastic</span>
+<span class="kn">from</span> <span class="nn">faststat</span> <span class="kn">import</span> <span class="n">nanotime</span>
+
+<span class="kn">from</span> <span class="nn">support</span> <span class="kn">import</span> <span class="n">async</span>
+<span class="kn">from</span> <span class="nn">support</span> <span class="kn">import</span> <span class="n">context</span>
+<span class="kn">from</span> <span class="nn">support.crypto</span> <span class="kn">import</span> <span class="n">SSLContext</span>
+
+<span class="kn">import</span> <span class="nn">ll</span>
+<span class="n">ml</span> <span class="o">=</span> <span class="n">ll</span><span class="o">.</span><span class="n">LLogger</span><span class="p">()</span>
+<span class="n">ml2</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">get_module_logger</span><span class="p">()</span>
+
+<span class="c"># TODO: autoadd console and meta servers</span>
+
+<span class="n">DEFAULT_NUM_WORKERS</span> <span class="o">=</span> <span class="mi">1</span>
+<span class="n">DEFAULT_MAX_CLIENTS</span> <span class="o">=</span> <span class="mi">1024</span>  <span class="c"># per worker</span>
+<span class="n">DEFAULT_SOCKET_LISTEN_SIZE</span> <span class="o">=</span> <span class="mi">128</span>
+
+
+<div class="viewcode-block" id="Group"><a class="viewcode-back" href="../../group.html#support.group.Group">[docs]</a><span class="k">class</span> <span class="nc">Group</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">wsgi_apps</span><span class="o">=</span><span class="p">(),</span> <span class="n">stream_handlers</span><span class="o">=</span><span class="p">(),</span> <span class="n">custom_servers</span><span class="o">=</span><span class="p">(),</span>
+                 <span class="n">prefork</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="n">daemonize</span><span class="o">=</span><span class="bp">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">):</span>
+        <span class="sd">&quot;&quot;&quot;\</span>
+<span class="sd">        Create a new Group of servers which can be started/stopped/forked</span>
+<span class="sd">        as a group.</span>
+
+<span class="sd">        *wsgi_apps* should be of the form  [ (wsgi_app, address, ssl), ...  ]</span>
+
+<span class="sd">        *stream_handlers* should be of the form  [ (handler_func, address), ...  ]</span>
+
+<span class="sd">        *custom_servers* should be of the form [ (server_class, address), ... ]</span>
+<span class="sd">        where server_class refers to subclasses of gevent.server.StreamServer</span>
+<span class="sd">        which define their own handle function</span>
+
+<span class="sd">        address here refers to a tuple (ip, port), or more generally anything which is</span>
+<span class="sd">        acceptable as the address parameter to</span>
+<span class="sd">        `socket.bind() &lt;http://docs.python.org/2/library/socket.html#socket.socket.bind&gt;`_.</span>
+
+<span class="sd">        `handler_func` should have the following signature: f(socket, address), following</span>
+<span class="sd">        the `convention of gevent &lt;http://www.gevent.org/servers.html&gt;`_.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wsgi_apps</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">wsgi_apps</span> <span class="ow">or</span> <span class="p">[])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">stream_handlers</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">stream_handlers</span> <span class="ow">or</span> <span class="p">[])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">custom_servers</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">custom_servers</span> <span class="ow">or</span> <span class="p">[])</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">prefork</span> <span class="o">=</span> <span class="n">prefork</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">daemonize</span> <span class="o">=</span> <span class="n">daemonize</span>
+        <span class="c"># max number of concurrent clients per worker</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_clients</span> <span class="o">=</span> <span class="n">kw</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;max_clients&#39;</span><span class="p">,</span> <span class="n">DEFAULT_MAX_CLIENTS</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_workers</span> <span class="o">=</span> <span class="n">kw</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;num_workers&#39;</span><span class="p">,</span> <span class="n">DEFAULT_NUM_WORKERS</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">post_fork</span> <span class="o">=</span> <span class="n">kw</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;post_fork&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>  <span class="c"># post-fork callback</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">server_log</span> <span class="o">=</span> <span class="n">kw</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;gevent_log&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">meta_address</span> <span class="o">=</span> <span class="n">kw</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;meta_address&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">console_address</span> <span class="o">=</span> <span class="n">kw</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;console_address&#39;</span><span class="p">,</span> <span class="bp">None</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_require_client_auth</span> <span class="o">=</span> <span class="n">kw</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="s">&#39;require_client_auth&#39;</span><span class="p">,</span> <span class="bp">True</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">kw</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s">&#39;unexpected keyword args: </span><span class="si">%r</span><span class="s">&#39;</span> <span class="o">%</span> <span class="n">kw</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">client_pool</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">pool</span><span class="o">.</span><span class="n">Pool</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">max_concurrent_clients</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">servers</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">socks</span> <span class="o">=</span> <span class="p">{}</span>
+
+        <span class="c"># we do NOT want a gevent socket if we&#39;re going to use a</span>
+        <span class="c"># thread to manage our accepts; it&#39;s critical that the</span>
+        <span class="c"># accept() call *blocks*</span>
+        <span class="n">socket_type</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">socket</span><span class="o">.</span><span class="n">socket</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">ufork</span> <span class="k">else</span> <span class="n">socket</span><span class="o">.</span><span class="n">socket</span>
+
+        <span class="k">for</span> <span class="n">app</span><span class="p">,</span> <span class="n">address</span><span class="p">,</span> <span class="n">ssl</span> <span class="ow">in</span> <span class="n">wsgi_apps</span><span class="p">:</span>
+            <span class="n">sock</span> <span class="o">=</span> <span class="n">_make_server_sock</span><span class="p">(</span><span class="n">address</span><span class="p">,</span> <span class="n">socket_type</span><span class="o">=</span><span class="n">socket_type</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">ssl</span><span class="p">,</span> <span class="n">SSLContext</span><span class="p">):</span>
+                <span class="n">ssl_context</span> <span class="o">=</span> <span class="n">ssl</span>
+            <span class="k">elif</span> <span class="n">ssl</span><span class="p">:</span>
+                <span class="n">ssl_context</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">ssl_context</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">ssl_context</span> <span class="o">=</span> <span class="bp">None</span>
+            <span class="k">if</span> <span class="n">ssl_context</span><span class="p">:</span>
+                <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_no_client_auth_req</span><span class="p">:</span>
+                    <span class="n">server</span> <span class="o">=</span> <span class="n">MultiProtocolWSGIServer</span><span class="p">(</span>
+                        <span class="n">sock</span><span class="p">,</span> <span class="n">app</span><span class="p">,</span> <span class="n">spawn</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">client_pool</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="n">ssl_context</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">server</span> <span class="o">=</span> <span class="n">SslContextWSGIServer</span><span class="p">(</span>
+                        <span class="n">sock</span><span class="p">,</span> <span class="n">app</span><span class="p">,</span> <span class="n">spawn</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">client_pool</span><span class="p">,</span> <span class="n">context</span><span class="o">=</span><span class="n">ssl_context</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">server</span> <span class="o">=</span> <span class="n">ThreadQueueWSGIServer</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">app</span><span class="p">)</span>
+            <span class="n">server</span><span class="o">.</span><span class="n">log</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">server_log</span> <span class="ow">or</span> <span class="n">RotatingGeventLog</span><span class="p">()</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">servers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">server</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">socks</span><span class="p">[</span><span class="n">server</span><span class="p">]</span> <span class="o">=</span> <span class="n">sock</span>
+            <span class="c"># prevent a &quot;blocking&quot; call to DNS on each request</span>
+            <span class="c"># (NOTE: although the OS won&#39;t block, gevent will dispatch</span>
+            <span class="c"># to a threadpool which is expensive)</span>
+            <span class="n">server</span><span class="o">.</span><span class="n">set_environ</span><span class="p">({</span><span class="s">&#39;SERVER_NAME&#39;</span><span class="p">:</span> <span class="n">socket</span><span class="o">.</span><span class="n">getfqdn</span><span class="p">(</span><span class="n">address</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span>
+                                <span class="s">&#39;wsgi.multiprocess&#39;</span><span class="p">:</span> <span class="bp">True</span><span class="p">})</span>
+        <span class="k">for</span> <span class="n">handler</span><span class="p">,</span> <span class="n">address</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream_handlers</span><span class="p">:</span>
+            <span class="n">sock</span> <span class="o">=</span> <span class="n">_make_server_sock</span><span class="p">(</span><span class="n">address</span><span class="p">)</span>
+            <span class="n">server</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">server</span><span class="o">.</span><span class="n">StreamServer</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">handler</span><span class="p">,</span> <span class="n">spawn</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">client_pool</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">servers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">server</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">server_class</span><span class="p">,</span> <span class="n">address</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">custom_servers</span><span class="p">:</span>
+            <span class="c"># our stated requirement is that users provide a subclass</span>
+            <span class="c"># of StreamServer, which would *not* know about our thread</span>
+            <span class="c"># queue.  consequently we can&#39;t give it a blocking socket</span>
+            <span class="n">sock</span> <span class="o">=</span> <span class="n">_make_server_sock</span><span class="p">(</span><span class="n">address</span><span class="p">)</span>
+            <span class="n">server</span> <span class="o">=</span> <span class="n">server_class</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">spawn</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">client_pool</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">servers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">server</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">console_address</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">sock</span> <span class="o">=</span> <span class="n">_make_server_sock</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">console_address</span><span class="p">)</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="k">print</span> <span class="s">&quot;WARNING: unable to start backdoor server on port&quot;</span><span class="p">,</span> <span class="n">ctx</span><span class="o">.</span><span class="n">backdoor_port</span><span class="p">,</span> <span class="nb">repr</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">server</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">server</span><span class="o">.</span><span class="n">StreamServer</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">console_sock_handle</span><span class="p">,</span> <span class="n">spawn</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">client_pool</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">servers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">server</span><span class="p">)</span>
+        <span class="c"># set all servers max_accept to 1 since we are in a pre-forked/multiprocess environment</span>
+        <span class="k">for</span> <span class="n">server</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">servers</span><span class="p">:</span>
+            <span class="n">server</span><span class="o">.</span><span class="n">max_accept</span> <span class="o">=</span> <span class="mi">1</span>
+
+<div class="viewcode-block" id="Group.iter_addresses"><a class="viewcode-back" href="../../group.html#support.group.Group.iter_addresses">[docs]</a>    <span class="k">def</span> <span class="nf">iter_addresses</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># TODO: also yield app/handler?</span>
+        <span class="k">for</span> <span class="n">wsgi_app</span><span class="p">,</span> <span class="n">address</span><span class="p">,</span> <span class="n">ssl_ctx</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">wsgi_apps</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">address</span>
+        <span class="k">for</span> <span class="n">handler</span><span class="p">,</span> <span class="n">address</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">stream_handlers</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">address</span>
+        <span class="k">for</span> <span class="n">server</span><span class="p">,</span> <span class="n">address</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">custom_servers</span><span class="p">:</span>
+            <span class="k">yield</span> <span class="n">address</span>
+</div>
+<div class="viewcode-block" id="Group.serve_forever"><a class="viewcode-back" href="../../group.html#support.group.Group.serve_forever">[docs]</a>    <span class="k">def</span> <span class="nf">serve_forever</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">running</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="c"># set up greenlet switch monitoring</span>
+            <span class="kn">import</span> <span class="nn">greenlet</span>
+            <span class="n">greenlet</span><span class="o">.</span><span class="n">settrace</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">_trace</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">AttributeError</span><span class="p">:</span>
+            <span class="k">pass</span>  <span class="c"># oh well</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">prefork</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+            <span class="n">log_msg</span> <span class="o">=</span> <span class="s">&#39;Group initialized and serving forever...&#39;</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">critical</span><span class="p">(</span><span class="s">&#39;GROUP.INIT&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">success</span><span class="p">(</span><span class="n">log_msg</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">dev</span> <span class="ow">and</span> <span class="n">ctx</span><span class="o">.</span><span class="n">dev_service_repl_enabled</span> <span class="ow">and</span> <span class="n">os</span><span class="o">.</span><span class="n">isatty</span><span class="p">(</span><span class="mi">0</span><span class="p">):</span>
+                <span class="n">async</span><span class="o">.</span><span class="n">start_repl</span><span class="p">({</span><span class="s">&#39;server&#39;</span><span class="p">:</span> <span class="n">ctx</span><span class="o">.</span><span class="n">server_group</span><span class="p">})</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="k">while</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">async</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mf">1.0</span><span class="p">)</span>
+            <span class="k">finally</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">stop</span><span class="p">()</span>
+            <span class="k">return</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ufork</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&#39;attempted to run pre-forked on platform without fork&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">tracing</span><span class="p">:</span>  <span class="c"># a little bit hacky, disable tracing in aribter</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">trace_in_child</span> <span class="o">=</span> <span class="bp">True</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">set_greenlet_trace</span><span class="p">(</span><span class="bp">False</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">trace_in_child</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">arbiter</span> <span class="o">=</span> <span class="n">ufork</span><span class="o">.</span><span class="n">Arbiter</span><span class="p">(</span>
+            <span class="n">post_fork</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_post_fork</span><span class="p">,</span> <span class="n">child_pre_exit</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">stop</span><span class="p">,</span> <span class="n">parent_pre_stop</span><span class="o">=</span><span class="n">ctx</span><span class="o">.</span><span class="n">stop</span><span class="p">,</span>
+            <span class="n">size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">num_workers</span><span class="p">,</span> <span class="n">sleep</span><span class="o">=</span><span class="n">async</span><span class="o">.</span><span class="n">sleep</span><span class="p">,</span> <span class="n">fork</span><span class="o">=</span><span class="n">gevent</span><span class="o">.</span><span class="n">fork</span><span class="p">,</span> <span class="n">child_memlimit</span><span class="o">=</span><span class="n">ctx</span><span class="o">.</span><span class="n">worker_memlimit</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">daemonize</span><span class="p">:</span>
+            <span class="n">pgrpfile</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">process_group_file_path</span><span class="p">,</span>
+                                   <span class="s">&#39;{0}.pgrp&#39;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">ctx</span><span class="o">.</span><span class="n">appname</span><span class="p">))</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">arbiter</span><span class="o">.</span><span class="n">spawn_daemon</span><span class="p">(</span><span class="n">pgrpfile</span><span class="o">=</span><span class="n">pgrpfile</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">arbiter</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+</div>
+    <span class="k">def</span> <span class="nf">_post_fork</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># TODO: revisit this with newer gevent release</span>
+        <span class="n">hub</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">hub</span><span class="o">.</span><span class="n">get_hub</span><span class="p">()</span>
+        <span class="n">hub</span><span class="o">.</span><span class="n">loop</span><span class="o">.</span><span class="n">reinit</span><span class="p">()</span>  <span class="c"># reinitializes libev</span>
+        <span class="n">hub</span><span class="o">.</span><span class="n">_threadpool</span> <span class="o">=</span> <span class="bp">None</span>  <span class="c"># eliminate gevent&#39;s internal threadpools</span>
+        <span class="n">gevent</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>  <span class="c"># let greenlets run</span>
+        <span class="c"># finally, eliminate our threadpools</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">thread_locals</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">local</span><span class="p">()</span>
+        <span class="c"># do not print logs failures -- they are in stats</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">log_failure_print</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">daemonize</span><span class="p">:</span>
+            <span class="n">ll</span><span class="o">.</span><span class="n">use_std_out</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">ctx</span><span class="o">.</span><span class="n">sampling</span><span class="p">:</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">set_sampling</span><span class="p">(</span><span class="bp">False</span><span class="p">)</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">set_sampling</span><span class="p">(</span><span class="bp">True</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">post_fork</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">post_fork</span><span class="p">()</span>
+        <span class="n">msg</span> <span class="o">=</span> <span class="s">&#39;successfully started process {pid}&#39;</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">critical</span><span class="p">(</span><span class="s">&#39;WORKER&#39;</span><span class="p">,</span> <span class="s">&#39;START&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">success</span><span class="p">(</span><span class="n">msg</span><span class="p">,</span> <span class="n">pid</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">())</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">trace_in_child</span><span class="p">:</span>  <span class="c"># re-enable tracing LONG SPIN detection</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">set_greenlet_trace</span><span class="p">(</span><span class="bp">True</span><span class="p">)</span>  <span class="c"># if it was enabled before forking</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+<div class="viewcode-block" id="Group.start"><a class="viewcode-back" href="../../group.html#support.group.Group.start">[docs]</a>    <span class="k">def</span> <span class="nf">start</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>  <span class="c"># TODO</span>
+        <span class="n">errs</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">server</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">servers</span><span class="p">:</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">server</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+                <span class="n">traceback</span><span class="o">.</span><span class="n">print_exc</span><span class="p">()</span>
+                <span class="n">errs</span><span class="p">[</span><span class="n">server</span><span class="p">]</span> <span class="o">=</span> <span class="n">e</span>
+        <span class="k">if</span> <span class="n">errs</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="n">errs</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="Group.stop"><a class="viewcode-back" href="../../group.html#support.group.Group.stop">[docs]</a>    <span class="k">def</span> <span class="nf">stop</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">30.0</span><span class="p">):</span>  <span class="c"># TODO: .shutdown()?</span>
+        <span class="n">gevent</span><span class="o">.</span><span class="n">joinall</span><span class="p">([</span><span class="n">gevent</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="n">server</span><span class="o">.</span><span class="n">stop</span><span class="p">,</span> <span class="n">timeout</span><span class="p">)</span>
+                        <span class="k">for</span> <span class="n">server</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">servers</span><span class="p">],</span> <span class="n">raise_error</span><span class="o">=</span><span class="bp">True</span><span class="p">)</span>
+
+</div></div>
+<span class="k">def</span> <span class="nf">_make_server_sock</span><span class="p">(</span><span class="n">address</span><span class="p">,</span> <span class="n">socket_type</span><span class="o">=</span><span class="n">gevent</span><span class="o">.</span><span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">):</span>
+    <span class="n">ml</span><span class="o">.</span><span class="n">ld</span><span class="p">(</span><span class="s">&quot;about to bind to {0!r}&quot;</span><span class="p">,</span> <span class="n">address</span><span class="p">)</span>
+    <span class="n">ml2</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s">&#39;listen_prep&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">success</span><span class="p">(</span><span class="s">&#39;about to bind to {addr}&#39;</span><span class="p">,</span> <span class="n">addr</span><span class="o">=</span><span class="n">address</span><span class="p">)</span>
+    <span class="n">sock</span> <span class="o">=</span> <span class="n">socket_type</span><span class="p">()</span>
+    <span class="n">sock</span><span class="o">.</span><span class="n">setsockopt</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">SOL_SOCKET</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">SO_REUSEADDR</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">sock</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">address</span><span class="p">)</span>
+
+    <span class="c"># NOTE: this is a &quot;hint&quot; to the OS than a strict rule about backlog size</span>
+    <span class="k">with</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">critical</span><span class="p">(</span><span class="s">&#39;LISTEN&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">_log</span><span class="p">:</span>
+        <span class="n">sock</span><span class="o">.</span><span class="n">listen</span><span class="p">(</span><span class="n">DEFAULT_SOCKET_LISTEN_SIZE</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">ufork</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="c"># we may fork, so protect ourselves</span>
+            <span class="n">flags</span> <span class="o">=</span> <span class="n">fcntl</span><span class="o">.</span><span class="n">fcntl</span><span class="p">(</span><span class="n">sock</span><span class="o">.</span><span class="n">fileno</span><span class="p">(),</span> <span class="n">fcntl</span><span class="o">.</span><span class="n">F_GETFD</span><span class="p">)</span>
+            <span class="n">fcntl</span><span class="o">.</span><span class="n">fcntl</span><span class="p">(</span><span class="n">sock</span><span class="o">.</span><span class="n">fileno</span><span class="p">(),</span> <span class="n">fcntl</span><span class="o">.</span><span class="n">F_SETFD</span><span class="p">,</span> <span class="n">flags</span> <span class="o">|</span> <span class="n">fcntl</span><span class="o">.</span><span class="n">FD_CLOEXEC</span><span class="p">)</span>
+        <span class="c">#ml.la(&quot;Listen to {0!r} gave this socket {1!r}&quot;, address, sock)</span>
+        <span class="n">_log</span><span class="o">.</span><span class="n">success</span><span class="p">(</span><span class="s">&#39;Listen to {addr} gave {sock}&#39;</span><span class="p">,</span> <span class="n">addr</span><span class="o">=</span><span class="n">address</span><span class="p">,</span> <span class="n">sock</span><span class="o">=</span><span class="n">sock</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">sock</span>
+
+
+<div class="viewcode-block" id="MakeFileCloseWSGIHandler"><a class="viewcode-back" href="../../group.html#support.group.MakeFileCloseWSGIHandler">[docs]</a><span class="k">class</span> <span class="nc">MakeFileCloseWSGIHandler</span><span class="p">(</span><span class="n">pywsgi</span><span class="o">.</span><span class="n">WSGIHandler</span><span class="p">):</span>
+    <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">    quick work-around to re-enable gevent&#39;s work-around of the</span>
+<span class="sd">    makefile() call in the pywsgi handler keeping sockets alive</span>
+<span class="sd">    past their shelf life</span>
+<span class="sd">    &#39;&#39;&#39;</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">socket</span><span class="p">,</span> <span class="n">address</span><span class="p">,</span> <span class="n">server</span><span class="p">,</span> <span class="n">rfile</span><span class="o">=</span><span class="bp">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">rfile</span> <span class="ow">is</span> <span class="bp">None</span> <span class="ow">and</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="s">&quot;_makefile_refs&quot;</span><span class="p">):</span>
+            <span class="n">rfile</span> <span class="o">=</span> <span class="n">socket</span><span class="o">.</span><span class="n">makefile</span><span class="p">()</span>
+            <span class="c"># restore gEvent&#39;s work-around of not letting wsgi.environ[&#39;input&#39;]</span>
+            <span class="c"># keep the socket alive in CLOSE_WAIT state after client is gone</span>
+            <span class="c"># to work with async.SSLSocket</span>
+            <span class="n">socket</span><span class="o">.</span><span class="n">_makefile_refs</span> <span class="o">-=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">markov_stats</span><span class="p">[</span><span class="s">&#39;wsgi_handler&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">make_transitor</span><span class="p">(</span><span class="s">&#39;new&#39;</span><span class="p">)</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">MakeFileCloseWSGIHandler</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="n">socket</span><span class="p">,</span> <span class="n">address</span><span class="p">,</span> <span class="n">server</span><span class="p">,</span> <span class="n">rfile</span><span class="p">)</span>
+
+<div class="viewcode-block" id="MakeFileCloseWSGIHandler.handle_one_request"><a class="viewcode-back" href="../../group.html#support.group.MakeFileCloseWSGIHandler.handle_one_request">[docs]</a>    <span class="k">def</span> <span class="nf">handle_one_request</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">transition</span><span class="p">(</span><span class="s">&#39;handling_request&#39;</span><span class="p">)</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">MakeFileCloseWSGIHandler</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">handle_one_request</span><span class="p">()</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">ret</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">transition</span><span class="p">(</span><span class="s">&#39;done&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ret</span>
+</div>
+<div class="viewcode-block" id="MakeFileCloseWSGIHandler.run_application"><a class="viewcode-back" href="../../group.html#support.group.MakeFileCloseWSGIHandler.run_application">[docs]</a>    <span class="k">def</span> <span class="nf">run_application</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">transition</span><span class="p">(</span><span class="s">&#39;running_application&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="nb">super</span><span class="p">(</span><span class="n">MakeFileCloseWSGIHandler</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">run_application</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="MakeFileCloseWSGIHandler.process_result"><a class="viewcode-back" href="../../group.html#support.group.MakeFileCloseWSGIHandler.process_result">[docs]</a>    <span class="k">def</span> <span class="nf">process_result</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">transition</span><span class="p">(</span><span class="s">&#39;writing_response&#39;</span><span class="p">)</span>
+        <span class="n">ret</span> <span class="o">=</span> <span class="nb">super</span><span class="p">(</span><span class="n">MakeFileCloseWSGIHandler</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">process_result</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">state</span><span class="o">.</span><span class="n">transition</span><span class="p">(</span><span class="s">&#39;done&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">ret</span>
+
+
+<span class="c"># Threaded accept queue implementation</span>
+<span class="c">#</span>
+<span class="c"># poll(2) and its relatives require that all processes monitoring a</span>
+<span class="c"># file descriptor be informed when it becomes readable or writable.</span>
+<span class="c"># Consequently, sharing a socket across multiple processes that call</span>
+<span class="c"># accept(2) after poll(2) says that socket is readable results in an</span>
+<span class="c"># inefficient distribution of connections; *all* processes are woken</span>
+<span class="c"># up when a new connection comes in, and which one actually *gets* the</span>
+<span class="c"># connection is hard to predict.</span>
+<span class="c">#</span>
+<span class="c"># Nginx, Apache and uwsgi all attempt to use shared memory mutexes to</span>
+<span class="c"># ensure only a single process wakes up when a new connection comes</span>
+<span class="c"># in.  Only the process holding the mutex at the time a new</span>
+<span class="c"># connections arrives can call accept, and it must release the mutex</span>
+<span class="c"># after the accept call concludes.  This also results in a better</span>
+<span class="c"># distribution of connections, because the kernel&#39;s scheduler</span>
+<span class="c"># coordinates fair mutex acquisition.</span>
+<span class="c">#</span>
+<span class="c"># The downside to this approach is that it requires a reliable shared</span>
+<span class="c"># memory mutex, which is unportable and somewhat difficult to manage.</span>
+<span class="c">#</span>
+<span class="c"># A second approach is have a thread that sleeps on accept(2) that</span>
+<span class="c"># pushes accepted connections out to the main event loop.  One reason</span>
+<span class="c"># we favor this approach to avoid the difficulties associated with</span>
+<span class="c"># shared memory mutexes.</span>
+<span class="c">#</span>
+<span class="c"># Another is it allows us to immediately accept all incoming</span>
+<span class="c"># connections, removing them from the kernel&#39;s listen queue and</span>
+<span class="c"># placing them instead on in queue we can inspect.  This allows us to</span>
+<span class="c"># close connections if we detect our queue has filled up.</span>
+<span class="c">#</span>
+<span class="c"># This allows us to immediately put back pressure on clients, which</span>
+<span class="c"># would not otherwise be able to do.  The reason: on Linux, the listen</span>
+<span class="c"># queue holds *completely established* connections -- meaning the</span>
+<span class="c"># kernel will complete the three-way handshake prior to our calling</span>
+<span class="c"># accept (man 2 listen).  Under very high loads, when no worker is</span>
+<span class="c"># able to call accept, connections will languish in the queue until</span>
+<span class="c"># they timeout.  By accepting each connection as soon as possible and</span>
+<span class="c"># closing it if the queue is full, we&#39;re able to communicate capacity</span>
+<span class="c"># limitations to clients and log these events.  (Thanks Chris!)</span>
+<span class="c">#</span>
+<span class="c"># NB: no process synchronizes its user-space queue with any other, so</span>
+<span class="c"># it&#39;s possible that one slow process will cause dropped connections,</span>
+<span class="c"># even though other processes are ready.  Kurt points out that</span>
+<span class="c"># determining the likelihood of this is a well understood application</span>
+<span class="c"># of queuing theory; it would be good to derive some expression that</span>
+<span class="c"># lets us determine probability of dropping connections when at least</span>
+<span class="c"># one worker process&#39; queue can accept a new connection.  Until then</span>
+<span class="c"># the context variable &quot;accept_queue_maxlen&quot; lets you tweak one of the</span>
+<span class="c"># variables.</span>
+<span class="c">#</span>
+<span class="c"># The actual implementation is somewhat convoluted because of gevent&#39;s</span>
+<span class="c"># BaseServer -&gt; StreamServer -&gt; WSGIServer inheritance hierarchy:</span>
+<span class="c">#</span>
+<span class="c"># BaseServer.start -&gt; BaseServer.start_accepting</span>
+<span class="c">#                                 |</span>
+<span class="c">#                                 v</span>
+<span class="c">#                      watcher = loop.io(listening_socket)</span>
+<span class="c">#                      watcher.start(self._do_read)</span>
+<span class="c">#                                 |</span>
+<span class="c">#                                 | (read event)</span>
+<span class="c"># BaseServer._do_read &lt;-----------+</span>
+<span class="c">#         |</span>
+<span class="c">#         | (do_read *only* defined in subclasses)</span>
+<span class="c">#         v</span>
+<span class="c">#       args &lt;--------- StreamServer.do_read ---- listener.accept()</span>
+<span class="c">#       ...</span>
+<span class="c">#       WSGIServer.do_handle(*args)  # *only* defined in subclasses</span>
+<span class="c">#</span>
+<span class="c"># The crux of our implementation is a ThreadWatcher which replaces the</span>
+<span class="c"># loop.io(...) instance.  A subclass on threading.Thread, it</span>
+<span class="c"># encapsulates:</span>
+
+<span class="c"># 1) a queue bounded by maxlen (a deque, which has fast, thread-safe</span>
+<span class="c">#    LIFO operations);</span>
+<span class="c">#</span>
+<span class="c"># 2) a gevent.event.Event</span>
+<span class="c">#</span>
+<span class="c"># 3) an async watcher whose send() callback is to release the set the</span>
+<span class="c">#    event (2)</span>
+<span class="c">#</span>
+<span class="c"># 4) a consumer greenlet that wait()s the event (2), checks that</span>
+<span class="c">#    there&#39;s something in the queue, and *fairly* runs the supplied</span>
+<span class="c">#    callback until the queue is empty;</span>
+<span class="c">#</span>
+<span class="c"># 5) a run() method that blocks until listener.accept(2) returns and</span>
+<span class="c">#     a) pushes the resulting socket and address *or* exception onto the</span>
+<span class="c">#        queue</span>
+<span class="c">#</span>
+<span class="c">#     b) calls the async watcher&#39;s (3) send method</span>
+<span class="c">#</span>
+<span class="c"># Putting this together:</span>
+<span class="c">#</span>
+<span class="c">#         ThreadWatcher       |         main thread</span>
+<span class="c"># ----------------------------+-------------------------------</span>
+<span class="c">#                             | 4. event.set()    &lt;----------+</span>
+<span class="c">#                             |                              |</span>
+<span class="c">#                             |       +-----------------+    |</span>
+<span class="c">#  1. sock, addr = accept(2)  |       | waiter_greenlet |    |</span>
+<span class="c">#                             |       +-----------------+    |</span>
+<span class="c">#                             |       |                 |    |</span>
+<span class="c">#     push                  queue     | 5. event.wait() |    |</span>
+<span class="c">#     sock, addr  +-------------------+---+             |    |</span>
+<span class="c">#  2. onto     -&gt; |          (sock, addr) |             |    |</span>
+<span class="c">#     queue;      +-------------------+---+             |    |</span>
+<span class="c">#                             |       | 6. while queue: |    |</span>
+<span class="c">#                             |       |     callback()  |    |</span>
+<span class="c">#                             |       |     sleep(0)    |    |</span>
+<span class="c">#  3. async.send()            |       |                 |    |</span>
+<span class="c">#            |                |       +-----------------+    |</span>
+<span class="c">#            |                |                              |</span>
+<span class="c">#            +-----------------------------------------------+</span>
+<span class="c">#                             |</span>
+<span class="c">#</span>
+<span class="c"># So ThreadWatcher requires that it&#39;s the only writer to the queue,</span>
+<span class="c"># and waiter_greenlet in the main thread requires that it&#39;s the only</span>
+<span class="c"># consumer of the queue.</span>
+<span class="c">#</span>
+<span class="c"># However, nothing in the above description consumes off the queue!</span>
+<span class="c"># Because of the code flow shown in the topmost diagram, we have to</span>
+<span class="c"># replace StreamServer with an implementation that knows that</span>
+<span class="c"># start_accepting() means create and spin up a ThreadWatcher, and</span>
+<span class="c"># do_read() means to pop off the queue.  So the new code flow is as</span>
+<span class="c"># follows:</span>
+<span class="c">#</span>
+<span class="c"># BaseServer.start -&gt; ThreadQueueServer.start_accepting</span>
+<span class="c">#                                 |</span>
+<span class="c">#                                 v</span>
+<span class="c">#                      watcher = ThreadWatcher(listening_socket)</span>
+<span class="c">#                      watcher.start(callback=self._do_read)</span>
+<span class="c">#                                 |</span>
+<span class="c">#                                 | (async.send() fires callback)</span>
+<span class="c"># BaseServer._do_read &lt;-----------+</span>
+<span class="c">#         |</span>
+<span class="c">#         | (do_read *only* defined in subclasses)</span>
+<span class="c">#         v</span>
+<span class="c">#       args &lt;--------- ThreadQueueServer.do_read ---- queue.popleft()</span>
+<span class="c">#       ....</span>
+<span class="c">#       ThreadQueueWSGIServer.do_handle(*args)  # *only* defined in subclasses</span>
+<span class="c">#</span>
+<span class="c">#</span>
+<span class="c"># The queue depth can be controlled via Context.accept_queue_maxlen</span>
+<span class="c">#</span>
+<span class="c"># Finally: we define a ThreadQueueWSGIServer that inherits from</span>
+<span class="c"># pywsgi.WSGIServer and our ThreadQueueServer *in that order*.</span>
+<span class="c"># Python&#39;s C3 MRO algorithm ensures that pywsgi.WSGIServer calls</span>
+<span class="c"># ThreadQueueServer&#39;s start_accepting, not StreamServer or BaseServer&#39;s</span>
+
+</div></div>
+<span class="n">DROPPED_CONN_STATS</span> <span class="o">=</span> <span class="s">&#39;server_group.dropped_connections.queue_full&#39;</span>
+<span class="n">DROPPED_EXC_STATS</span> <span class="o">=</span> <span class="s">&#39;server_group.dropped_exceptions.queue_full&#39;</span>
+
+
+<div class="viewcode-block" id="ThreadWatcher"><a class="viewcode-back" href="../../group.html#support.group.ThreadWatcher">[docs]</a><span class="k">class</span> <span class="nc">ThreadWatcher</span><span class="p">(</span><span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">):</span>
+
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">listener</span><span class="p">,</span> <span class="n">loop</span><span class="p">,</span> <span class="n">maxlen</span><span class="o">=</span><span class="mi">128</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">ThreadWatcher</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">__init__</span><span class="p">()</span>
+        <span class="c"># TODO: explicit join!!</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">daemon</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">maxlen</span> <span class="o">=</span> <span class="n">maxlen</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">queue</span> <span class="o">=</span> <span class="n">collections</span><span class="o">.</span><span class="n">deque</span><span class="p">(</span><span class="n">maxlen</span><span class="o">=</span><span class="n">maxlen</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">listener</span> <span class="o">=</span> <span class="n">listener</span>
+        <span class="c"># the event our watcher greenlet wait()s on.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">event</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">event</span><span class="o">.</span><span class="n">Event</span><span class="p">()</span>
+        <span class="c"># a cross-thread way to invoke event.set</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">async</span> <span class="o">=</span> <span class="n">loop</span><span class="o">.</span><span class="n">async</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">running</span> <span class="o">=</span> <span class="bp">False</span>
+
+    <span class="k">def</span> <span class="nf">_make_waiter</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">callback</span><span class="p">):</span>
+        <span class="c"># the watcher greenlet</span>
+        <span class="k">def</span> <span class="nf">waiter</span><span class="p">():</span>
+            <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">running</span><span class="p">:</span>
+                <span class="n">ml</span><span class="o">.</span><span class="n">ld</span><span class="p">(</span><span class="s">&#39;Thread connection consumer greenlet waiting&#39;</span><span class="p">)</span>
+                <span class="n">ml2</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s">&#39;thread_consumer&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">success</span><span class="p">(</span><span class="s">&#39;waiting&#39;</span><span class="p">)</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">event</span><span class="o">.</span><span class="n">clear</span><span class="p">()</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">event</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>
+                <span class="n">ml2</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s">&#39;thread_consumer&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">success</span><span class="p">(</span><span class="s">&#39;woke up&#39;</span><span class="p">)</span>
+                <span class="n">ml</span><span class="o">.</span><span class="n">ld</span><span class="p">(</span><span class="s">&#39;Thread connection consumer greenlet woke up&#39;</span><span class="p">)</span>
+
+                <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">queue</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">running</span><span class="p">:</span>
+                    <span class="n">callback</span><span class="p">()</span>
+                    <span class="n">gevent</span><span class="o">.</span><span class="n">sleep</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">waiter</span>
+
+<div class="viewcode-block" id="ThreadWatcher.start"><a class="viewcode-back" href="../../group.html#support.group.ThreadWatcher.start">[docs]</a>    <span class="k">def</span> <span class="nf">start</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">callback</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">running</span> <span class="o">=</span> <span class="bp">True</span>
+        <span class="c"># invoke self.event.set() on async.send().  This is invoked in</span>
+        <span class="c"># the *main* thread</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">event</span><span class="o">.</span><span class="n">set</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">waiter</span> <span class="o">=</span> <span class="n">gevent</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_make_waiter</span><span class="p">(</span><span class="n">callback</span><span class="p">))</span>
+        <span class="nb">super</span><span class="p">(</span><span class="n">ThreadWatcher</span><span class="p">,</span> <span class="bp">self</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+</div>
+<div class="viewcode-block" id="ThreadWatcher.stop"><a class="viewcode-back" href="../../group.html#support.group.ThreadWatcher.stop">[docs]</a>    <span class="k">def</span> <span class="nf">stop</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">running</span> <span class="o">=</span> <span class="bp">False</span>
+        <span class="c"># wake up the thread and have it bail out</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">listener</span><span class="o">.</span><span class="n">shutdown</span><span class="p">(</span><span class="n">socket</span><span class="o">.</span><span class="n">SHUT_RDWR</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ThreadWatcher.run"><a class="viewcode-back" href="../../group.html#support.group.ThreadWatcher.run">[docs]</a>    <span class="k">def</span> <span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="n">_nanotime</span> <span class="o">=</span> <span class="n">nanotime</span>
+        <span class="n">_DROPPED_CONN_STATS</span> <span class="o">=</span> <span class="n">DROPPED_CONN_STATS</span>
+        <span class="n">_DROPPED_EXC_STATS</span> <span class="o">=</span> <span class="n">DROPPED_EXC_STATS</span>
+
+        <span class="k">while</span> <span class="bp">self</span><span class="o">.</span><span class="n">running</span><span class="p">:</span>
+            <span class="n">sock</span><span class="p">,</span> <span class="n">addr</span><span class="p">,</span> <span class="n">exc</span> <span class="o">=</span> <span class="bp">None</span><span class="p">,</span> <span class="bp">None</span><span class="p">,</span> <span class="bp">None</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">sock</span><span class="p">,</span> <span class="n">addr</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">listener</span><span class="o">.</span><span class="n">accept</span><span class="p">()</span>
+            <span class="k">except</span> <span class="n">socket</span><span class="o">.</span><span class="n">error</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">exc</span><span class="o">.</span><span class="n">errno</span> <span class="o">==</span> <span class="n">errno</span><span class="o">.</span><span class="n">EINVAL</span><span class="p">:</span>
+                    <span class="n">ml</span><span class="o">.</span><span class="n">la</span><span class="p">(</span><span class="s">&#39;thread accept resulted in EINVAL; &#39;</span>
+                          <span class="s">&#39;assuming socket has been shutdown and terminating &#39;</span>
+                          <span class="s">&#39;accept loop&#39;</span><span class="p">)</span>
+                    <span class="bp">self</span><span class="o">.</span><span class="n">running</span> <span class="o">=</span> <span class="bp">False</span>
+                    <span class="k">return</span>
+            <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                <span class="c"># Maybe call sys.exc_info() here?  Is that safe to</span>
+                <span class="c"># send across threads?</span>
+                <span class="k">pass</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">queue</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">maxlen</span><span class="p">:</span>
+                <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+                <span class="n">stats</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">stats</span>
+                <span class="n">log_rec</span> <span class="o">=</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">critical</span><span class="p">(</span><span class="s">&#39;HTTP&#39;</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">sock</span> <span class="ow">and</span> <span class="n">addr</span><span class="p">:</span>
+                    <span class="n">sock</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+                    <span class="n">stats</span><span class="p">[</span><span class="n">_DROPPED_CONN_STATS</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="n">log_rec</span><span class="o">.</span><span class="n">failure</span><span class="p">(</span><span class="s">&#39;thread closed {socket} on {addr} &#39;</span>
+                                    <span class="s">&#39;because queue is full&#39;</span><span class="p">,</span>
+                                    <span class="n">socket</span><span class="o">=</span><span class="n">socket</span><span class="p">,</span>
+                                    <span class="n">addr</span><span class="o">=</span><span class="n">addr</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">stats</span><span class="p">[</span><span class="n">_DROPPED_EXC_STATS</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="n">log_rec</span><span class="o">.</span><span class="n">failure</span><span class="p">(</span><span class="s">&#39;thread dropped {exc} &#39;</span>
+                                    <span class="s">&#39;because queue is full&#39;</span><span class="p">,</span>
+                                    <span class="n">exc</span><span class="o">=</span><span class="n">exc</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">appendleft</span><span class="p">((</span><span class="n">sock</span><span class="p">,</span> <span class="n">addr</span><span class="p">,</span> <span class="n">exc</span><span class="p">,</span> <span class="n">_nanotime</span><span class="p">()))</span>
+                <span class="c"># wake up the watcher greenlet in the main thread</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">async</span><span class="o">.</span><span class="n">send</span><span class="p">()</span>
+
+</div></div>
+<span class="n">CONN_AGE_STATS</span> <span class="o">=</span> <span class="s">&#39;server_group.queued_connection_age_ms&#39;</span>
+
+
+<div class="viewcode-block" id="ThreadQueueServer"><a class="viewcode-back" href="../../group.html#support.group.ThreadQueueServer">[docs]</a><span class="k">class</span> <span class="nc">ThreadQueueServer</span><span class="p">(</span><span class="n">gevent</span><span class="o">.</span><span class="n">server</span><span class="o">.</span><span class="n">StreamServer</span><span class="p">):</span>
+
+<div class="viewcode-block" id="ThreadQueueServer.start_accepting"><a class="viewcode-back" href="../../group.html#support.group.ThreadQueueServer.start_accepting">[docs]</a>    <span class="k">def</span> <span class="nf">start_accepting</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># NB: This is called via BaseServer.start, which is invoked</span>
+        <span class="c"># *only* in post_fork.  It is *criticial* this thread is *not*</span>
+        <span class="c"># started prior to forking, lest it die.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_watcher</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="n">accept_maxlen</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">accept_queue_maxlen</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_watcher</span> <span class="o">=</span> <span class="n">ThreadWatcher</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">socket</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">loop</span><span class="p">,</span>
+                                          <span class="n">accept_maxlen</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_watcher</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_do_read</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="ThreadQueueServer.do_read"><a class="viewcode-back" href="../../group.html#support.group.ThreadQueueServer.do_read">[docs]</a>    <span class="k">def</span> <span class="nf">do_read</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c"># invoked via BaseServer._do_read.  Whereas</span>
+        <span class="c"># StreamServer.do_read calls self.socket.accept, we just</span>
+        <span class="c"># need to pop off our queue</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_watcher</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">_watcher</span><span class="o">.</span><span class="n">queue</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s">&#39;QUEUE DISAPPEARED&#39;</span><span class="p">)</span>
+        <span class="n">client_socket</span><span class="p">,</span> <span class="n">address</span><span class="p">,</span> <span class="n">exc</span><span class="p">,</span> <span class="n">pushed_at</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_watcher</span><span class="o">.</span><span class="n">queue</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+
+        <span class="n">age</span> <span class="o">=</span> <span class="n">nanotime</span><span class="p">()</span> <span class="o">-</span> <span class="n">pushed_at</span>
+        <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">stats</span><span class="p">[</span><span class="n">CONN_AGE_STATS</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">age</span> <span class="o">/</span> <span class="mf">1e6</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">exc</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="c"># raise the Exception</span>
+            <span class="k">raise</span> <span class="n">exc</span>
+
+        <span class="k">return</span> <span class="n">gevent</span><span class="o">.</span><span class="n">socket</span><span class="o">.</span><span class="n">socket</span><span class="p">(</span><span class="n">_sock</span><span class="o">=</span><span class="n">client_socket</span><span class="p">),</span> <span class="n">address</span>
+
+<span class="c"># don&#39;t use the thread queue server if we&#39;re not going to fork</span></div></div>
+<span class="k">if</span> <span class="n">ufork</span><span class="p">:</span>
+<div class="viewcode-block" id="ThreadQueueWSGIServer"><a class="viewcode-back" href="../../group.html#support.group.ThreadQueueWSGIServer">[docs]</a>    <span class="k">class</span> <span class="nc">ThreadQueueWSGIServer</span><span class="p">(</span><span class="n">pywsgi</span><span class="o">.</span><span class="n">WSGIServer</span><span class="p">,</span> <span class="n">ThreadQueueServer</span><span class="p">):</span>
+        <span class="k">pass</span></div>
+<span class="k">else</span><span class="p">:</span>
+    <span class="n">ThreadQueueWSGIServer</span> <span class="o">=</span> <span class="n">pywsgi</span><span class="o">.</span><span class="n">WSGIServer</span>
+
+
+<div class="viewcode-block" id="SslContextWSGIServer"><a class="viewcode-back" href="../../group.html#support.group.SslContextWSGIServer">[docs]</a><span class="k">class</span> <span class="nc">SslContextWSGIServer</span><span class="p">(</span><span class="n">ThreadQueueWSGIServer</span><span class="p">):</span>
+    <span class="n">handler_class</span> <span class="o">=</span> <span class="n">MakeFileCloseWSGIHandler</span>
+
+    <span class="nd">@async.timed</span>
+<div class="viewcode-block" id="SslContextWSGIServer.wrap_socket_and_handle"><a class="viewcode-back" href="../../group.html#support.group.SslContextWSGIServer.wrap_socket_and_handle">[docs]</a>    <span class="k">def</span> <span class="nf">wrap_socket_and_handle</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client_socket</span><span class="p">,</span> <span class="n">address</span><span class="p">):</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+        <span class="n">ctx</span><span class="o">.</span><span class="n">client_sockets</span><span class="p">[</span><span class="n">client_socket</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">ssl_args</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s">&#39;https server requires server-side&#39;</span>
+                             <span class="s">&#39; SSL certificate&#39;</span><span class="p">)</span>
+        <span class="n">protocol</span> <span class="o">=</span> <span class="n">_socket_protocol</span><span class="p">(</span><span class="n">client_socket</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">protocol</span> <span class="o">==</span> <span class="s">&quot;ssl&quot;</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s">&#39;HANDLE.SSL&#39;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">address</span><span class="p">[</span><span class="mi">0</span><span class="p">])):</span>
+                <span class="n">ssl_socket</span> <span class="o">=</span> <span class="n">async</span><span class="o">.</span><span class="n">wrap_socket_context</span><span class="p">(</span>
+                    <span class="n">client_socket</span><span class="p">,</span> <span class="o">**</span><span class="bp">self</span><span class="o">.</span><span class="n">ssl_args</span><span class="p">)</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">sketches</span><span class="p">[</span><span class="s">&#39;http.ssl.client_ips&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">address</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle</span><span class="p">(</span><span class="n">ssl_socket</span><span class="p">,</span> <span class="n">address</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">protocol</span> <span class="o">==</span> <span class="s">&quot;http&quot;</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s">&#39;HANDLE.NOSSL&#39;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">address</span><span class="p">[</span><span class="mi">0</span><span class="p">])):</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_no_ssl</span><span class="p">(</span><span class="n">client_socket</span><span class="p">,</span> <span class="n">address</span><span class="p">)</span>
+            <span class="n">ctx</span><span class="o">.</span><span class="n">sketches</span><span class="p">[</span><span class="s">&#39;http.client_ips&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="n">address</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span><span class="o">.</span><span class="n">intervals</span><span class="p">[</span><span class="s">&quot;server.pings&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">tick</span><span class="p">()</span>
+</div>
+    <span class="k">def</span> <span class="nf">_no_ssl</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client_socket</span><span class="p">,</span> <span class="n">address</span><span class="p">):</span>
+        <span class="s">&#39;externalizes no-SSL behavior so MultiProtocolWSGIServer can override&#39;</span>
+        <span class="n">client_socket</span><span class="o">.</span><span class="n">send</span><span class="p">(</span><span class="n">_NO_SSL_HTTP_RESPONSE</span><span class="p">)</span>
+        <span class="n">async</span><span class="o">.</span><span class="n">killsock</span><span class="p">(</span><span class="n">client_socket</span><span class="p">)</span>
+
+</div>
+<div class="viewcode-block" id="MultiProtocolWSGIServer"><a class="viewcode-back" href="../../group.html#support.group.MultiProtocolWSGIServer">[docs]</a><span class="k">class</span> <span class="nc">MultiProtocolWSGIServer</span><span class="p">(</span><span class="n">SslContextWSGIServer</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">_no_ssl</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">client_socket</span><span class="p">,</span> <span class="n">address</span><span class="p">):</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">handle</span><span class="p">(</span><span class="n">client_socket</span><span class="p">,</span> <span class="n">address</span><span class="p">)</span>
+
+
+<span class="c"># http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods</span></div>
+<span class="n">_HTTP_METHODS</span> <span class="o">=</span> <span class="p">(</span><span class="s">&#39;GET&#39;</span><span class="p">,</span> <span class="s">&#39;HEAD&#39;</span><span class="p">,</span> <span class="s">&#39;POST&#39;</span><span class="p">,</span> <span class="s">&#39;PUT&#39;</span><span class="p">,</span> <span class="s">&#39;DELETE&#39;</span><span class="p">,</span> <span class="s">&#39;TRACE&#39;</span><span class="p">,</span> <span class="s">&#39;OPTION&#39;</span><span class="p">,</span>
+                 <span class="s">&#39;CONNECT&#39;</span><span class="p">,</span> <span class="s">&#39;PATCH&#39;</span><span class="p">)</span>
+
+<span class="n">_SSL_RECORD_TYPES</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s">&#39;</span><span class="se">\x14</span><span class="s">&#39;</span><span class="p">:</span> <span class="s">&#39;CHANGE_CIPHER_SPEC&#39;</span><span class="p">,</span>
+    <span class="s">&#39;</span><span class="se">\x15</span><span class="s">&#39;</span><span class="p">:</span> <span class="s">&#39;ALERT&#39;</span><span class="p">,</span>
+    <span class="s">&#39;</span><span class="se">\x16</span><span class="s">&#39;</span><span class="p">:</span> <span class="s">&#39;HANDSHAKE&#39;</span><span class="p">,</span>
+    <span class="s">&#39;</span><span class="se">\x17</span><span class="s">&#39;</span><span class="p">:</span> <span class="s">&#39;APPLICATION_DATA&#39;</span><span class="p">}</span>
+
+<span class="n">_SSL_VERSIONS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s">&#39;</span><span class="se">\x03\x00</span><span class="s">&#39;</span><span class="p">:</span> <span class="s">&#39;SSL3&#39;</span><span class="p">,</span>
+    <span class="s">&#39;</span><span class="se">\x03\x01</span><span class="s">&#39;</span><span class="p">:</span> <span class="s">&#39;TLS1&#39;</span><span class="p">,</span>
+    <span class="s">&#39;</span><span class="se">\x03\x02</span><span class="s">&#39;</span><span class="p">:</span> <span class="s">&#39;TLS1.1&#39;</span><span class="p">,</span>
+    <span class="s">&#39;</span><span class="se">\x03\x03</span><span class="s">&#39;</span><span class="p">:</span> <span class="s">&#39;TLS1.2&#39;</span><span class="p">}</span>
+
+
+<span class="n">_NO_SSL_HTTP_RESPONSE</span> <span class="o">=</span> <span class="s">&quot;</span><span class="se">\r\n</span><span class="s">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">([</span>
+    <span class="s">&#39;HTTP/1.1 401 UNAUTHORIZED&#39;</span><span class="p">,</span>
+    <span class="s">&#39;Content-Type: text/plain&#39;</span><span class="p">,</span>
+    <span class="s">&#39;Content-Length: &#39;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="s">&#39;SSL REQUIRED&#39;</span><span class="p">)),</span>
+    <span class="s">&#39;&#39;</span><span class="p">,</span>
+    <span class="s">&#39;SSL REQUIRED&#39;</span><span class="p">])</span>
+
+
+<span class="k">def</span> <span class="nf">_socket_protocol</span><span class="p">(</span><span class="n">client_socket</span><span class="p">):</span>
+    <span class="n">first_bytes</span> <span class="o">=</span> <span class="n">client_socket</span><span class="o">.</span><span class="n">recv</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="n">socket</span><span class="o">.</span><span class="n">MSG_PEEK</span><span class="p">)</span>
+    <span class="k">if</span> <span class="nb">any</span><span class="p">([</span><span class="n">method</span> <span class="ow">in</span> <span class="n">first_bytes</span> <span class="k">for</span> <span class="n">method</span> <span class="ow">in</span> <span class="n">_HTTP_METHODS</span><span class="p">]):</span>
+        <span class="k">return</span> <span class="s">&quot;http&quot;</span>
+    <span class="k">elif</span> <span class="ow">not</span> <span class="n">first_bytes</span><span class="p">:</span>
+        <span class="c"># TODO: empty requests are sometimes sent ([socket] keepalives?)</span>
+        <span class="k">return</span>
+    <span class="k">elif</span> <span class="n">first_bytes</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="ow">in</span> <span class="n">_SSL_RECORD_TYPES</span> <span class="ow">and</span> <span class="n">first_bytes</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="mi">3</span><span class="p">]</span> <span class="ow">in</span> <span class="n">_SSL_VERSIONS</span><span class="p">:</span>
+        <span class="k">return</span> <span class="s">&quot;ssl&quot;</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">IOError</span><span class="p">(</span><span class="s">&quot;unrecognized client protocol: {0!r}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">first_bytes</span><span class="p">))</span>
+
+
+<div class="viewcode-block" id="RotatingGeventLog"><a class="viewcode-back" href="../../group.html#support.group.RotatingGeventLog">[docs]</a><span class="k">class</span> <span class="nc">RotatingGeventLog</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">10000</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">msgs</span> <span class="o">=</span> <span class="n">collections</span><span class="o">.</span><span class="n">deque</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">size</span> <span class="o">=</span> <span class="n">size</span>
+
+<div class="viewcode-block" id="RotatingGeventLog.write"><a class="viewcode-back" href="../../group.html#support.group.RotatingGeventLog.write">[docs]</a>    <span class="k">def</span> <span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">msg</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">msgs</span><span class="o">.</span><span class="n">appendleft</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">msgs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">size</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">msgs</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+
+
+<span class="c"># a little helper for running an interactive console over a socket</span></div></div>
+<span class="kn">import</span> <span class="nn">code</span>
+<span class="kn">import</span> <span class="nn">sys</span>
+
+
+<div class="viewcode-block" id="SockConsole"><a class="viewcode-back" href="../../group.html#support.group.SockConsole">[docs]</a><span class="k">class</span> <span class="nc">SockConsole</span><span class="p">(</span><span class="n">code</span><span class="o">.</span><span class="n">InteractiveConsole</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sock</span><span class="p">):</span>
+        <span class="n">code</span><span class="o">.</span><span class="n">InteractiveConsole</span><span class="o">.</span><span class="n">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sock</span> <span class="o">=</span> <span class="n">sock</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sock_file</span> <span class="o">=</span> <span class="n">sock</span><span class="o">.</span><span class="n">makefile</span><span class="p">()</span>
+
+<div class="viewcode-block" id="SockConsole.write"><a class="viewcode-back" href="../../group.html#support.group.SockConsole.write">[docs]</a>    <span class="k">def</span> <span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">data</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sock</span><span class="o">.</span><span class="n">sendall</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="SockConsole.raw_input"><a class="viewcode-back" href="../../group.html#support.group.SockConsole.raw_input">[docs]</a>    <span class="k">def</span> <span class="nf">raw_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prompt</span><span class="o">=</span><span class="s">&quot;&quot;</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">prompt</span><span class="p">)</span>
+        <span class="n">inp</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sock_file</span><span class="o">.</span><span class="n">readline</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">inp</span> <span class="o">==</span> <span class="s">&quot;&quot;</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">OSError</span><span class="p">(</span><span class="s">&quot;client socket closed&quot;</span><span class="p">)</span>
+        <span class="n">inp</span> <span class="o">=</span> <span class="n">inp</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">inp</span>
+</div>
+    <span class="k">def</span> <span class="nf">_display_hook</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">obj</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Handle an item returned from the exec statement.</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_last</span> <span class="o">=</span> <span class="s">&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">obj</span> <span class="ow">is</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">locals</span><span class="p">[</span><span class="s">&#39;_&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="c"># clean up output by adding \n here; so you don&#39;t see &quot;hello world!&quot;&gt;&gt;&gt;</span>
+        <span class="c"># TODO: is there a better way to handle this?</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_last</span> <span class="o">=</span> <span class="nb">repr</span><span class="p">(</span><span class="n">obj</span><span class="p">)</span> <span class="o">+</span> <span class="s">&quot;</span><span class="se">\n</span><span class="s">&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">locals</span><span class="p">[</span><span class="s">&#39;_&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">obj</span>
+
+<div class="viewcode-block" id="SockConsole.runcode"><a class="viewcode-back" href="../../group.html#support.group.SockConsole.runcode">[docs]</a>    <span class="k">def</span> <span class="nf">runcode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">_code</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        Wraps base runcode to put displayhook around it.</span>
+<span class="sd">        TODO: add a new displayhook dispatcher so that the</span>
+<span class="sd">        current SockConsole is a greenlet-tree local.</span>
+<span class="sd">        (In case the statement being executed itself</span>
+<span class="sd">        causes greenlet switches.)</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">prev</span> <span class="o">=</span> <span class="n">sys</span><span class="o">.</span><span class="n">displayhook</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">displayhook</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_display_hook</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_last</span> <span class="o">=</span> <span class="bp">None</span>
+        <span class="n">code</span><span class="o">.</span><span class="n">InteractiveConsole</span><span class="o">.</span><span class="n">runcode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">_code</span><span class="p">)</span>
+        <span class="n">sys</span><span class="o">.</span><span class="n">displayhook</span> <span class="o">=</span> <span class="n">prev</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_last</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_last</span><span class="p">)</span>
+
+</div></div>
+<div class="viewcode-block" id="console_sock_handle"><a class="viewcode-back" href="../../group.html#support.group.console_sock_handle">[docs]</a><span class="k">def</span> <span class="nf">console_sock_handle</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="n">address</span><span class="p">):</span>
+    <span class="n">console</span> <span class="o">=</span> <span class="n">SockConsole</span><span class="p">(</span><span class="n">sock</span><span class="p">)</span>
+    <span class="n">console</span><span class="o">.</span><span class="n">interact</span><span class="p">(</span><span class="s">&quot;Connected to pid {0} from {1}...&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span>
+        <span class="n">os</span><span class="o">.</span><span class="n">getpid</span><span class="p">(),</span> <span class="n">address</span><span class="p">))</span>
+
+
+<span class="c"># TODO: move elsewhere</span>
+</div>
+<div class="viewcode-block" id="SimpleLogMiddleware"><a class="viewcode-back" href="../../group.html#support.group.SimpleLogMiddleware">[docs]</a><span class="k">class</span> <span class="nc">SimpleLogMiddleware</span><span class="p">(</span><span class="n">clastic</span><span class="o">.</span><span class="n">Middleware</span><span class="p">):</span>
+    <span class="n">provides</span> <span class="o">=</span> <span class="p">[</span><span class="s">&#39;api_cal_trans&#39;</span><span class="p">]</span>
+
+<div class="viewcode-block" id="SimpleLogMiddleware.request"><a class="viewcode-back" href="../../group.html#support.group.SimpleLogMiddleware.request">[docs]</a>    <span class="k">def</span> <span class="nf">request</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">next</span><span class="p">,</span> <span class="n">request</span><span class="p">,</span> <span class="n">_route</span><span class="p">):</span>
+        <span class="n">url</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">_route</span><span class="p">,</span> <span class="s">&#39;pattern&#39;</span><span class="p">,</span> <span class="s">&#39;&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;utf-8&#39;</span><span class="p">)</span>
+        <span class="n">ctx</span> <span class="o">=</span> <span class="n">context</span><span class="o">.</span><span class="n">get_context</span><span class="p">()</span>
+        <span class="k">with</span> <span class="n">ctx</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s">&#39;URL&#39;</span><span class="p">,</span> <span class="n">url</span><span class="p">)</span> <span class="k">as</span> <span class="n">request_txn</span><span class="p">:</span>
+            <span class="n">request_txn</span><span class="o">.</span><span class="n">msg</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">return</span> <span class="nb">next</span><span class="p">(</span><span class="n">api_cal_trans</span><span class="o">=</span><span class="n">request_txn</span><span class="p">)</span></div></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="../../index.html">
+    <img class="logo" src="../../_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../async.html">Asynchronous Helpers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../buffered_socket.html">Buffered Socket</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../connection_mgr.html">Managed Connections</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../context.html">Context Management</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../crypto.html">Cryptography and Security</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../exceptions.html">Exceptions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../group.html">Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../http_client.html">HTTP Client</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../meta_service.html">MetaService</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>

@@ -1,0 +1,219 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Buffered Socket &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="index.html" />
+    <link rel="next" title="Connection Management" href="connection_mgr.html" />
+    <link rel="prev" title="Asynchronous Helpers" href="async.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="connection_mgr.html" title="Connection Management"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="async.html" title="Asynchronous Helpers"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">SuPPort 0.0.1 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-support.buffered_socket">
+<span id="buffered-socket"></span><h1>Buffered Socket<a class="headerlink" href="#module-support.buffered_socket" title="Permalink to this headline">¶</a></h1>
+<dl class="class">
+<dt id="support.buffered_socket.BufferedSocket">
+<em class="property">class </em><code class="descclassname">support.buffered_socket.</code><code class="descname">BufferedSocket</code><span class="sig-paren">(</span><em>sock</em>, <em>timeout=10</em>, <em>maxbytes=32768</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/buffered_socket.html#BufferedSocket"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.BufferedSocket" title="Permalink to this definition">¶</a></dt>
+<dd><dl class="method">
+<dt id="support.buffered_socket.BufferedSocket.buffer">
+<code class="descname">buffer</code><span class="sig-paren">(</span><em>data</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/buffered_socket.html#BufferedSocket.buffer"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.BufferedSocket.buffer" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.buffered_socket.BufferedSocket.close">
+<code class="descname">close</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/buffered_socket.html#BufferedSocket.close"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.BufferedSocket.close" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.buffered_socket.BufferedSocket.flush">
+<code class="descname">flush</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/buffered_socket.html#BufferedSocket.flush"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.BufferedSocket.flush" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.buffered_socket.BufferedSocket.peek">
+<code class="descname">peek</code><span class="sig-paren">(</span><em>n</em>, <em>timeout=None</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/buffered_socket.html#BufferedSocket.peek"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.BufferedSocket.peek" title="Permalink to this definition">¶</a></dt>
+<dd><p>peek n bytes from the socket, but keep them in the buffer</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="support.buffered_socket.BufferedSocket.recv">
+<code class="descname">recv</code><span class="sig-paren">(</span><em>size</em>, <em>flags=0</em>, <em>timeout=&lt;object object&gt;</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/buffered_socket.html#BufferedSocket.recv"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.BufferedSocket.recv" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.buffered_socket.BufferedSocket.recv_all">
+<code class="descname">recv_all</code><span class="sig-paren">(</span><em>size</em>, <em>timeout=&lt;object object&gt;</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/buffered_socket.html#BufferedSocket.recv_all"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.BufferedSocket.recv_all" title="Permalink to this definition">¶</a></dt>
+<dd><p>read off of socket until size bytes have been read</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="support.buffered_socket.BufferedSocket.recv_until">
+<code class="descname">recv_until</code><span class="sig-paren">(</span><em>marker</em>, <em>timeout=&lt;object object&gt;</em>, <em>maxbytes=&lt;object object&gt;</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/buffered_socket.html#BufferedSocket.recv_until"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.BufferedSocket.recv_until" title="Permalink to this definition">¶</a></dt>
+<dd><p>read off of socket until the marker is found</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="support.buffered_socket.BufferedSocket.send">
+<code class="descname">send</code><span class="sig-paren">(</span><em>data</em>, <em>flags=0</em>, <em>timeout=&lt;object object&gt;</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/buffered_socket.html#BufferedSocket.send"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.BufferedSocket.send" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.buffered_socket.BufferedSocket.sendall">
+<code class="descname">sendall</code><span class="sig-paren">(</span><em>data</em>, <em>flags=0</em>, <em>timeout=&lt;object object&gt;</em><span class="sig-paren">)</span><a class="headerlink" href="#support.buffered_socket.BufferedSocket.sendall" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.buffered_socket.BufferedSocket.setmaxbytes">
+<code class="descname">setmaxbytes</code><span class="sig-paren">(</span><em>maxbytes</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/buffered_socket.html#BufferedSocket.setmaxbytes"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.BufferedSocket.setmaxbytes" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.buffered_socket.BufferedSocket.settimeout">
+<code class="descname">settimeout</code><span class="sig-paren">(</span><em>timeout</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/buffered_socket.html#BufferedSocket.settimeout"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.BufferedSocket.settimeout" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="method">
+<dt id="support.buffered_socket.BufferedSocket.shutdown">
+<code class="descname">shutdown</code><span class="sig-paren">(</span><em>how</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/buffered_socket.html#BufferedSocket.shutdown"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.BufferedSocket.shutdown" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<dl class="exception">
+<dt id="support.buffered_socket.ConnectionClosed">
+<em class="property">exception </em><code class="descclassname">support.buffered_socket.</code><code class="descname">ConnectionClosed</code><a class="reference internal" href="_modules/support/buffered_socket.html#ConnectionClosed"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.ConnectionClosed" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="exception">
+<dt id="support.buffered_socket.Error">
+<em class="property">exception </em><code class="descclassname">support.buffered_socket.</code><code class="descname">Error</code><a class="reference internal" href="_modules/support/buffered_socket.html#Error"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.Error" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="exception">
+<dt id="support.buffered_socket.NotFound">
+<em class="property">exception </em><code class="descclassname">support.buffered_socket.</code><code class="descname">NotFound</code><span class="sig-paren">(</span><em>symbol</em>, <em>bytes_read</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/buffered_socket.html#NotFound"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.NotFound" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="exception">
+<dt id="support.buffered_socket.Timeout">
+<em class="property">exception </em><code class="descclassname">support.buffered_socket.</code><code class="descname">Timeout</code><span class="sig-paren">(</span><em>timeout</em>, <em>extra=''</em><span class="sig-paren">)</span><a class="reference internal" href="_modules/support/buffered_socket.html#Timeout"><span class="viewcode-link">[source]</span></a><a class="headerlink" href="#support.buffered_socket.Timeout" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="index.html">
+    <img class="logo" src="_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="async.html">Asynchronous Helpers</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="">Buffered Socket</a></li>
+<li class="toctree-l1"><a class="reference internal" href="connection_mgr.html">Connection Management</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+      |
+      <a href="_sources/buffered_socket.txt"
+          rel="nofollow">Page source</a></li>
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>

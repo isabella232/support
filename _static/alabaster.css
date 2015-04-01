@@ -104,7 +104,7 @@ div.sphinxsidebarwrapper h1.logo {
     margin-top: -10px;
     text-align: center;
     margin-bottom: 5px;
-    text-align: left;
+    text-align: center;
 }
 
 div.sphinxsidebarwrapper h1.logo-name {
@@ -113,7 +113,7 @@ div.sphinxsidebarwrapper h1.logo-name {
 
 div.sphinxsidebarwrapper p.blurb {
     margin-top: 0;
-    font-style: normal;
+    font-style: italic;
 }
 
 div.sphinxsidebar h3,

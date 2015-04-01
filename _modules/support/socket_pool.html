@@ -1,0 +1,285 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>support.socket_pool &mdash; SuPPort 0.0.1 documentation</title>
+    
+    <link rel="stylesheet" href="../../_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="../../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../../',
+        VERSION:     '0.0.1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../../_static/jquery.js"></script>
+    <script type="text/javascript" src="../../_static/underscore.js"></script>
+    <script type="text/javascript" src="../../_static/doctools.js"></script>
+    <link rel="top" title="SuPPort 0.0.1 documentation" href="../../index.html" />
+    <link rel="up" title="Module code" href="../index.html" />
+   
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9">
+
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../../index.html">SuPPort 0.0.1 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="../index.html" accesskey="U">Module code</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <h1>Source code for support.socket_pool</h1><div class="highlight"><pre>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">Protocol-agnostic socket pooler.</span>
+
+<span class="sd">This code is both extremely tested and hard to test.</span>
+<span class="sd">Modify with caution :-)</span>
+
+<span class="sd">&quot;There are two ways of constructing a software design:</span>
+<span class="sd">One way is to make it so simple that there are obviously no deficiencies,</span>
+<span class="sd">and the other way is to make it so complicated that there are no obvious deficiencies.&quot;</span>
+<span class="sd">-CAR Hoare, 1980 Turing Award lecture</span>
+
+<span class="sd">In particular: it is tempting to attempt to auto-reconnect and re-try at this layer.</span>
+<span class="sd">This is not possible to do correctly however, since only the protocol aware clients</span>
+<span class="sd">know what a retry entails.  (e.g. SSL handshake, reset protocol state)</span>
+<span class="sd">&#39;&#39;&#39;</span>
+<span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">select</span>
+<span class="kn">import</span> <span class="nn">socket</span>
+
+<span class="kn">import</span> <span class="nn">gevent</span>
+
+<span class="kn">import</span> <span class="nn">ll</span>
+<span class="n">ml</span> <span class="o">=</span> <span class="n">ll</span><span class="o">.</span><span class="n">LLogger</span><span class="p">()</span>
+
+
+<span class="c"># TODO: free_socks_by_addr using sets instead of lists could probably improve</span>
+<span class="c"># performance of cull</span>
+<div class="viewcode-block" id="SocketPool"><a class="viewcode-back" href="../../socket_pool.html#support.socket_pool.SocketPool">[docs]</a><span class="k">class</span> <span class="nc">SocketPool</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span>
+    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">timeout</span><span class="o">=</span><span class="mf">0.25</span><span class="p">,</span> <span class="n">max_sockets</span><span class="o">=</span><span class="mi">800</span><span class="p">):</span>
+        <span class="kn">import</span> <span class="nn">async</span>  <span class="c"># breaks circular dependency</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span> <span class="o">=</span> <span class="n">timeout</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">free_socks_by_addr</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sock_idle_times</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">killsock</span> <span class="o">=</span> <span class="n">async</span><span class="o">.</span><span class="n">killsock</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">total_sockets</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_socks_by_addr</span> <span class="o">=</span> <span class="p">{}</span>  <span class="c"># maximum sockets on an address-by-address basis</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">default_max_socks_per_addr</span> <span class="o">=</span> <span class="mi">50</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_sockets</span> <span class="o">=</span> <span class="mi">800</span>
+
+<div class="viewcode-block" id="SocketPool.acquire"><a class="viewcode-back" href="../../socket_pool.html#support.socket_pool.SocketPool.acquire">[docs]</a>    <span class="k">def</span> <span class="nf">acquire</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">addr</span><span class="p">):</span>
+        <span class="c">#return a free socket, if one is availble; else None</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cull</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>  <span class="c"># never bother caller with cull problems</span>
+            <span class="n">ml</span><span class="o">.</span><span class="n">ld</span><span class="p">(</span><span class="s">&quot;Exception from cull: {0!r}&quot;</span><span class="p">,</span> <span class="n">e</span><span class="p">)</span>
+        <span class="n">socks</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">free_socks_by_addr</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">addr</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">socks</span><span class="p">:</span>
+            <span class="n">sock</span> <span class="o">=</span> <span class="n">socks</span><span class="o">.</span><span class="n">pop</span><span class="p">()</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">sock_idle_times</span><span class="p">[</span><span class="n">sock</span><span class="p">]</span>
+            <span class="k">try</span><span class="p">:</span>  <span class="c"># sock.fileno() will throw if EBADF</span>
+                <span class="n">ml</span><span class="o">.</span><span class="n">ld</span><span class="p">(</span><span class="s">&quot;Acquiring sock {0}/FD {1}&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="n">sock</span><span class="p">)),</span> <span class="nb">str</span><span class="p">(</span><span class="n">sock</span><span class="o">.</span><span class="n">fileno</span><span class="p">()))</span>
+            <span class="k">except</span><span class="p">:</span>
+                <span class="k">pass</span>
+            <span class="k">return</span> <span class="n">sock</span>
+        <span class="k">return</span> <span class="bp">None</span>
+</div>
+<div class="viewcode-block" id="SocketPool.release"><a class="viewcode-back" href="../../socket_pool.html#support.socket_pool.SocketPool.release">[docs]</a>    <span class="k">def</span> <span class="nf">release</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sock</span><span class="p">):</span>
+        <span class="c">#this is also a way of &quot;registering&quot; a socket with the pool</span>
+        <span class="c">#basically, this says &quot;I&#39;m done with this socket, make it available for anyone else&quot;</span>
+        <span class="k">try</span><span class="p">:</span>  <span class="c"># sock.fileno() will throw if EBADF</span>
+            <span class="n">ml</span><span class="o">.</span><span class="n">ld</span><span class="p">(</span><span class="s">&quot;Releasing sock {0} /FD {1}&quot;</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="nb">id</span><span class="p">(</span><span class="n">sock</span><span class="p">)),</span> <span class="nb">str</span><span class="p">(</span><span class="n">sock</span><span class="o">.</span><span class="n">fileno</span><span class="p">()))</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="k">pass</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">select</span><span class="o">.</span><span class="n">select</span><span class="p">([</span><span class="n">sock</span><span class="p">],</span> <span class="p">[],</span> <span class="p">[],</span> <span class="mi">0</span><span class="p">)[</span><span class="mi">0</span><span class="p">]:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">killsock</span><span class="p">(</span><span class="n">sock</span><span class="p">)</span>
+                <span class="k">return</span> <span class="c">#TODO: raise exception when handed messed up socket?</span>
+                <span class="c">#socket is readable means one of two things:</span>
+                <span class="c">#1- left in a bad state (e.g. more data waiting -- protocol state is messed up)</span>
+                <span class="c">#2- socket closed by remote (in which case read will return empty string)</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="k">return</span> <span class="c">#if socket was closed, select will raise socket.error(&#39;Bad file descriptor&#39;)</span>
+        <span class="n">addr</span> <span class="o">=</span> <span class="n">sock</span><span class="o">.</span><span class="n">getpeername</span><span class="p">()</span>
+        <span class="n">addr_socks</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">free_socks_by_addr</span><span class="o">.</span><span class="n">setdefault</span><span class="p">(</span><span class="n">addr</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">total_sockets</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sock_idle_times</span><span class="p">[</span><span class="n">sock</span><span class="p">]</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">addr_socks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sock</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reduce_addr_size</span><span class="p">(</span><span class="n">addr</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_socks_by_addr</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">addr</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">default_max_socks_per_addr</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">reduce_size</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_sockets</span><span class="p">)</span>
+</div>
+<div class="viewcode-block" id="SocketPool.reduce_size"><a class="viewcode-back" href="../../socket_pool.html#support.socket_pool.SocketPool.reduce_size">[docs]</a>    <span class="k">def</span> <span class="nf">reduce_size</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">size</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        reduce to the specified size by killing the oldest sockets</span>
+<span class="sd">        returns a greenlet that can be joined on to wait for all sockets to close</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_sockets</span> <span class="o">&lt;=</span> <span class="n">size</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">num_culling</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">total_sockets</span> <span class="o">-</span> <span class="n">size</span>
+        <span class="n">culled</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">([(</span><span class="n">v</span><span class="p">,</span> <span class="n">k</span><span class="p">)</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span><span class="n">v</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">sock_idle_times</span><span class="o">.</span><span class="n">iteritems</span><span class="p">()])[</span><span class="o">-</span><span class="n">num_culling</span><span class="p">:]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">total_sockets</span> <span class="o">-=</span> <span class="n">num_culling</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_remove_sock</span><span class="p">(</span><span class="n">e</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">culled</span><span class="p">]</span>
+</div>
+<div class="viewcode-block" id="SocketPool.reduce_addr_size"><a class="viewcode-back" href="../../socket_pool.html#support.socket_pool.SocketPool.reduce_addr_size">[docs]</a>    <span class="k">def</span> <span class="nf">reduce_addr_size</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">addr</span><span class="p">,</span> <span class="n">size</span><span class="p">):</span>
+        <span class="sd">&#39;&#39;&#39;</span>
+<span class="sd">        reduce the number of sockets pooled on the specified address to size</span>
+<span class="sd">        returns a greenlet that can be joined on to wait for all sockets to close</span>
+<span class="sd">        &#39;&#39;&#39;</span>
+        <span class="n">addr_socks</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">free_socks_by_addr</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">addr</span><span class="p">,</span> <span class="p">[])</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">addr_socks</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">size</span><span class="p">:</span>
+            <span class="k">return</span>
+        <span class="n">num_culling</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">addr_socks</span><span class="p">)</span> <span class="o">-</span> <span class="n">size</span>
+        <span class="n">culled</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">([(</span><span class="bp">self</span><span class="o">.</span><span class="n">sock_idle_times</span><span class="p">[</span><span class="n">e</span><span class="p">],</span> <span class="n">e</span><span class="p">)</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">addr_socks</span><span class="p">])[</span><span class="o">-</span><span class="n">num_culling</span><span class="p">:]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">total_sockets</span> <span class="o">-=</span> <span class="n">num_culling</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">_remove_sock</span><span class="p">(</span><span class="n">e</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span> <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="n">culled</span><span class="p">]</span>
+</div>
+    <span class="k">def</span> <span class="nf">_remove_sock</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sock</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">free_socks_by_addr</span><span class="p">[</span><span class="n">sock</span><span class="o">.</span><span class="n">getpeername</span><span class="p">()]</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">sock</span><span class="p">)</span>
+        <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">sock_idle_times</span><span class="p">[</span><span class="n">sock</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">gevent</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">killsock</span><span class="p">,</span> <span class="n">sock</span><span class="p">)</span>
+
+<div class="viewcode-block" id="SocketPool.socks_pooled_for_addr"><a class="viewcode-back" href="../../socket_pool.html#support.socket_pool.SocketPool.socks_pooled_for_addr">[docs]</a>    <span class="k">def</span> <span class="nf">socks_pooled_for_addr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">addr</span><span class="p">):</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">free_socks_by_addr</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">addr</span><span class="p">,</span> <span class="p">()))</span>
+</div>
+<div class="viewcode-block" id="SocketPool.cull"><a class="viewcode-back" href="../../socket_pool.html#support.socket_pool.SocketPool.cull">[docs]</a>    <span class="k">def</span> <span class="nf">cull</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="c">#cull sockets which are in a bad state</span>
+        <span class="n">culled</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">total_sockets</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="c">#sort the living from the soon-to-be-dead</span>
+        <span class="k">for</span> <span class="n">addr</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">free_socks_by_addr</span><span class="p">:</span>
+            <span class="n">live</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="c"># STEP 1 - CULL IDLE SOCKETS</span>
+            <span class="k">for</span> <span class="n">sock</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">free_socks_by_addr</span><span class="p">[</span><span class="n">addr</span><span class="p">]:</span>
+                <span class="c"># in case the socket does not have an entry in sock_idle_times,</span>
+                <span class="c"># assume the socket is very old and cull</span>
+                <span class="k">if</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">sock_idle_times</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">sock</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">timeout</span><span class="p">:</span>
+                    <span class="k">try</span><span class="p">:</span>
+                        <span class="n">ml</span><span class="o">.</span><span class="n">ld</span><span class="p">(</span><span class="s">&quot;Going to Close sock {{{0}}}/FD {1}&quot;</span><span class="p">,</span>
+                              <span class="nb">id</span><span class="p">(</span><span class="n">sock</span><span class="p">),</span> <span class="n">sock</span><span class="o">.</span><span class="n">fileno</span><span class="p">())</span>
+                    <span class="k">except</span><span class="p">:</span>
+                        <span class="k">pass</span>
+                    <span class="n">culled</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sock</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">try</span><span class="p">:</span>  <span class="c"># check that the underlying fileno still exists</span>
+                        <span class="n">sock</span><span class="o">.</span><span class="n">fileno</span><span class="p">()</span>
+                        <span class="n">live</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sock</span><span class="p">)</span>
+                    <span class="k">except</span> <span class="n">socket</span><span class="o">.</span><span class="n">error</span><span class="p">:</span>
+                        <span class="k">pass</span>  <span class="c"># if no fileno, the socket is dead and no need to close it</span>
+            <span class="c"># STEP 2 - CULL READABLE SOCKETS</span>
+            <span class="k">if</span> <span class="n">live</span><span class="p">:</span>  <span class="c"># (if live is [], select.select() would error)</span>
+                <span class="n">readable</span> <span class="o">=</span> <span class="nb">set</span><span class="p">(</span><span class="n">select</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">live</span><span class="p">,</span> <span class="p">[],</span> <span class="p">[],</span> <span class="mi">0</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="c"># if a socket is readable that means one of two bad things:</span>
+                <span class="c"># 1- the socket has been closed (and sock.recv() would return &#39;&#39;)</span>
+                <span class="c"># 2- the server has sent some data which no client has claimed</span>
+                <span class="c">#       (which will remain in the recv buffer and mess up the next client)</span>
+                <span class="n">live</span> <span class="o">=</span> <span class="p">[</span><span class="n">s</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="n">live</span> <span class="k">if</span> <span class="n">s</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">readable</span><span class="p">]</span>
+                <span class="n">culled</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">readable</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">free_socks_by_addr</span><span class="p">[</span><span class="n">addr</span><span class="p">]</span> <span class="o">=</span> <span class="n">live</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">total_sockets</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">live</span><span class="p">)</span>
+        <span class="c"># shutdown all the culled sockets</span>
+        <span class="k">for</span> <span class="n">sock</span> <span class="ow">in</span> <span class="n">culled</span><span class="p">:</span>
+            <span class="k">del</span> <span class="bp">self</span><span class="o">.</span><span class="n">sock_idle_times</span><span class="p">[</span><span class="n">sock</span><span class="p">]</span>
+            <span class="n">gevent</span><span class="o">.</span><span class="n">spawn</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">killsock</span><span class="p">,</span> <span class="n">sock</span><span class="p">)</span>
+</div>
+    <span class="k">def</span> <span class="nf">__repr__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="s">&quot;&lt;</span><span class="si">%s</span><span class="s"> nsocks=</span><span class="si">%r</span><span class="s">/</span><span class="si">%r</span><span class="s"> naddrs=</span><span class="si">%r</span><span class="s">&gt;&quot;</span> <span class="o">%</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">__class__</span><span class="o">.</span><span class="n">__name__</span><span class="p">,</span>
+                                                <span class="bp">self</span><span class="o">.</span><span class="n">total_sockets</span><span class="p">,</span>
+                                                <span class="bp">self</span><span class="o">.</span><span class="n">max_sockets</span><span class="p">,</span>
+                                                <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">free_socks_by_addr</span><span class="p">))</span></div>
+</pre></div>
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<p class="logo">
+  <a href="../../index.html">
+    <img class="logo" src="../../_static/support_logo.png" alt="Logo"/>
+    
+    <h1 class="logo logo-name">SuPPort</h2>
+    
+  </a>
+</p>
+
+
+
+<p class="blurb">Evented Server Framework</p>
+
+
+
+<p>
+<iframe src="https://ghbtns.com/github-btn.html?user=paypal&repo=support&type=watch&count=true&size=large"
+  allowtransparency="true" frameborder="0" scrolling="0" width="200px" height="35px"></iframe>
+</p>
+
+
+<h3>Navigation</h3>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../../architecture.html">Architecture</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../async.html">Asynchronous Helpers</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../buffered_socket.html">Buffered Socket</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../connection_mgr.html">Managed Connections</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../context.html">Context Management</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../crypto.html">Cryptography and Security</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../exceptions.html">Exceptions</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../group.html">Groups</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../http_client.html">HTTP Client</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../meta_service.html">MetaService</a></li>
+</ul>
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane.
+      
+    </div>
+
+    
+
+    
+    <script type="text/javascript">
+
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-61001711-1']);
+      _gaq.push(['_setDomainName', 'none']);
+      _gaq.push(['_setAllowLinker', true]);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+
+    </script>
+    
+  </body>
+</html>
