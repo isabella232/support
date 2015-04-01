@@ -1,4 +1,4 @@
-'''A simple HTTP client which mixes httplib with gevent and PayPal protecteds.
+"""A simple HTTP client which mixes httplib with gevent and PayPal protecteds.
 
 It provides convenience functions for the standard set of `HTTP methods`_:
 
@@ -8,8 +8,7 @@ which are just shortcuts for the corresponding :py:func:`request` call:
 
 >>> http_client.request("get", "http://example.com/foo") # doctest: +SKIP
 
-.. _HTTP Methods: http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol\
-#Request_methods
+.. _HTTP Methods: http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
 
 If you don't intend to read the response's body, you should use a
 context manager:
@@ -18,7 +17,8 @@ context manager:
 ...    assert response.status == 200
 
 This will release the underlying socket back to the socket pool.
-'''
+"""
+
 import httplib
 from urlparse import urlparse, urlunparse
 import functools

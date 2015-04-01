@@ -53,6 +53,10 @@ help:
 clean:
 	rm -rf $(BUILDDIR)/*
 
+buildandcommithtml: html   # CUSTOM
+
+	cd $(BUILDDIR)/html; git add . ; git commit -m "rebuilt docs"; git push origin gh-pages
+
 html:
 	$(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
 	@echo
