@@ -8,11 +8,13 @@
 
 import os
 import sys
+import datetime
 
 sys.path.insert(0, os.path.abspath('..'))
 
 # -- General configuration ------------------------------------------------
 
+needs_sphinx = '1.3'
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.doctest',
@@ -23,7 +25,8 @@ extensions = [
 ]
 
 project = u'SuPPort'
-copyright = u'2015, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane'
+copyright = '{year}, Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane'
+copyright = copyright.format(year=datetime.datetime.now().year)
 author = u'Mahmoud Hashemi, Kurt Rose, Mark Williams, and Chris Lane'
 # The short X.Y version.
 version = '0.0.1'
@@ -81,7 +84,23 @@ html_theme = 'alabaster'
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
-#html_theme_options = {}
+
+# Add any paths that contain custom static files (such as style sheets) here,
+# relative to this directory. They are copied after the builtin static files,
+# so a file named "default.css" will overwrite the builtin "default.css".
+html_static_path = ['../static/images/']
+html_theme_options = {'logo': 'support_logo.png',
+                      'logo_name': True,
+                      'logo_text_align': 'center',
+                      'description': 'Evented Server Framework',
+                      'description_font_style': 'italic',
+                      'github_user': 'paypal',
+                      'github_repo': 'support',
+                      'show_powered_by': False,
+                      'analytics_id': 'UA-61001711-1'}
+
+html_sidebars = {'**': ['about.html', 'navigation.html']}
+
 
 # Add any paths that contain custom themes here, relative to this directory.
 #html_theme_path = []
@@ -101,11 +120,6 @@ html_theme = 'alabaster'
 # docs.  This file should be a Windows icon file (.ico) being 16x16 or 32x32
 # pixels large.
 #html_favicon = None
-
-# Add any paths that contain custom static files (such as style sheets) here,
-# relative to this directory. They are copied after the builtin static files,
-# so a file named "default.css" will overwrite the builtin "default.css".
-html_static_path = ['_static']
 
 # Add any extra paths that contain custom files (such as robots.txt or
 # .htaccess) here, relative to this directory. These files are copied
