@@ -59,6 +59,7 @@ def create_meta_app(additional_routes=None):
         ('/listmodules_json', codeview.listmodules_json),
         ('/showmodule/<module_name>', codeview.showmodule),
         ('/showmodule_txt/<module_name>', codeview.showmodule_txt),
+        ('/hotspots', codeview.get_hotspots),
         ('/connection_mgr', get_connection_mgr, render),
         ('/fd_info', get_fd_info, rt_json_render_basic),
         ('/fd_info/<fd:int>', get_one_fd_info, rt_json_render_basic),
