@@ -235,7 +235,16 @@ class Group(object):
 def _make_server_sock(address, socket_type=gevent.socket.socket):
     ml.ld("about to bind to {0!r}", address)
     ml2.info('listen_prep').success('about to bind to {addr}', addr=address)
-    sock = socket_type()
+    if isinstance(address, basestring):
+        if not hasattr(socket, "AF_UNIX"):
+            raise ValueError(
+                "attempted to bind to Unix Domain Socket {0:r} "
+                "on system without UDS support".format(address))
+        if os.path.exists(address):
+            os.unlink(address)
+        sock = socket_type(socket.AF_UNIX)
+    else:
+        sock = socket_type()
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(address)
 
