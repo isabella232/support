@@ -459,6 +459,8 @@ class StreamSketch(object):
         self.n = 0
 
     def add(self, data):
+        if type(data) is unicode:
+            data = data.encode('utf-8')
         self.hll.add(data)
         self.n += 1
         self.lossy_counting.add(data)
