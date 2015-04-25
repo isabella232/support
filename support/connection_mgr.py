@@ -439,13 +439,16 @@ class MonitoredSocket(object):
     '''
     A socket proxy which allows socket lifetime to be monitored.
     '''
-    def __init__(self, sock, registry, protected,
-                 name=None, type=None, state=None):
+    def __init__(self, sock, registry, protected, name=None, type=None, state=None):
         self._msock = sock
         self._registry = registry  # TODO: better name for this
         self._spawned = time.time()
         self._protected = protected
         self._type = type
+        self._peername = self._msock.getpeername()
+        key_prefix = 'sock.recv.' + str(self._peername)
+        self._stats_key_duration = key_prefix + '.duration(ms)'
+        self._stats_key_size = key_prefix + '.size(bytes)'
         # alias some functions through for improved performance
         #  (__getattr__ is pretty slow compared to normal attribute access)
         self.name = name
@@ -461,15 +464,19 @@ class MonitoredSocket(object):
     def sendall(self, data, flags=0):
         ret = self._msock.sendall(data, flags)
         context.get_context().store_network_data(
-            (self.name, self._msock.getpeername()),
+            (self.name, self._peername),
             self.fileno(), "OUT", data)
         return ret
 
     def recv(self, bufsize, flags=0):
+        ctx = context.get_context()
+        start = time.time()
         data = self._msock.recv(bufsize, flags)
-        context.get_context().store_network_data(
-            (self.name, self._msock.getpeername()),
-            self.fileno(), "IN", data)
+        duration = time.time() - start
+        ctx.stats[self._stats_key_duration].add(duration)
+        ctx.stats[self._stats_key_size].add(len(data))
+        ctx.store_network_data(
+            (self.name, self._peername), self.fileno(), "IN", data)
         return data
 
     def close(self):
