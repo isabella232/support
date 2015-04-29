@@ -59,7 +59,7 @@ class BufferedSocket(object):
                 while nxt and marker not in nxt:
                     chunks.append(nxt)
                     recvd += len(nxt)
-                    if maxbytes is not None and recvd > maxbytes:
+                    if maxbytes is not None and recvd >= maxbytes:
                         raise NotFound(marker, recvd)
                     nxt = self.sock.recv(32 * 1024)
                 if not nxt:
