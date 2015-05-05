@@ -11,6 +11,8 @@ def statgraphs(statname=''):
     for k, v in _filter_stats(statname).items():
         if not isinstance(v, (faststat.Stats, faststat.Duration, faststat.Interval)):
             continue
+        if v.n < 100:
+            continue
         k = k.replace('.', '_').replace('(', '_').replace(')', '')
         body_parts.append(
             ('<h2>{0}</h2>\n'

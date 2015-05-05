@@ -44,6 +44,39 @@ def showmodule_txt(module_name):
     return clastic.Response(body, mimetype="text/plain")
 
 
+def get_hotspots(n=1000):
+    file_line_samples = {}
+    file_module_map = _make_file_module_name_map()
+    ctx = context.get_context()
+    total = 0
+    if ctx.sampling:
+        for key, count in ctx.profiler.live_data_copy().items():
+            if key[2] is not None:
+                continue  # only interested in leaf samples
+            fname = key[0].co_filename
+            name = file_module_map.get(fname, fname)
+            file_line_samples[(name, key[1])] = count
+            total += count
+    vals = sorted(
+        file_line_samples.items(), key=lambda v: v[1], reverse=True)[:n]
+    vals = [(line_info, "{0:.2f}".format(samples * 100.0 / total))
+            for line_info, samples in vals]
+    return clastic.Response(
+        '\n'.join([repr(e) for e in vals]), mimetype="text/plain")
+
+
+def _make_file_module_name_map():
+    files_modules = {}
+    for name, mod in sys.modules.items():
+        if mod is None or not hasattr(mod, '__file__'):
+            continue
+        fname = mod.__file__
+        if fname.endswith('.pyc'):
+            fname = fname[:-1]
+        files_modules[fname] = name
+    return files_modules
+
+
 def _showmodule(module_name):
     module = sys.modules[module_name]
     if not hasattr(module, '__file__'):
@@ -71,17 +104,12 @@ def _showmodule(module_name):
 
 def _listmodules(sort_col):
     filename_leaf_samples, filename_branch_samples, total = _get_samples_by_file()
-
+    file_module_map = _make_file_module_name_map()
     rows = []
-    for name, mod in sys.modules.items():
-        if mod is None:
-            continue
+    for fname, name in file_module_map.items():
         count = -1
         cum_count = -1
-        if filename_leaf_samples and hasattr(mod, '__file__'):
-            fname = mod.__file__
-            if fname.endswith('.pyc'):
-                fname = fname[:-1]
+        if filename_leaf_samples:
             count = filename_leaf_samples[fname]
             cum_count = filename_branch_samples[fname]
         rows.append((name, count, cum_count))

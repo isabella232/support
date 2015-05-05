@@ -84,6 +84,15 @@ def set_spawntree_local(name, val):
     cur.locals[name] = val
 
 
+def unset_spawntree_local(name):
+    '''
+    Delete a variable from the spawntree.
+    '''
+    locals = getattr(gevent.getcurrent(), 'locals', None)
+    if locals:
+        del locals[name]
+
+
 def staggered_retries(run, *a, **kw):
     """
     A version of spawn that will block will it is done

@@ -114,14 +114,12 @@ class Context(object):
         self.process_group_file_path = ''
 
         #ASYNC RELATED STUFF
-        self.greenlet_ancestors = WeakKeyDictionary()
         self.exception_traces = WeakKeyDictionary()
         self.thread_locals = threading.local()
         self.cpu_thread_enabled = True
 
         self.cal = None  # TODO
         self.log = log.LoggingContext()
-        self.greenlet_trans_stack = WeakKeyDictionary()
 
         # recent stuff
         self.recent = cache.DefaultLRU(4096, lambda: deque(maxlen=1024))
@@ -149,9 +147,6 @@ class Context(object):
             self.datacenter_connect_timeout = 0.05
         self.client_sockets = WeakKeyDictionary()
         self.server_group = None
-        self.port = None
-        self.admin_port = None
-        self.backdoor_port = None
         self.ip = "127.0.0.1"
         self.hostname = socket.gethostname()
         self.fqdn = socket.getfqdn()
@@ -171,12 +166,6 @@ class Context(object):
                         break
                     except socket.error:
                         pass
-
-        #TOPO RELATED STUFF
-        self.topos = None  # TODO
-
-        self.amqs = {}
-        self.fpti_client = None  # set from contrib ?
 
         self.ops_config = None  # TODO
         self.opscfg_revmap = {}
@@ -232,11 +221,6 @@ class Context(object):
         self.recent = cache.DefaultEmptyCache(lambda: deque(maxlen=1))
         self.recent['network'] = cache.DefaultEmptyCache(lambda: deque(maxlen=1))
 
-    def set_stage_host(self, stage_host, stage_ip=None):
-        self.stage_host = None
-        self.stage_ip = None  # net.find_host(stage_host)[0]  # TODO
-        self._update_addresses()
-
     def set_config(self, config):
         self.config = config
         self._update_addresses()
@@ -269,22 +253,6 @@ class Context(object):
     @property
     def dev(self):
         return self._dev
-
-    @property
-    def port(self):
-        if self._port is not None:
-            return self._port
-        if self.topos and self.topos.get(self.appname):
-            app = self.topos.get(self.appname)
-            if 'bind_port' in app.addresses:
-                return int(app['bind_port'])
-        if self.dev:
-            return 8888
-        return None
-
-    @port.setter
-    def port(self, val):
-        self._port = val
 
     @property
     def debug_errors(self):
@@ -491,6 +459,8 @@ class StreamSketch(object):
         self.n = 0
 
     def add(self, data):
+        if type(data) is unicode:
+            data = data.encode('utf-8')
         self.hll.add(data)
         self.n += 1
         self.lossy_counting.add(data)
