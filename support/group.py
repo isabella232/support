@@ -18,6 +18,7 @@ if hasattr(os, "fork"):
     import ufork
     import fcntl
     import errno
+    from support import sendfileobj
 else:
     ufork = None
 import gevent
@@ -32,6 +33,7 @@ from faststat import nanotime
 from support import async
 from support import context
 from support.crypto import SSLContext
+from support import buffered_socket
 
 import ll
 ml = ll.LLogger()
@@ -46,7 +48,8 @@ DEFAULT_SOCKET_LISTEN_SIZE = 128
 
 class Group(object):
     def __init__(self, wsgi_apps=(), stream_handlers=(), custom_servers=(),
-                 prefork=None, daemonize=None, **kw):
+                 prefork=None, daemonize=None, socket_ark_self=None,
+                 socket_ark_peer=None, socket_ark_secret='secret', **kw):
         """\
         Create a new Group of servers which can be started/stopped/forked
         as a group.
@@ -65,6 +68,14 @@ class Group(object):
 
         `handler_func` should have the following signature: f(socket, address), following
         the `convention of gevent <http://www.gevent.org/servers.html>`_.
+
+        `socket_ark_self` is the path on which the Group should make its
+        bound sockets available for bootstrapping over Unix Domain Socket.
+
+        `socket_ark_peer` is the path from which the Group should attempt
+        to bootstrap bound sockets from over Unix Domain Socket.
+
+        `socket_ark_secret` is a string used to authenticate for bootstrapping.
         """
         ctx = context.get_context()
         self.wsgi_apps = list(wsgi_apps or [])
@@ -90,13 +101,16 @@ class Group(object):
         self.servers = []
         self.socks = {}
 
+        # setup socket ark if keeping sockets alive
+        self._init_socket_ark(socket_ark_self, socket_ark_peer, socket_ark_secret)
+
         # we do NOT want a gevent socket if we're going to use a
         # thread to manage our accepts; it's critical that the
         # accept() call *blocks*
         socket_type = gevent.socket.socket if not ufork else socket.socket
 
         for app, address, ssl in wsgi_apps:
-            sock = _make_server_sock(address, socket_type=socket_type)
+            sock = self.acquire_server_sock(address, socket_type=socket_type)
 
             if isinstance(ssl, SSLContext):
                 ssl_context = ssl
@@ -122,19 +136,19 @@ class Group(object):
             server.set_environ({'SERVER_NAME': socket.getfqdn(address[0]),
                                 'wsgi.multiprocess': True})
         for handler, address in self.stream_handlers:
-            sock = _make_server_sock(address)
+            sock = self.acquire_server_sock(address)
             server = gevent.server.StreamServer(sock, handler, spawn=self.client_pool)
             self.servers.append(server)
         for server_class, address in self.custom_servers:
             # our stated requirement is that users provide a subclass
             # of StreamServer, which would *not* know about our thread
             # queue.  consequently we can't give it a blocking socket
-            sock = _make_server_sock(address)
+            sock = self.acquire_server_sock(address)
             server = server_class(sock, spawn=self.client_pool)
             self.servers.append(server)
         if self.console_address is not None:
             try:
-                sock = _make_server_sock(self.console_address)
+                sock = self.acquire_server_sock(self.console_address)
             except Exception as e:
                 print "WARNING: unable to start backdoor server on port", ctx.backdoor_port, repr(e)
             else:
@@ -143,6 +157,42 @@ class Group(object):
         # set all servers max_accept to 1 since we are in a pre-forked/multiprocess environment
         for server in self.servers:
             server.max_accept = 1
+
+    def acquire_server_sock(self, address, socket_type=gevent.socket.socket):
+        if self.socket_ark:
+            sock = self.socket_ark.get_socket(address)
+            if sock:
+                ml.ld("acquired socket through ark {0!r}", address)
+                return sock
+        ml.ld("about to bind to {0!r}", address)
+        if isinstance(address, basestring):
+            if os.path.exists(address):
+                os.unlink(address)
+            sock = socket_type(socket.AF_UNIX)
+        else:
+            sock = socket_type()
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(address)
+        sock.listen(128)  # 128 is a "hint", not a strict TCP backlog max size
+        if ufork is not None:
+            # we may fork, so protect ourselves
+            flags = fcntl.fcntl(sock.fileno(), fcntl.F_GETFD)
+            fcntl.fcntl(sock.fileno(), fcntl.F_SETFD, flags | fcntl.FD_CLOEXEC)
+        ml.la("Listen to {0!r} gave this socket {1!r}", address, sock)
+        if self.socket_ark:
+            self.socket_ark.add_socket(sock)
+        return sock
+
+    def _init_socket_ark(self, ark_self, ark_peer, ark_secret):
+        self.socket_ark = None
+        if not ufork:  # proxy for unix system
+            return
+        self.socket_ark = SocketArk(ark_secret, ark_peer)
+        if ark_self:
+            sock = self.acquire_server_sock(ark_self)
+            self.servers.append(
+                gevent.server.StreamServer(
+                    sock, self.socket_ark.handle_client, spawn=self.client_pool))
 
     def iter_addresses(self):
         # TODO: also yield app/handler?
@@ -232,32 +282,59 @@ class Group(object):
                         for server in self.servers], raise_error=True)
 
 
-def _make_server_sock(address, socket_type=gevent.socket.socket):
-    ml.ld("about to bind to {0!r}", address)
-    ml2.info('listen_prep').success('about to bind to {addr}', addr=address)
-    if isinstance(address, basestring):
-        if not hasattr(socket, "AF_UNIX"):
-            raise ValueError(
-                "attempted to bind to Unix Domain Socket {0:r} "
-                "on system without UDS support".format(address))
-        if os.path.exists(address):
-            os.unlink(address)
-        sock = socket_type(socket.AF_UNIX)
-    else:
-        sock = socket_type()
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(address)
+class SocketArk(object):
+    '''
+    A socket ark enables keeping sockets alive across process restarts,
+    by requesting sockets from the previously running process and making
+    them available to the next process.
+    '''
+    def __init__(self, secret, server_path):
+        self.secret = secret
+        self.server_path = server_path
+        if server_path is not None:
+            self.sockets = self._fetch_sockets()
 
-    # NOTE: this is a "hint" to the OS than a strict rule about backlog size
-    with context.get_context().log.critical('LISTEN') as _log:
-        sock.listen(DEFAULT_SOCKET_LISTEN_SIZE)
-        if ufork is not None:
-            # we may fork, so protect ourselves
-            flags = fcntl.fcntl(sock.fileno(), fcntl.F_GETFD)
-            fcntl.fcntl(sock.fileno(), fcntl.F_SETFD, flags | fcntl.FD_CLOEXEC)
-        #ml.la("Listen to {0!r} gave this socket {1!r}", address, sock)
-        _log.success('Listen to {addr} gave {sock}', addr=address, sock=sock)
-    return sock
+    def add_socket(self, sock):
+        self.sockets[sock.getsockname()] = sock
+
+    def get_socket(self, addr):
+        return self.sockets.get(addr)
+
+    def _fetch_sockets(self):
+        'fetch sockets from the previous process'
+        client = gevent.socket.socket(socket.AF_UNIX)
+        try:
+            client.connect(self.server_path)
+        except socket.error:
+            return {}
+        client.sendall(self.secret)
+        num = ''
+        b = ''
+        while b != '.':
+            num += b
+            # NOTE: recv(1) to avoid eating OOB socket messages after '.'
+            b = client.recv(1)
+        num_socks = int(num)
+        socks = [sendfileobj.recvfileobj(client) for i in range(num_socks)]
+        return dict([(s.getsockname(), s) for s in socks])
+
+    def handle_client(self, sock, addr):
+        'make sockets available to next process'
+        bsock = buffered_socket.BufferedSocket(sock)
+        secret = bsock.recv_all(len(self.secret))
+        if secret != self.secret:
+            bsock.send('BAD SECRET.')
+            sock.close()
+            return
+        send_socks = []
+        for server_sock in self.sockets.values():
+            if sock.getsockname() == server_sock.getsockname():
+                continue  # exclude the socket-passing-socket
+            send_socks.append(server_sock)
+        sock.send(str(len(send_socks)) + '.')
+        for server_sock in send_socks:
+            sendfileobj.sendfileobj(sock, server_sock)
+        sock.close()
 
 
 class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
