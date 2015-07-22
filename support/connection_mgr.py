@@ -231,6 +231,7 @@ class ConnectionManager(object):
                         if internal:  # connect timeout of 50ms inside the data center
                             timeout = min(timeout, ctx.datacenter_connect_timeout)
                         sock = gevent.socket.create_connection(address, timeout)
+                        sock.setsockopt(gevent.socket.IPPROTO_TCP, gevent.socket.TCP_NODELAY, 1)
                         _log['timeout'] = timeout
                         sock_state.transition('connected')
                         new_sock = True
