@@ -52,8 +52,9 @@ class _GHTTPConnection(httplib.HTTPConnection):
 
     def connect(self):
         ctx = context.get_context()
-        self.sock = ctx.connection_mgr.get_connection((self.host, self.port),
-                                                      self.protected)
+        self.sock = ctx.connection_mgr.get_connection(
+            (self.host, self.port), self.protected,
+            read_timeout=self.timeout if isinstance(self.timeout, float) else None)
         if self._tunnel_host:
             self._tunnel()
 
@@ -103,7 +104,8 @@ class _GHTTPSConnection(_GHTTPConnection):
             # we need to issue CONNECT *prior* to doing any SSL.  so
             # start off by asking for a plain socket...
             self.sock = ctx.connection_mgr.get_connection(
-                (self.host, self.port), ssl=None, read_timeout=self.timeout)
+                (self.host, self.port), ssl=None,
+                read_timeout=self.timeout if isinstance(self.timeout, float) else None)
             # ...then issue the CONNECT...
             self._tunnel()
             # ...finally, replace the underlying socket on the
