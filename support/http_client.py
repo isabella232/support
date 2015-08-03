@@ -102,9 +102,8 @@ class _GHTTPSConnection(_GHTTPConnection):
         if self._tunnel_host:
             # we need to issue CONNECT *prior* to doing any SSL.  so
             # start off by asking for a plain socket...
-            self.sock = ctx.connection_mgr.get_connection((self.host,
-                                                           self.port),
-                                                          ssl=None)
+            self.sock = ctx.connection_mgr.get_connection(
+                (self.host, self.port), ssl=None, read_timeout=self.timeout)
             # ...then issue the CONNECT...
             self._tunnel()
             # ...finally, replace the underlying socket on the
