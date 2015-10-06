@@ -358,7 +358,7 @@ class Response(object):
 
     def close(self):
         """Release the underlying socket back to the connection pool.  This
-        will be automatically called by :attribute:`~Response.body`
+        will be automatically called by :meth:`~Response.body`
         after the body has been read.  You should arrange to have this called (
 
         """

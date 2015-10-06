@@ -90,7 +90,7 @@ class MetaTable(clastic.render.Table):
 
 
 def get_config_dict():
-    'returns information about the current environment in a dictionary'
+    'Returns information about the current environment in a dictionary'
     ctx = context.get_context()
     data = []
     keys_handled_directly = ['protected', 'ssl_contexts']
@@ -237,10 +237,11 @@ def get_one_fd_info(fd):
 def get_fd_info():
     '''
     Gathers and correlates fd info from 3 sources:
-    1- gc over all objects that have a fileno(); this is most 'socket-like' things
-    2- infra Context object data structures
-    3- psutil information
-    4- /proc filesystem (if available)
+
+    1. gc over all objects that have a fileno(); this is most 'socket-like' things
+    2. infra Context object data structures
+    3. psutil information
+    4. /proc filesystem (if available)
 
     This function is a little bit open-ended, we can probably continue
     to find additional sources of information

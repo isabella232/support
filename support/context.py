@@ -57,11 +57,11 @@ class Context(object):
 
     Two categories of data in here:
 
-      1. Global data used internally by the infrastructure.
+    1. Global data used internally by the infrastructure.
 
-      2. Global data which would otherwise need to be kept track of by
-      user code. (This stuff can be identified by the presence of
-      getters)
+    2. Global data which would otherwise need to be kept track of by
+       user code. (This stuff can be identified by the presence of
+       getters.)
 
     There are many configuration attributes. They ALL go to a sane
     default, it is not necessary to touch them but they are available
@@ -87,12 +87,12 @@ class Context(object):
     process_group_file_path    pid file location (used for server    [appname].pid
                                shutdown)
 
-    bakdoor_port               the port for the TCP REPL server      port + 2 in dev, None in live
+    bcakdoor_port             the port for the TCP REPL server      port + 2 in dev, None in live
                                (None means no REPL server)
 
     port                       the port that infra.serve() will use  topo[appname]["bind_port"], or
-                                                                    8888 if in dev and no topo
-                                                                    entry found
+                                                                     8888 if in dev and no topo
+                                                                     entry found
 
     accept_queue_maxlen        the depth of the user-space accept
                                queue.  If the queue exceeds this
@@ -333,11 +333,11 @@ class Context(object):
 
     @property
     def greenlet_settrace(self):
-        'check if any greenlet trace function is registered'
+        'Check if any greenlet trace function is registered.'
         return bool(greenlet.gettrace())
 
     def set_greenlet_trace(self, value):
-        'turn on tracking of greenlet switches'
+        'Turn on tracking of greenlet switches.'
         if value not in (True, False):
             raise ValueError("value must be True or False")
         if value and not getattr(self, "tracing", False):
@@ -540,8 +540,8 @@ def _sys_stats_monitor(context):
 
 def get_ip_from_hosts():
     '''
-    get the current ip from the hosts file, without doing any DNS;
-    available as a fallback
+    Get the current ip from the hosts file, without doing any DNS;
+    available as a fallback.
     '''
     import platform
     hostname = platform.node()

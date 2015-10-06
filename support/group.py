@@ -3,9 +3,10 @@ Defines a Group class for running and managing servers, as well as a set of
 base server types.
 
 The following information is needed to start a server:
-1- handler / wsgi app
-2- address
-3- ssl preference
+
+1. handler / wsgi app
+2. address
+3. ssl preference
 
 '''
 import os
@@ -47,36 +48,36 @@ DEFAULT_SOCKET_LISTEN_SIZE = 128
 
 
 class Group(object):
+    """\
+    Create a new Group of servers which can be started/stopped/forked
+    as a group.
+
+    *wsgi_apps* should be of the form  [ (wsgi_app, address, ssl), ...  ]
+
+    *stream_handlers* should be of the form  [ (handler_func, address), ...  ]
+
+    *custom_servers* should be of the form [ (server_class, address), ... ]
+    where server_class refers to subclasses of gevent.server.StreamServer
+    which define their own handle function
+
+    address here refers to a tuple (ip, port), or more generally anything which is
+    acceptable as the address parameter to
+    `socket.bind() <http://docs.python.org/2/library/socket.html#socket.socket.bind>`_.
+
+    `handler_func` should have the following signature: f(socket, address), following
+    the `convention of gevent <http://www.gevent.org/servers.html>`_.
+
+    `socket_ark_self` is the path on which the Group should make its
+    bound sockets available for bootstrapping over Unix Domain Socket.
+
+    `socket_ark_peer` is the path from which the Group should attempt
+    to bootstrap bound sockets from over Unix Domain Socket.
+
+    `socket_ark_secret` is a string used to authenticate for bootstrapping.
+    """
     def __init__(self, wsgi_apps=(), stream_handlers=(), custom_servers=(),
                  prefork=None, daemonize=None, socket_ark_self=None,
                  socket_ark_peer=None, socket_ark_secret='secret', **kw):
-        """\
-        Create a new Group of servers which can be started/stopped/forked
-        as a group.
-
-        *wsgi_apps* should be of the form  [ (wsgi_app, address, ssl), ...  ]
-
-        *stream_handlers* should be of the form  [ (handler_func, address), ...  ]
-
-        *custom_servers* should be of the form [ (server_class, address), ... ]
-        where server_class refers to subclasses of gevent.server.StreamServer
-        which define their own handle function
-
-        address here refers to a tuple (ip, port), or more generally anything which is
-        acceptable as the address parameter to
-        `socket.bind() <http://docs.python.org/2/library/socket.html#socket.socket.bind>`_.
-
-        `handler_func` should have the following signature: f(socket, address), following
-        the `convention of gevent <http://www.gevent.org/servers.html>`_.
-
-        `socket_ark_self` is the path on which the Group should make its
-        bound sockets available for bootstrapping over Unix Domain Socket.
-
-        `socket_ark_peer` is the path from which the Group should attempt
-        to bootstrap bound sockets from over Unix Domain Socket.
-
-        `socket_ark_secret` is a string used to authenticate for bootstrapping.
-        """
         ctx = context.get_context()
         self.wsgi_apps = list(wsgi_apps or [])
         self.stream_handlers = list(stream_handlers or [])
@@ -301,7 +302,7 @@ class SocketArk(object):
         return self.sockets.get(addr)
 
     def _fetch_sockets(self):
-        'fetch sockets from the previous process'
+        'Fetch sockets from the previous process.'
         client = gevent.socket.socket(socket.AF_UNIX)
         try:
             client.connect(self.server_path)
@@ -319,7 +320,7 @@ class SocketArk(object):
         return dict([(s.getsockname(), s) for s in socks])
 
     def handle_client(self, sock, addr):
-        'make sockets available to next process'
+        'Make sockets available to next process.'
         bsock = buffered_socket.BufferedSocket(sock)
         secret = bsock.recv_all(len(self.secret))
         if secret != self.secret:
@@ -339,9 +340,9 @@ class SocketArk(object):
 
 class MakeFileCloseWSGIHandler(pywsgi.WSGIHandler):
     '''
-    quick work-around to re-enable gevent's work-around of the
+    Quick work-around to re-enable gevent's work-around of the
     makefile() call in the pywsgi handler keeping sockets alive
-    past their shelf life
+    past their shelf life.
     '''
     def __init__(self, socket, address, server, rfile=None):
         if rfile is None and hasattr(socket, "_makefile_refs"):

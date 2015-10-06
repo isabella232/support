@@ -101,10 +101,11 @@ def staggered_retries(run, *a, **kw):
 
     Best used for idempotent network calls (e.g. HTTP GETs).
 
-    e.g.
-    user_data = async.staggered_retries(get_data, max_results,
-                                        latent_data_ok, public_credential_load,
-                                        timeouts_secs=[0.1, 0.5, 1, 2])
+    e.g.::
+
+        user_data = async.staggered_retries(get_data, max_results,
+                                            latent_data_ok, public_credential_load,
+                                            timeouts_secs=[0.1, 0.5, 1, 2])
 
     returns None on timeout.
     """
@@ -153,7 +154,7 @@ def staggered_retries(run, *a, **kw):
 
 def timed(f):
     '''
-    wrap a function and time all of its execution calls in milliseconds
+    Wrap a function and time all of its execution calls in milliseconds.
     '''
     fname = os.path.basename(f.__code__.co_filename) or '_'
     line_no = repr(f.__code__.co_firstlineno)
@@ -216,7 +217,7 @@ class ThreadPoolDispatcher(object):
 
 
 def in_threadpool():
-    'function to return the threadpool in which code is currently executing (if any)'
+    'Function to return the threadpool in which code is currently executing (if any.)'
     frame = sys._getframe()
     while frame.f_back:
         frame = frame.f_back
@@ -358,11 +359,11 @@ def cpu_bound(f, p=None):
     separate thread to avoid blocking the IO loop in the main thread.
     Useful for wrapping encryption or serialization tasks.
 
-    Example usage:
+    Example usage::
 
-    @async.cpu_bound
-    def my_slow_function():
-        pass
+        @async.cpu_bound
+        def my_slow_function():
+            pass
 
     '''
     @functools.wraps(f)
@@ -387,13 +388,13 @@ def cpu_bound_if(p):
     cpu_bound thread.  The predicate will be passed the same
     parameters as the function itself.
 
-    Example usage:
+    Example usage::
 
-    # will be deferred to a thread if parameter greater than 16k,
-    # else run inline
-    @async.cpu_bound_if(lambda s: len(s) > 16 * 1024)
-    def my_string_function(data):
-        pass
+        # will be deferred to a thread if parameter greater than 16k,
+        # else run inline
+        @async.cpu_bound_if(lambda s: len(s) > 16 * 1024)
+        def my_string_function(data):
+            pass
 
     '''
     def g(f):
@@ -451,15 +452,15 @@ PID = os.getpid()
 
 
 def check_fork(fn):
-        """Hack for Django/gevent interaction to reset after non-gevent fork"""
-        @functools.wraps(fn)
-        def wrapper(request):
-                global PID
-                if PID != os.getpid():
-                        gevent.get_hub().loop.reinit()
-                        PID = os.getpid()
-                return fn(request)
-        return wrapper
+    """Hack for Django/gevent interaction to reset after non-gevent fork"""
+    @functools.wraps(fn)
+    def wrapper(request):
+            global PID
+            if PID != os.getpid():
+                    gevent.get_hub().loop.reinit()
+                    PID = os.getpid()
+            return fn(request)
+    return wrapper
 
 
 # a little helper for running a greenlet-friendly console
