@@ -4,16 +4,17 @@ such as "paymentserv", or "occ-conf" to an open connection.
 
 The main entry point is the ConnectionManager.get_connection().
 This function will promptly either:
-   1- raise an Exception which is a subclass of socket.error
-   2- return a socket
+
+1. Raise an Exception which is a subclass of socket.error
+2. Return a socket
 
 ConnectionManagers provide the following services:
 
-1- name resolution ("paymentserv" to actual ip/port from topos)
-2- transient markdown (keeping track of connection failures)
-3- socket throttling (keeping track of total open sockets)
-4- timeouts (connection and read timeouts from opscfg)
-5- protecteds
+1. Name resolution ("paymentserv" to actual ip/port from topos)
+2. Transient markdown (keeping track of connection failures)
+3. Socket throttling (keeping track of total open sockets)
+4. Timeouts (connection and read timeouts from opscfg)
+5. Protecteds
 
 In addition, by routing all connections through ConnectionManager,
 future refactorings/modifications will be easier.  For example,
@@ -73,14 +74,16 @@ class ConnectionManager(object):
     def get_connection(
             self, name_or_addr, ssl=False, sock_type=None, read_timeout=None):
         '''
-        name_or_addr - the logical name to connect to, e.g. "db-r"
-        ssl - if set to True, wrap socket with context.protected;
-              if set to an SSL context, wrap socket with that
-        sock_type - a type to wrap the socket in; the intention here is for protocols
-              that want to run asynchronous keep-alives, or higher level handshaking
-              (strictly speaking, this is just a callable which accepts socket and
-               returns the thing that should be pooled, but for must uses it will
-               probably be a class)
+        :param name_or_addr: The logical name to connect to, e.g. "db-r"
+
+        :param ssl: If set to True, wrap socket with context.protected; if set
+          to an SSL context, wrap socket with that
+
+        :param sock_type: A type to wrap the socket in; the intention here is
+          for protocols that want to run asynchronous keep-alives, or higher
+          level handshaking (strictly speaking, this is just a callable which
+          accepts socket and returns the thing that should be pooled, but for
+          must uses it will probably be a class)
         '''
         ctx = context.get_context()
         address_aliases = self.address_aliases or ctx.address_aliases
@@ -153,8 +156,8 @@ class ConnectionManager(object):
 
     def get_all_addrs(self, name):
         '''
-        returns the all addresses which the logical name would resolve to,
-        or raises NameNotFound if there is no known address for the given name
+        Returns the all addresses which the logical name would resolve to,
+        or raises NameNotFound if there is no known address for the given name.
         '''
         ctx = context.get_context()
         address_groups = self.address_groups or ctx.address_groups
@@ -169,7 +172,7 @@ class ConnectionManager(object):
 
     def get_addr(self, name):
         '''
-        returns the first address which the logical name would resolve to,
+        Returns the first address which the logical name would resolve to,
         equivalent to get_all_addrs(name)[0]
         '''
         return self.get_all_addrs(name)[0]
@@ -177,8 +180,8 @@ class ConnectionManager(object):
     def _connect_to_address(
             self, name, ssl, sock_config, address, sock_type, read_timeout):
         '''
-        internal helper function that does all the complex bits of establishing
-        a connection, keeping statistics on connections, handling markdowns
+        Internal helper function that does all the complex bits of establishing
+        a connection, keeping statistics on connections, handling markdowns.
         '''
         ctx = context.get_context()
         if address not in self.server_models:
@@ -514,7 +517,9 @@ class AddressGroup(object):
     The simplest way to use an address group is just to iterate over
     it, and try each address in the order returned.
 
-    tiers: [ [(weight, (ip, port)), (weight, (ip, port)) ... ] ... ]
+    ::
+
+        tiers: [ [(weight, (ip, port)), (weight, (ip, port)) ... ] ... ]
 
     '''
     def __init__(self, tiers):

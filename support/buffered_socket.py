@@ -37,7 +37,7 @@ class BufferedSocket(object):
         return data
 
     def peek(self, n, timeout=None):
-        'peek n bytes from the socket, but keep them in the buffer'
+        'Peek n bytes from the socket, but keep them in the buffer.'
         if len(self.rbuf) >= n:
             return self.rbuf[:n]
         data = self.recv_all(n, timeout=timeout)
@@ -45,7 +45,7 @@ class BufferedSocket(object):
         return data
 
     def recv_until(self, marker, timeout=_UNSET, maxbytes=_UNSET):
-        'read off of socket until the marker is found'
+        'Read off of socket until the marker is found.'
         if maxbytes is _UNSET:
             maxbytes = self.maxbytes
         if timeout is _UNSET:
@@ -77,7 +77,7 @@ class BufferedSocket(object):
         return ''.join(chunks) + val
 
     def recv_all(self, size, timeout=_UNSET):
-        'read off of socket until size bytes have been read'
+        'Read off of socket until size bytes have been read.'
         if timeout is _UNSET:
             timeout = self.timeout
         chunks = []

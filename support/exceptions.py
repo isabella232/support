@@ -1,6 +1,6 @@
 '''
 This module holds root exception types, as well as mix-ins
-that can be subclassed for user code or used in try/except blocks
+that can be subclassed for user code or used in try/except blocks.
 '''
 import sys
 import traceback
@@ -10,7 +10,7 @@ import gevent
 
 
 def current_code_list():
-    'returns a code-list that can be formatted by code_list2trace_list'
+    'Returns a code-list that can be formatted by code_list2trace_list'
     f = sys._getframe().f_back
     code_list = []
     while f:
@@ -33,7 +33,7 @@ def code_list2trace_list(code_list):
 
 
 class GLineCache(object):
-    'same idea as linecache.py module, but uses gevent primitives and thread/greenlet safe'
+    'Same idea as linecache.py module, but uses gevent primitives and thread/greenlet safe.'
     def __init__(self):
         self.cache = {}
 
