@@ -294,6 +294,8 @@ class SocketArk(object):
         self.server_path = server_path
         if server_path is not None:
             self.sockets = self._fetch_sockets()
+        else:
+            self.sockets = {}
 
     def add_socket(self, sock):
         self.sockets[sock.getsockname()] = sock
