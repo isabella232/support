@@ -87,7 +87,7 @@ class Context(object):
     process_group_file_path    pid file location (used for server    [appname].pid
                                shutdown)
 
-    bcakdoor_port             the port for the TCP REPL server      port + 2 in dev, None in live
+    backdoor_port              the port for the TCP REPL server      port + 2 in dev, None in live
                                (None means no REPL server)
 
     port                       the port that infra.serve() will use  topo[appname]["bind_port"], or

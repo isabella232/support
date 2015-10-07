@@ -452,14 +452,14 @@ PID = os.getpid()
 
 
 def check_fork(fn):
-    """Hack for Django/gevent interaction to reset after non-gevent fork"""
+    """Hack for Django/gevent interaction to reset after non-gevent fork."""
     @functools.wraps(fn)
     def wrapper(request):
-            global PID
-            if PID != os.getpid():
-                    gevent.get_hub().loop.reinit()
-                    PID = os.getpid()
-            return fn(request)
+        global PID
+        if PID != os.getpid():
+            gevent.get_hub().loop.reinit()
+            PID = os.getpid()
+        return fn(request)
     return wrapper
 
 
