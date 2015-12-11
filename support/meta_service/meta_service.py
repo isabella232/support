@@ -265,9 +265,11 @@ def get_fd_info():
     # 2 - inspection of data-structures in context
     ctx = context.get_context()
     socks = []
-    for model in ctx.connection_mgr.server_models.values():
-        socks.extend(model.active_connections)
-    socks.extend(ctx.client_sockets)
+    if ctx.connection_mgr:
+        for model in ctx.connection_mgr.server_models.values():
+            socks.extend(model.active_connections)
+    if ctx.client_sockets:
+        socks.extend(ctx.client_sockets)
     if ctx.server_group:
         socks.extend(ctx.server_group.socks.values())
     for sock in socks:
