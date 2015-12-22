@@ -218,7 +218,16 @@ class Group(object):
             log_msg = 'Group initialized and serving forever...'
             ctx.log.critical('GROUP.INIT').success(log_msg)
             if ctx.dev and ctx.dev_service_repl_enabled and os.isatty(0):
-                async.start_repl({'server': ctx.server_group})
+                if not hasattr(os, "getpgrp"):  # Windows
+                    fg = True
+                else:
+                    try:
+                        fg = os.getpgrp() == os.tcgetpgrp(sys.stdout.fileno())
+                    except OSError:
+                        fg = False
+                if fg:
+                    # only start REPL on unix machines if running in foreground
+                    async.start_repl({'server': ctx.server_group})
             try:
                 while 1:
                     async.sleep(1.0)
