@@ -3,8 +3,8 @@ import sys
 
 import gevent
 from lithoxyl import Logger
-from lithoxyl.sinks import SensibleSink, Formatter, StreamEmitter
-from lithoxyl.fields import FormatField
+from lithoxyl.sensible import SensibleField, SensibleSink, SensibleFormatter
+from lithoxyl.emitters import StreamEmitter
 
 
 def get_current_gthreadid(record):
@@ -19,17 +19,18 @@ url_log = SupportLogger('url')
 worker_log = SupportLogger('worker')
 support_log = SupportLogger('support')
 
-
-extra_fields = [FormatField('current_gthread_id' , 'd', get_current_gthreadid, quote=False)]
-
+extra_fields = [SensibleField('current_gthread_id' , 'd',
+                              get_current_gthreadid, quote=False)]
 
 # TODO: create/attach this in context
 
-stderr_fmt = Formatter('{end_local_iso8601_notz} {module_path} ({current_gthread_id}) - {message}',
-                       extra_fields=extra_fields)
+stderr_fmt = SensibleFormatter('{iso_end_local_notz} {module_path}'
+                               ' ({current_gthread_id}) - {message}',
+                               extra_fields=extra_fields)
 stderr_emt = StreamEmitter('stderr')
 stderr_sink = SensibleSink(formatter=stderr_fmt,
-                           emitter=stderr_emt)
+                           emitter=stderr_emt,
+                           on='end')
 
 url_log.add_sink(stderr_sink)
 worker_log.add_sink(stderr_sink)
