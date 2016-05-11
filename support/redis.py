@@ -1,8 +1,9 @@
 '''
 Quick and limited Redis client.
 '''
+from boltons.socketutils import BufferedSocket
+
 import context
-import buffered_socket
 
 
 class Client(object):
@@ -19,7 +20,7 @@ class Client(object):
         protocol used by Redis >= 1.2
         '''
         cm = context.get_context().connection_mgr
-        sock = buffered_socket.BufferedSocket(cm.get_connection(self.address))
+        sock = BufferedSocket(cm.get_connection(self.address))
         # ARRAY: first byte *, decimal length, \r\n, contents
         out = ['*' + str(len(commands))] + \
             ["${0}\r\n{1}".format(len(e), e) for e in commands]
@@ -35,7 +36,7 @@ class Client(object):
             if length == -1:
                 resp = None
             else:
-                resp = sock.recv_all(length)
+                resp = sock.recv_size(length)
         cm.release_connection(sock)
         return resp
 

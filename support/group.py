@@ -30,6 +30,7 @@ import gevent.pool
 
 import clastic
 from faststat import nanotime
+from boltons.socketutils import BufferedSocket
 
 from support import async
 from support import context
@@ -332,8 +333,8 @@ class SocketArk(object):
 
     def handle_client(self, sock, addr):
         'Make sockets available to next process.'
-        bsock = buffered_socket.BufferedSocket(sock)
-        secret = bsock.recv_all(len(self.secret))
+        bsock = BufferedSocket(sock)
+        secret = bsock.recv_size(len(self.secret))
         if secret != self.secret:
             bsock.send('BAD SECRET.')
             sock.close()
